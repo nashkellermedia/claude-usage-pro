@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Claude Usage Pro",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Track your Claude.ai token usage, costs, and optimize your AI workflow with real-time analytics.",
   "author": "Nash Keller Media",
   
@@ -17,8 +17,7 @@
   ],
   
   "background": {
-    "service_worker": "background/service-worker.js",
-    "type": "module"
+    "service_worker": "background/service-worker.js"
   },
   
   "content_scripts": [

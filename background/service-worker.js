@@ -3,10 +3,115 @@
  * Handles token tracking, storage, and badge updates
  */
 
-// Import utilities
-importScripts('../lib/utils.js');
+// Inline utils since importScripts doesn't work with ES modules
+const Utils = {
+  formatNumber(num) {
+    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+    if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+    return num.toLocaleString();
+  },
 
-const Utils = ClaudeUsageUtils;
+  formatCurrency(amount, decimals = 2) {
+    return '$' + amount.toFixed(decimals);
+  },
+
+  getUsageColor(percentage) {
+    if (percentage >= 95) return '#EF4444';
+    if (percentage >= 80) return '#F59E0B';
+    if (percentage >= 50) return '#FBBF24';
+    return '#10B981';
+  },
+
+  getDefaultSettings() {
+    return {
+      badgeMode: 'percentage',
+      badgeCustomText: '',
+      alertThresholds: [50, 75, 90, 95],
+      notificationsEnabled: true,
+      theme: 'auto',
+      dailyQuota: 100000,
+      monthlyCost: 1.00,
+      firebaseEnabled: false,
+      trackingEnabled: true
+    };
+  },
+
+  storage: {
+    async get(key, defaultValue = null) {
+      try {
+        const result = await chrome.storage.local.get(key);
+        return result[key] !== undefined ? result[key] : defaultValue;
+      } catch (error) {
+        console.error('Storage get error:', error);
+        return defaultValue;
+      }
+    },
+
+    async set(key, value) {
+      try {
+        await chrome.storage.local.set({ [key]: value });
+        return true;
+      } catch (error) {
+        console.error('Storage set error:', error);
+        return false;
+      }
+    },
+
+    async getSettings() {
+      try {
+        const result = await chrome.storage.sync.get('settings');
+        const defaults = Utils.getDefaultSettings();
+        return { ...defaults, ...result.settings };
+      } catch (error) {
+        console.error('Get settings error:', error);
+        return Utils.getDefaultSettings();
+      }
+    },
+
+    async setSettings(settings) {
+      try {
+        await chrome.storage.sync.set({ settings });
+        return true;
+      } catch (error) {
+        console.error('Set settings error:', error);
+        return false;
+      }
+    }
+  },
+
+  async updateBadge(stats, settings) {
+    const { badgeMode } = settings;
+    let text = '';
+    let color = Utils.getUsageColor(stats.usagePercentage);
+    
+    switch (badgeMode) {
+      case 'percentage':
+        text = Math.round(stats.usagePercentage) + '%';
+        break;
+      case 'tokens':
+        const remaining = stats.quota - stats.tokensUsed;
+        text = Utils.formatNumber(remaining);
+        break;
+      case 'cost':
+        const costRemaining = stats.budget - stats.costUsed;
+        text = Utils.formatCurrency(costRemaining, 1).replace('$', '');
+        break;
+      case 'messages':
+        text = stats.messagesCount.toString();
+        color = '#8B5CF6';
+        break;
+      case 'custom':
+        text = settings.badgeCustomText || '';
+        color = '#8B5CF6';
+        break;
+      default:
+        text = Math.round(stats.usagePercentage) + '%';
+    }
+    
+    await chrome.action.setBadgeText({ text });
+    await chrome.action.setBadgeBackgroundColor({ color });
+  }
+};
 
 // State management
 let currentStats = {
@@ -17,33 +122,28 @@ let currentStats = {
   usagePercentage: 0,
   messagesCount: 0,
   lastReset: Date.now(),
-  nextReset: Date.now() + (24 * 60 * 60 * 1000) // 24 hours
+  nextReset: Date.now() + (24 * 60 * 60 * 1000)
 };
 
 /**
  * Initialize extension on install
  */
 chrome.runtime.onInstalled.addListener(async (details) => {
-  console.log('Claude Usage Pro installed!', details.reason);
+  console.log('🎯 Claude Usage Pro installed!', details.reason);
   
-  // Set default settings
   const settings = Utils.getDefaultSettings();
   await Utils.storage.setSettings(settings);
-  
-  // Initialize stats
   await initializeStats();
   
-  // Set up daily reset alarm
   chrome.alarms.create('dailyReset', {
-    periodInMinutes: 60 * 24 // 24 hours
+    periodInMinutes: 60 * 24
   });
   
-  // Update badge
-  await Utils.badge.update(currentStats);
+  await Utils.updateBadge(currentStats, settings);
 });
 
 /**
- * Initialize or load stats from storage
+ * Initialize or load stats
  */
 async function initializeStats() {
   const stored = await Utils.storage.get('currentStats');
@@ -58,7 +158,7 @@ async function initializeStats() {
 }
 
 /**
- * Update stats and persist
+ * Update stats
  */
 async function updateStats(delta) {
   currentStats.tokensUsed += delta.tokens || 0;
@@ -67,39 +167,18 @@ async function updateStats(delta) {
   currentStats.usagePercentage = (currentStats.tokensUsed / currentStats.quota) * 100;
   
   await Utils.storage.set('currentStats', currentStats);
-  await Utils.badge.update(currentStats);
   
-  // Check thresholds
-  await checkThresholds();
+  const settings = await Utils.storage.getSettings();
+  await Utils.updateBadge(currentStats, settings);
   
   return currentStats;
-}
-
-/**
- * Check alert thresholds
- */
-async function checkThresholds() {
-  const settings = await Utils.storage.getSettings();
-  const { alertThresholds } = settings;
-  const percentage = currentStats.usagePercentage;
-  
-  // Get already triggered alerts
-  const triggered = await Utils.storage.get('triggeredAlerts', []);
-  
-  for (const threshold of alertThresholds) {
-    if (percentage >= threshold && !triggered.includes(threshold)) {
-      await Utils.notifications.showThresholdAlert(threshold);
-      triggered.push(threshold);
-      await Utils.storage.set('triggeredAlerts', triggered);
-    }
-  }
 }
 
 /**
  * Reset daily stats
  */
 async function resetDailyStats() {
-  console.log('Resetting daily stats...');
+  console.log('🔄 Resetting daily stats...');
   
   currentStats = {
     tokensUsed: 0,
@@ -114,12 +193,9 @@ async function resetDailyStats() {
   
   await Utils.storage.set('currentStats', currentStats);
   await Utils.storage.set('triggeredAlerts', []);
-  await Utils.badge.update(currentStats);
   
-  await Utils.notifications.show(
-    '🔄 Quota Reset',
-    'Your daily Claude usage quota has been reset!'
-  );
+  const settings = await Utils.storage.getSettings();
+  await Utils.updateBadge(currentStats, settings);
 }
 
 /**
@@ -132,48 +208,54 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 });
 
 /**
- * Message handler for content scripts
+ * Message handler
  */
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
-    switch (message.type) {
-      case 'GET_STATS':
-        await initializeStats();
-        sendResponse({ stats: currentStats });
-        break;
-        
-      case 'UPDATE_STATS':
-        const updated = await updateStats(message.delta);
-        sendResponse({ stats: updated });
-        break;
-        
-      case 'GET_SETTINGS':
-        const settings = await Utils.storage.getSettings();
-        sendResponse({ settings });
-        break;
-        
-      case 'UPDATE_SETTINGS':
-        await Utils.storage.setSettings(message.settings);
-        await Utils.badge.update(currentStats);
-        sendResponse({ success: true });
-        break;
-        
-      case 'RESET_STATS':
-        await resetDailyStats();
-        sendResponse({ stats: currentStats });
-        break;
-        
-      default:
-        sendResponse({ error: 'Unknown message type' });
+    try {
+      switch (message.type) {
+        case 'GET_STATS':
+          await initializeStats();
+          sendResponse({ stats: currentStats });
+          break;
+          
+        case 'UPDATE_STATS':
+          const updated = await updateStats(message.delta);
+          sendResponse({ stats: updated });
+          break;
+          
+        case 'GET_SETTINGS':
+          const settings = await Utils.storage.getSettings();
+          sendResponse({ settings });
+          break;
+          
+        case 'UPDATE_SETTINGS':
+          await Utils.storage.setSettings(message.settings);
+          await Utils.updateBadge(currentStats, message.settings);
+          sendResponse({ success: true });
+          break;
+          
+        case 'RESET_STATS':
+          await resetDailyStats();
+          sendResponse({ stats: currentStats });
+          break;
+          
+        default:
+          sendResponse({ error: 'Unknown message type' });
+      }
+    } catch (error) {
+      console.error('Message handler error:', error);
+      sendResponse({ error: error.message });
     }
   })();
   
-  return true; // Required for async sendResponse
+  return true;
 });
 
 // Initialize on startup
 (async () => {
   await initializeStats();
-  await Utils.badge.update(currentStats);
-  console.log('Claude Usage Pro background service worker ready!');
+  const settings = await Utils.storage.getSettings();
+  await Utils.updateBadge(currentStats, settings);
+  console.log('✅ Claude Usage Pro background service worker ready!');
 })();
