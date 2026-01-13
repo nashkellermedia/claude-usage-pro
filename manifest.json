@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Claude Usage Pro",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Track your Claude.ai token usage, costs, and optimize your AI workflow with real-time analytics.",
   "author": "Nash Keller Media",
   
@@ -13,7 +13,8 @@
   
   "host_permissions": [
     "https://claude.ai/*",
-    "https://api.anthropic.com/*"
+    "https://api.claude.ai/*",
+    "https://*.anthropic.com/*"
   ],
   
   "background": {
@@ -24,17 +25,17 @@
     {
       "matches": ["https://claude.ai/*"],
       "js": [
-        "lib/utils.js",
         "content/message-tracker.js",
         "content/content-script.js"
       ],
       "css": ["styles/overlay.css"],
-      "run_at": "document_idle"
+      "run_at": "document_end"
     }
   ],
   
   "action": {
-    "default_popup": "popup/popup.html"
+    "default_popup": "popup/popup.html",
+    "default_title": "Claude Usage Pro - View Stats"
   },
   
   "options_page": "options/options.html",
@@ -42,7 +43,6 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "content/ui-components/*.js",
         "styles/*.css"
       ],
       "matches": ["https://claude.ai/*"]
