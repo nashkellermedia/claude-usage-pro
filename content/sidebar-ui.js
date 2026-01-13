@@ -11,6 +11,7 @@ class SidebarUI {
     this.progressBar = null;
     this.percentageDisplay = null;
     this.resetTimeDisplay = null;
+    this.tooltip = null;
     this.isInjected = false;
   }
   
@@ -18,13 +19,19 @@ class SidebarUI {
    * Initialize and inject the sidebar UI
    */
   async initialize() {
+    CUP.log('SidebarUI: Initializing...');
+    
     // Build the UI elements
     this.buildUI();
     
     // Find injection point and inject
-    await this.inject();
+    const success = await this.inject();
     
-    CUP.log('Sidebar UI initialized');
+    if (success) {
+      CUP.log('SidebarUI: Initialized successfully');
+    } else {
+      CUP.logWarn('SidebarUI: Could not inject into sidebar');
+    }
   }
   
   /**
@@ -33,143 +40,204 @@ class SidebarUI {
   buildUI() {
     // Main container
     this.container = document.createElement('div');
-    this.container.className = 'cup-sidebar-section flex flex-col mb-4';
+    this.container.className = 'cup-sidebar-section';
     this.container.id = 'cup-sidebar-usage';
+    this.container.style.cssText = `
+      margin: 0 8px 16px 8px;
+      padding: 12px;
+      background: var(--bg-200, rgba(0,0,0,0.05));
+      border-radius: 8px;
+      font-family: inherit;
+    `;
     
     // Header row
     const header = document.createElement('div');
-    header.className = 'flex items-center justify-between px-2 pb-2';
-    
-    const title = document.createElement('h3');
-    title.className = 'text-text-500 text-xs select-none font-medium';
-    title.textContent = 'Usage';
-    
-    const settingsBtn = document.createElement('button');
-    settingsBtn.className = 'cup-settings-btn hover:bg-bg-400 rounded p-1 transition-colors';
-    settingsBtn.innerHTML = `
-      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 24 24" class="text-text-400 hover:text-text-200">
-        <path d="M19.43 12.98c.04-.32.07-.64.07-.98 0-.34-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98 0 .33.03.66.07.98l-2.11 1.65c-.19.15-.24.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.25 1.17-.59 1.69-.98l2.49 1c.23.09.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z"/>
-      </svg>
+    header.style.cssText = `
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
     `;
-    settingsBtn.title = 'Usage Settings';
-    settingsBtn.addEventListener('click', () => this.openSettings());
+    
+    const title = document.createElement('span');
+    title.style.cssText = `
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-500, #6b7280);
+    `;
+    title.textContent = '📊 Usage';
+    
+    // Settings button (optional)
+    const settingsBtn = document.createElement('button');
+    settingsBtn.style.cssText = `
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 2px;
+      color: var(--text-400, #9ca3af);
+      font-size: 12px;
+    `;
+    settingsBtn.textContent = '⚙️';
+    settingsBtn.title = 'Open Usage Dashboard';
+    settingsBtn.addEventListener('click', () => {
+      // Open popup by clicking extension icon (can't do programmatically)
+      CUP.log('Settings clicked - open extension popup');
+    });
     
     header.appendChild(title);
     header.appendChild(settingsBtn);
     
-    // Content area
-    const content = document.createElement('div');
-    content.className = 'px-2';
-    
     // Stats row
     const statsRow = document.createElement('div');
-    statsRow.className = 'flex items-center justify-between mb-1 text-xs';
+    statsRow.style.cssText = `
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 6px;
+      font-size: 12px;
+    `;
     
-    // Left side: percentage
-    const leftStats = document.createElement('div');
-    leftStats.className = 'flex items-center gap-1';
-    
-    const allLabel = document.createElement('span');
-    allLabel.className = 'text-text-500';
-    allLabel.textContent = 'All:';
-    
+    // Left: percentage
     this.percentageDisplay = document.createElement('span');
-    this.percentageDisplay.className = 'cup-percentage font-medium';
-    this.percentageDisplay.style.color = CUP.COLORS.BLUE;
+    this.percentageDisplay.style.cssText = `
+      font-weight: 600;
+      color: ${CUP.COLORS.BLUE};
+    `;
     this.percentageDisplay.textContent = '0%';
     
-    leftStats.appendChild(allLabel);
-    leftStats.appendChild(this.percentageDisplay);
-    
-    // Right side: reset time
-    this.resetTimeDisplay = document.createElement('div');
-    this.resetTimeDisplay.className = 'text-text-400 text-xs';
+    // Right: reset time
+    this.resetTimeDisplay = document.createElement('span');
+    this.resetTimeDisplay.style.cssText = `
+      color: var(--text-400, #9ca3af);
+      font-size: 11px;
+    `;
     this.resetTimeDisplay.textContent = 'Reset: --';
     
-    statsRow.appendChild(leftStats);
+    statsRow.appendChild(this.percentageDisplay);
     statsRow.appendChild(this.resetTimeDisplay);
     
-    // Progress bar
+    // Progress bar container
     const progressContainer = document.createElement('div');
-    progressContainer.className = 'cup-progress-container bg-bg-400 rounded-full h-1.5 overflow-hidden';
+    progressContainer.style.cssText = `
+      height: 6px;
+      background: var(--bg-300, rgba(0,0,0,0.1));
+      border-radius: 3px;
+      overflow: hidden;
+      cursor: help;
+    `;
     
     this.progressBar = document.createElement('div');
-    this.progressBar.className = 'cup-progress-bar h-full transition-all duration-300';
-    this.progressBar.style.width = '0%';
-    this.progressBar.style.backgroundColor = CUP.COLORS.BLUE;
+    this.progressBar.style.cssText = `
+      height: 100%;
+      width: 0%;
+      background: ${CUP.COLORS.BLUE};
+      border-radius: 3px;
+      transition: width 0.3s ease, background-color 0.3s ease;
+    `;
     
     progressContainer.appendChild(this.progressBar);
     
-    // Tooltip for progress bar
+    // Tooltip
     this.tooltip = document.createElement('div');
-    this.tooltip.className = 'cup-tooltip fixed bg-bg-500 text-text-100 text-xs px-2 py-1 rounded shadow-lg opacity-0 pointer-events-none transition-opacity z-50';
+    this.tooltip.style.cssText = `
+      position: fixed;
+      background: var(--bg-500, #374151);
+      color: var(--text-100, #f3f4f6);
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.15s ease;
+      z-index: 99999;
+      white-space: nowrap;
+    `;
     this.tooltip.textContent = '0 / 0 tokens (0%)';
     document.body.appendChild(this.tooltip);
     
     CUP.setupTooltip(progressContainer, this.tooltip);
     
     // Assemble
-    content.appendChild(statsRow);
-    content.appendChild(progressContainer);
-    
     this.container.appendChild(header);
-    this.container.appendChild(content);
+    this.container.appendChild(statsRow);
+    this.container.appendChild(progressContainer);
+    
+    CUP.log('SidebarUI: Built UI elements');
   }
   
   /**
-   * Find sidebar containers and inject our UI
+   * Find sidebar and inject our UI
    */
   async inject() {
-    // Wait for sidebar to be ready
-    const sidebar = await CUP.waitForElement(document, CUP.SELECTORS.SIDEBAR_NAV, 10000);
+    CUP.log('SidebarUI: Looking for sidebar...');
+    
+    // Wait a bit for the page to fully render
+    await CUP.sleep(1000);
+    
+    // Try to find sidebar
+    const sidebar = CUP.findSidebar();
+    
     if (!sidebar) {
-      CUP.logError('Could not find sidebar');
-      return;
+      CUP.logWarn('SidebarUI: Sidebar not found');
+      return false;
     }
     
-    // Find the container that holds all sections
-    const containerWrapper = sidebar.querySelector('.flex.flex-grow.flex-col.overflow-y-auto');
-    if (!containerWrapper) {
-      CUP.logError('Could not find sidebar container wrapper');
-      return;
+    CUP.log('SidebarUI: Found sidebar:', sidebar);
+    
+    // Look for a good injection point
+    // Try to find the scrollable container
+    const scrollContainer = sidebar.querySelector('.overflow-y-auto') || 
+                           sidebar.querySelector('[class*="overflow"]') ||
+                           sidebar;
+    
+    // Look for "Starred" or "Recents" section headers
+    const sections = scrollContainer.querySelectorAll('h3, [class*="text-xs"], [class*="uppercase"]');
+    let injectionPoint = null;
+    
+    for (const section of sections) {
+      const text = section.textContent.toLowerCase();
+      if (text.includes('starred') || text.includes('recent') || text.includes('today')) {
+        injectionPoint = section.closest('div') || section.parentElement;
+        CUP.log('SidebarUI: Found injection point near:', text);
+        break;
+      }
     }
     
-    // Find sections
-    const containers = containerWrapper.querySelectorAll('.transition-all.duration-200');
-    if (!containers.length) {
-      CUP.logError('Could not find sidebar sections');
-      return;
+    // If no section found, try to inject at the top of the scrollable area
+    if (!injectionPoint) {
+      const innerContainer = scrollContainer.querySelector('.flex.flex-col') || 
+                            scrollContainer.querySelector('[class*="flex-col"]') ||
+                            scrollContainer;
+      
+      if (innerContainer && innerContainer.firstChild) {
+        injectionPoint = innerContainer.firstChild;
+        CUP.log('SidebarUI: Using first child as injection point');
+      }
     }
     
-    // Get the last container's content area
-    const lastContainer = containers[containers.length - 1];
-    const mainContainer = lastContainer.querySelector('.px-2.mt-4') || lastContainer.querySelector('.px-2');
-    
-    if (!mainContainer) {
-      CUP.logError('Could not find main container in sidebar');
-      return;
-    }
-    
-    // Look for starred or recents section to insert before
-    const starredSection = mainContainer.querySelector('div.flex.flex-col.mb-4');
-    const targetSection = starredSection || mainContainer.firstChild;
-    
-    if (targetSection) {
-      mainContainer.insertBefore(this.container, targetSection);
+    // Inject our container
+    if (injectionPoint) {
+      injectionPoint.parentNode.insertBefore(this.container, injectionPoint);
+      this.isInjected = true;
+      CUP.log('SidebarUI: Injected successfully');
+      return true;
     } else {
-      mainContainer.prepend(this.container);
+      // Fallback: append to scrollContainer
+      scrollContainer.prepend(this.container);
+      this.isInjected = true;
+      CUP.log('SidebarUI: Injected at top of sidebar');
+      return true;
     }
-    
-    this.isInjected = true;
-    CUP.log('Sidebar UI injected');
   }
   
   /**
    * Check if UI is still in DOM and reinject if needed
    */
   async checkAndReinject() {
-    if (!this.isInjected || !document.contains(this.container)) {
-      CUP.log('Sidebar UI missing, reinjecting...');
+    if (!document.contains(this.container)) {
+      CUP.log('SidebarUI: Container removed, reinjecting...');
       this.isInjected = false;
       await this.inject();
     }
@@ -179,7 +247,7 @@ class SidebarUI {
    * Update the display with usage data
    */
   update(usageData) {
-    if (!usageData || !this.isInjected) return;
+    if (!usageData) return;
     
     const percentage = usageData.getUsagePercentage();
     const color = CUP.getUsageColor(percentage);
@@ -205,16 +273,9 @@ class SidebarUI {
     // Update tooltip
     this.tooltip.textContent = `${CUP.formatNumber(weighted)} / ${CUP.formatNumber(cap)} tokens (${percentage.toFixed(1)}%)`;
   }
-  
-  /**
-   * Open settings (placeholder)
-   */
-  openSettings() {
-    CUP.log('Settings clicked');
-    // TODO: Implement settings panel
-    CUP.sendToBackground({ type: 'OPEN_POPUP' });
-  }
 }
 
 // Expose globally
 window.SidebarUI = SidebarUI;
+
+CUP.log('SidebarUI class loaded');

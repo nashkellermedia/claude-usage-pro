@@ -1,10 +1,7 @@
 /**
  * Claude Usage Pro - Main Content Script
  * 
- * Orchestrates all the content script components:
- * - API Interceptor for tracking usage
- * - Sidebar UI for embedded progress bar
- * - Chat UI for conversation stats
+ * Orchestrates all the content script components
  */
 
 class ClaudeUsagePro {
@@ -27,51 +24,51 @@ class ClaudeUsagePro {
    * Initialize the extension
    */
   async initialize() {
-    CUP.log('Initializing Claude Usage Pro...');
+    CUP.log('=== Initializing Claude Usage Pro ===');
     
-    // Initialize UI components
-    this.sidebarUI = new SidebarUI();
-    this.chatUI = new ChatUI();
-    
-    // Initialize chat UI (creates elements)
-    this.chatUI.initialize();
-    
-    // Setup API interceptor callbacks
-    this.setupInterceptor();
-    
-    // Start the API interceptor
-    APIInterceptor.start();
-    
-    // Wait for page to be ready, then inject UI
-    await this.waitForPage();
-    
-    // Initialize sidebar UI
-    await this.sidebarUI.initialize();
-    
-    // Inject chat UI
-    await this.chatUI.injectUI();
-    
-    // Request initial data from background
-    await this.requestData();
-    
-    // Start update loop
-    this.startUpdateLoop();
-    
-    // Listen for messages from background
-    this.setupMessageListener();
-    
-    CUP.log('Claude Usage Pro initialized!');
-  }
-  
-  /**
-   * Wait for page to be ready
-   */
-  async waitForPage() {
-    // Wait for sidebar
-    await CUP.waitForElement(document, CUP.SELECTORS.SIDEBAR_NAV, 10000);
-    
-    // Small delay for page to stabilize
-    await CUP.sleep(500);
+    try {
+      // Wait for page to be somewhat ready
+      CUP.log('Waiting for page to load...');
+      await CUP.sleep(2000);
+      
+      // Initialize UI components
+      CUP.log('Creating UI components...');
+      this.sidebarUI = new SidebarUI();
+      this.chatUI = new ChatUI();
+      
+      // Initialize chat UI (creates elements)
+      this.chatUI.initialize();
+      
+      // Setup API interceptor callbacks
+      this.setupInterceptor();
+      
+      // Start the API interceptor
+      APIInterceptor.start();
+      
+      // Initialize sidebar UI
+      CUP.log('Initializing sidebar UI...');
+      await this.sidebarUI.initialize();
+      
+      // Inject chat UI
+      CUP.log('Injecting chat UI...');
+      await this.chatUI.injectUI();
+      
+      // Request initial data from background
+      CUP.log('Requesting initial data...');
+      await this.requestData();
+      
+      // Start update loop
+      CUP.log('Starting update loop...');
+      this.startUpdateLoop();
+      
+      // Listen for messages from background
+      this.setupMessageListener();
+      
+      CUP.log('=== Claude Usage Pro initialized! ===');
+      
+    } catch (error) {
+      CUP.logError('Failed to initialize:', error);
+    }
   }
   
   /**
@@ -82,7 +79,6 @@ class ClaudeUsagePro {
     APIInterceptor.on('onMessageSent', (data) => {
       CUP.log('Message sent:', data);
       
-      // Update stats via background
       CUP.sendToBackground({
         type: 'MESSAGE_SENT',
         tokens: data.tokens,
@@ -94,16 +90,12 @@ class ClaudeUsagePro {
     APIInterceptor.on('onMessageReceived', (data) => {
       CUP.log('Message received:', data);
       
-      // Update conversation length estimate
       if (this.conversationData) {
         this.conversationData.length += data.totalTokens || 0;
         this.conversationData.messageCount++;
-        
-        // Update UI
         this.chatUI.updateConversation(this.conversationData, this.currentModel);
       }
       
-      // Update usage via background
       CUP.sendToBackground({
         type: 'MESSAGE_RECEIVED',
         tokens: data.totalTokens || 0,
@@ -127,11 +119,8 @@ class ClaudeUsagePro {
       });
       
       this.currentConversationId = data.conversationId;
-      
-      // Update UI
       this.chatUI.updateConversation(this.conversationData, this.currentModel);
       
-      // Notify background
       CUP.sendToBackground({
         type: 'CONVERSATION_LOADED',
         data: this.conversationData.toJSON()
@@ -146,8 +135,11 @@ class ClaudeUsagePro {
     const response = await CUP.sendToBackground({ type: 'GET_USAGE_DATA' });
     
     if (response?.usageData) {
+      CUP.log('Got usage data:', response.usageData);
       this.usageData = UsageData.fromJSON(response.usageData);
       this.updateAllUI();
+    } else {
+      CUP.logWarn('No usage data received');
     }
   }
   
@@ -177,22 +169,26 @@ class ClaudeUsagePro {
     const loop = async (timestamp) => {
       if (!this.isRunning) return;
       
-      // High frequency updates (500ms)
-      if (timestamp - this.lastHighUpdate >= CUP.CONFIG.HIGH_FREQ_UPDATE) {
-        await this.highFrequencyUpdate();
-        this.lastHighUpdate = timestamp;
-      }
-      
-      // Medium frequency updates (1500ms)
-      if (timestamp - this.lastMedUpdate >= CUP.CONFIG.MED_FREQ_UPDATE) {
-        await this.mediumFrequencyUpdate();
-        this.lastMedUpdate = timestamp;
-      }
-      
-      // Low frequency updates (5000ms)
-      if (timestamp - this.lastLowUpdate >= CUP.CONFIG.LOW_FREQ_UPDATE) {
-        await this.lowFrequencyUpdate();
-        this.lastLowUpdate = timestamp;
+      try {
+        // High frequency updates (1s)
+        if (timestamp - this.lastHighUpdate >= CUP.CONFIG.HIGH_FREQ_UPDATE) {
+          await this.highFrequencyUpdate();
+          this.lastHighUpdate = timestamp;
+        }
+        
+        // Medium frequency updates (2s)
+        if (timestamp - this.lastMedUpdate >= CUP.CONFIG.MED_FREQ_UPDATE) {
+          await this.mediumFrequencyUpdate();
+          this.lastMedUpdate = timestamp;
+        }
+        
+        // Low frequency updates (5s)
+        if (timestamp - this.lastLowUpdate >= CUP.CONFIG.LOW_FREQ_UPDATE) {
+          await this.lowFrequencyUpdate();
+          this.lastLowUpdate = timestamp;
+        }
+      } catch (error) {
+        CUP.logError('Update loop error:', error);
       }
       
       requestAnimationFrame(loop);
@@ -202,7 +198,7 @@ class ClaudeUsagePro {
   }
   
   /**
-   * High frequency updates - UI presence, model changes
+   * High frequency updates
    */
   async highFrequencyUpdate() {
     // Check model changes
@@ -211,64 +207,65 @@ class ClaudeUsagePro {
       this.currentModel = newModel;
       CUP.log('Model changed to:', this.currentModel);
       
-      // Update displays with new model
       if (this.conversationData) {
         this.chatUI.updateConversation(this.conversationData, this.currentModel);
       }
     }
     
     // Update cached time display
-    const cacheExpired = this.chatUI.updateCachedTime();
-    if (cacheExpired && this.conversationData) {
-      this.conversationData.cachedUntil = null;
+    if (this.chatUI) {
+      const cacheExpired = this.chatUI.updateCachedTime();
+      if (cacheExpired && this.conversationData) {
+        this.conversationData.cachedUntil = null;
+      }
     }
     
     // Check UI presence
-    await this.sidebarUI.checkAndReinject();
-    await this.chatUI.checkAndReinject();
+    if (this.sidebarUI) {
+      await this.sidebarUI.checkAndReinject();
+    }
+    if (this.chatUI) {
+      await this.chatUI.checkAndReinject();
+    }
   }
   
   /**
-   * Medium frequency updates - conversation changes
+   * Medium frequency updates
    */
   async mediumFrequencyUpdate() {
     const newConvId = CUP.getConversationId();
     
-    // Check for conversation change
     if (newConvId !== this.currentConversationId) {
       this.currentConversationId = newConvId;
       
       if (newConvId) {
-        // Request conversation data
         CUP.log('Conversation changed to:', newConvId);
         await CUP.sendToBackground({
           type: 'REQUEST_CONVERSATION_DATA',
           conversationId: newConvId
         });
       } else {
-        // Home page - clear conversation data
         this.conversationData = null;
-        this.chatUI.clearTitleDisplay();
+        if (this.chatUI) {
+          this.chatUI.clearTitleDisplay();
+        }
       }
     }
     
-    // Check for expired usage data
     if (this.usageData?.isExpired()) {
-      CUP.log('Usage data expired, requesting reset');
+      CUP.log('Usage data expired');
       await CUP.sendToBackground({ type: 'CHECK_RESET' });
     }
   }
   
   /**
-   * Low frequency updates - reset timer
+   * Low frequency updates
    */
   async lowFrequencyUpdate() {
-    // Update reset time display
-    if (this.usageData) {
+    if (this.usageData && this.chatUI) {
       this.chatUI.updateUsage(this.usageData, this.conversationData, this.currentModel);
     }
     
-    // Periodic data refresh
     await this.requestData();
   }
   
@@ -277,23 +274,32 @@ class ClaudeUsagePro {
    */
   updateAllUI() {
     if (this.usageData) {
-      this.sidebarUI.update(this.usageData);
-      this.chatUI.updateUsage(this.usageData, this.conversationData, this.currentModel);
+      if (this.sidebarUI) {
+        this.sidebarUI.update(this.usageData);
+      }
+      if (this.chatUI) {
+        this.chatUI.updateUsage(this.usageData, this.conversationData, this.currentModel);
+      }
     }
     
-    if (this.conversationData) {
+    if (this.conversationData && this.chatUI) {
       this.chatUI.updateConversation(this.conversationData, this.currentModel);
     }
   }
 }
 
-// Initialize when DOM is ready
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => {
-    window.claudeUsagePro = new ClaudeUsagePro();
-    window.claudeUsagePro.initialize();
-  });
-} else {
+// Initialize when page is ready
+CUP.log('Main script loaded, waiting for page...');
+
+function startExtension() {
+  CUP.log('Starting extension...');
   window.claudeUsagePro = new ClaudeUsagePro();
   window.claudeUsagePro.initialize();
+}
+
+// Try to start after a short delay to ensure page is ready
+if (document.readyState === 'complete') {
+  startExtension();
+} else {
+  window.addEventListener('load', startExtension);
 }

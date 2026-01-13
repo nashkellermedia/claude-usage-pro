@@ -11,18 +11,17 @@ const COLORS = {
   GRAY: '#6b7280'
 };
 
-// CSS Selectors for Claude.ai DOM elements (may need updates as Claude changes)
+// CSS Selectors for Claude.ai DOM elements
+// These may need updates as Claude changes their UI
 const SELECTORS = {
-  // Sidebar elements
-  SIDEBAR_NAV: 'nav[aria-label="Chat history"]',
-  SIDEBAR_STARRED: '.flex.flex-col.mb-4',
-  SIDEBAR_RECENTS: '.flex.min-w-0.flex-col',
+  // Sidebar elements - multiple fallbacks
+  SIDEBAR_NAV: 'nav[aria-label="Chat history"], nav.flex-col, aside nav',
+  SIDEBAR_CONTAINER: '.flex.flex-grow.flex-col.overflow-y-auto, .overflow-y-auto',
   
   // Chat area elements
-  CHAT_CONTAINER: '[data-testid="conversation-turn-"]',
-  CHAT_INPUT: '[contenteditable="true"]',
-  MODEL_SELECTOR: 'button[data-testid="model-selector"]',
-  CHAT_MENU: 'button[aria-label="Open menu"]',
+  CHAT_INPUT: '[contenteditable="true"], textarea',
+  MODEL_SELECTOR: 'button[data-testid="model-selector"], button[aria-haspopup="listbox"]',
+  CHAT_MENU: 'button[aria-label="Open menu"], button[aria-label="Chat menu"]',
   
   // Header
   HEADER: 'header',
@@ -32,9 +31,9 @@ const SELECTORS = {
 // Configuration defaults
 const CONFIG = {
   // Update intervals (ms)
-  HIGH_FREQ_UPDATE: 500,    // Fast updates (hover states, input)
-  MED_FREQ_UPDATE: 1500,    // Medium updates (conversation changes)
-  LOW_FREQ_UPDATE: 5000,    // Slow updates (reset timer)
+  HIGH_FREQ_UPDATE: 1000,   // Check UI presence
+  MED_FREQ_UPDATE: 2000,    // Conversation changes
+  LOW_FREQ_UPDATE: 5000,    // Reset timer
   
   // Usage thresholds
   WARNING_THRESHOLD: 0.8,   // 80% - show yellow
@@ -57,19 +56,24 @@ const CONFIG = {
   DEFAULT_QUOTA: 45000000  // 45M for Pro users
 };
 
+// Debug mode
+const DEBUG = true;
+
 /**
  * Logging utility
  */
 function log(...args) {
-  console.log('[Claude Usage Pro]', ...args);
+  if (DEBUG) {
+    console.log('%c[Claude Usage Pro]', 'color: #8b5cf6; font-weight: bold', ...args);
+  }
 }
 
 function logError(...args) {
-  console.error('[Claude Usage Pro]', ...args);
+  console.error('%c[Claude Usage Pro]', 'color: #ef4444; font-weight: bold', ...args);
 }
 
 function logWarn(...args) {
-  console.warn('[Claude Usage Pro]', ...args);
+  console.warn('%c[Claude Usage Pro]', 'color: #f59e0b; font-weight: bold', ...args);
 }
 
 /**
@@ -78,12 +82,21 @@ function logWarn(...args) {
 async function waitForElement(parent, selector, timeout = 5000) {
   const startTime = Date.now();
   
+  // Try multiple selectors if comma-separated
+  const selectors = selector.split(',').map(s => s.trim());
+  
   while (Date.now() - startTime < timeout) {
-    const element = parent.querySelector(selector);
-    if (element) return element;
+    for (const sel of selectors) {
+      const element = parent.querySelector(sel);
+      if (element) {
+        log(`Found element: ${sel}`);
+        return element;
+      }
+    }
     await sleep(100);
   }
   
+  logWarn(`Element not found after ${timeout}ms: ${selector}`);
   return null;
 }
 
@@ -148,14 +161,19 @@ function getConversationId() {
  * Get current model from the page
  */
 async function getCurrentModel(timeout = 200) {
-  const selector = document.querySelector(SELECTORS.MODEL_SELECTOR);
-  if (!selector) return null;
+  // Try multiple selectors
+  const selectors = SELECTORS.MODEL_SELECTOR.split(',').map(s => s.trim());
   
-  const text = selector.textContent.toLowerCase();
-  
-  if (text.includes('opus')) return 'claude-opus-4';
-  if (text.includes('haiku')) return 'claude-haiku-4';
-  if (text.includes('sonnet')) return 'claude-sonnet-4';
+  for (const sel of selectors) {
+    const selector = document.querySelector(sel);
+    if (selector) {
+      const text = selector.textContent.toLowerCase();
+      
+      if (text.includes('opus')) return 'claude-opus-4';
+      if (text.includes('haiku')) return 'claude-haiku-4';
+      if (text.includes('sonnet')) return 'claude-sonnet-4';
+    }
+  }
   
   return 'claude-sonnet-4'; // Default
 }
@@ -183,6 +201,8 @@ async function sendToBackground(message) {
  * Create tooltip for an element
  */
 function setupTooltip(element, tooltipElement, options = {}) {
+  if (!element || !tooltipElement) return;
+  
   const { topOffset = 10 } = options;
   
   element.addEventListener('mouseenter', (e) => {
@@ -197,11 +217,45 @@ function setupTooltip(element, tooltipElement, options = {}) {
   });
 }
 
+/**
+ * Find the sidebar navigation element
+ */
+function findSidebar() {
+  // Try various selectors
+  const selectors = [
+    'nav[aria-label="Chat history"]',
+    'nav.flex-col',
+    'aside nav',
+    '[data-testid="sidebar"]',
+    '.flex.h-full.flex-col'
+  ];
+  
+  for (const sel of selectors) {
+    const el = document.querySelector(sel);
+    if (el) {
+      log(`Found sidebar with selector: ${sel}`);
+      return el;
+    }
+  }
+  
+  // Try finding by structure
+  const asides = document.querySelectorAll('aside, nav');
+  for (const aside of asides) {
+    if (aside.querySelector('a[href="/"]') || aside.textContent.includes('New chat')) {
+      log('Found sidebar by structure');
+      return aside;
+    }
+  }
+  
+  return null;
+}
+
 // Expose globally
 window.CUP = {
   COLORS,
   SELECTORS,
   CONFIG,
+  DEBUG,
   log,
   logError,
   logWarn,
@@ -215,5 +269,9 @@ window.CUP = {
   getCurrentModel,
   isMobileView,
   sendToBackground,
-  setupTooltip
+  setupTooltip,
+  findSidebar
 };
+
+// Log that utils loaded
+log('Utils loaded successfully');
