@@ -6,7 +6,7 @@
  * so we estimate based on message content.
  */
 
-class APIInterceptor {
+class APIInterceptorClass {
   constructor() {
     this.isActive = false;
     this.pendingRequests = new Map();
@@ -36,6 +36,7 @@ class APIInterceptor {
   on(event, callback) {
     if (this.callbacks.hasOwnProperty(event)) {
       this.callbacks[event] = callback;
+      CUP.log('Registered callback for:', event);
     }
   }
   
@@ -102,60 +103,57 @@ class APIInterceptor {
     };
     
     XMLHttpRequest.prototype.send = function(body) {
-      if (self.isRelevantUrl(this._cupUrl)) {
-        this._cupBody = body;
-        
-        // Process outgoing if it's a completion
-        if (self.isCompletionUrl(this._cupUrl) && body) {
-          self.processOutgoingRequest(this._cupUrl, body);
+      const xhr = this;
+      const url = this._cupUrl;
+      
+      if (self.isRelevantUrl(url)) {
+        if (self.isCompletionUrl(url) && body) {
+          self.processOutgoingRequest(url, body);
         }
         
-        this.addEventListener('load', function() {
-          try {
-            self.processXHRResponse(this._cupUrl, this.responseText);
-          } catch (error) {
-            CUP.logError('XHR intercept error:', error);
-          }
+        xhr.addEventListener('load', function() {
+          self.processXHRResponse(url, xhr);
         });
       }
       
-      return originalSend.apply(this, arguments);
+      return originalSend.apply(this, [body]);
     };
   }
   
   /**
-   * Check if URL is relevant to track
+   * Check if URL is relevant for tracking
    */
   isRelevantUrl(url) {
-    if (!url) return false;
-    return url.includes('claude.ai/api/') || url.includes('api.claude.ai/');
+    return url.includes('claude.ai/api') || 
+           url.includes('/api/organizations') ||
+           url.includes('/api/chat_conversations');
   }
   
   /**
    * Check if URL is a completion/message endpoint
    */
   isCompletionUrl(url) {
-    if (!url) return false;
-    return url.includes('/completion') || url.includes('/retry_completion');
+    return url.includes('/completion') || 
+           url.includes('/chat') ||
+           url.includes('/retry_completion');
   }
   
   /**
    * Check if URL is a conversation load
    */
   isConversationUrl(url) {
-    if (!url) return false;
-    return url.match(/\/chat_conversations\/[a-f0-9-]+$/);
+    return url.includes('/chat_conversations/') && !url.includes('/completion');
   }
   
   /**
    * Generate unique request ID
    */
   generateRequestId() {
-    return Date.now().toString(36) + Math.random().toString(36).substr(2);
+    return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }
   
   /**
-   * Process outgoing request (message being sent)
+   * Process outgoing request (user message)
    */
   processOutgoingRequest(url, body) {
     try {
@@ -163,25 +161,42 @@ class APIInterceptor {
       if (typeof body === 'string') {
         data = JSON.parse(body);
       } else if (body instanceof FormData) {
-        // FormData - harder to parse, skip for now
-        return;
+        return; // Skip FormData for now
       } else {
         data = body;
       }
       
-      // Extract message content
-      if (data.prompt || data.message) {
-        const text = data.prompt || data.message;
-        const tokens = TokenEstimator.countTokens(text);
-        
-        if (this.callbacks.onMessageSent) {
-          this.callbacks.onMessageSent({
-            tokens,
-            text: text.substring(0, 100) + '...',
-            model: data.model || null
-          });
+      // Extract prompt/message
+      const prompt = data.prompt || data.content || '';
+      const attachments = data.attachments || [];
+      
+      // Estimate tokens
+      let tokens = 0;
+      
+      if (prompt) {
+        tokens += window.TokenEstimator ? 
+          window.TokenEstimator.countTokens(prompt) : 
+          Math.ceil(prompt.length / 4);
+      }
+      
+      // Add attachment token estimates
+      for (const att of attachments) {
+        if (att.extracted_content) {
+          tokens += window.TokenEstimator ?
+            window.TokenEstimator.countTokens(att.extracted_content) :
+            Math.ceil(att.extracted_content.length / 4);
         }
       }
+      
+      // Trigger callback
+      if (this.callbacks.onMessageSent && tokens > 0) {
+        this.callbacks.onMessageSent({
+          tokens,
+          model: data.model,
+          hasAttachments: attachments.length > 0
+        });
+      }
+      
     } catch (error) {
       CUP.logError('Error processing outgoing request:', error);
     }
@@ -192,56 +207,80 @@ class APIInterceptor {
    */
   async processResponse(url, response, requestId) {
     try {
-      // Handle streaming responses (SSE)
-      if (response.headers.get('content-type')?.includes('text/event-stream')) {
-        await this.processStreamingResponse(url, response);
+      const contentType = response.headers.get('content-type') || '';
+      
+      // Handle conversation load
+      if (this.isConversationUrl(url) && contentType.includes('application/json')) {
+        const data = await response.json();
+        this.processConversationLoad(url, data);
         return;
       }
       
-      // Handle JSON responses
-      const contentType = response.headers.get('content-type');
-      if (contentType?.includes('application/json')) {
-        const data = await response.json();
-        this.processJSONResponse(url, data);
+      // Handle streaming response (SSE)
+      if (contentType.includes('text/event-stream') || this.isCompletionUrl(url)) {
+        await this.processStreamingResponse(response);
       }
+      
     } catch (error) {
-      // Response might already be consumed or not JSON
       CUP.logError('Error processing response:', error);
     }
   }
   
   /**
-   * Process streaming response (Server-Sent Events)
+   * Process XHR response
    */
-  async processStreamingResponse(url, response) {
+  processXHRResponse(url, xhr) {
     try {
-      const reader = response.body.getReader();
+      if (this.isConversationUrl(url)) {
+        const data = JSON.parse(xhr.responseText);
+        this.processConversationLoad(url, data);
+      }
+    } catch (error) {
+      CUP.logError('Error processing XHR response:', error);
+    }
+  }
+  
+  /**
+   * Process streaming response (SSE)
+   */
+  async processStreamingResponse(response) {
+    try {
+      const reader = response.body?.getReader();
+      if (!reader) return;
+      
       const decoder = new TextDecoder();
-      let fullText = '';
+      let totalText = '';
       let thinkingText = '';
       
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         
-        const chunk = decoder.decode(value);
+        const chunk = decoder.decode(value, { stream: true });
         const lines = chunk.split('\n');
         
         for (const line of lines) {
           if (line.startsWith('data: ')) {
+            const jsonStr = line.slice(6);
+            if (jsonStr === '[DONE]') continue;
+            
             try {
-              const data = JSON.parse(line.slice(6));
+              const data = JSON.parse(jsonStr);
               
-              // Extract text content
+              // Handle different response formats
               if (data.completion) {
-                fullText += data.completion;
+                totalText += data.completion;
+              } else if (data.delta?.text) {
+                totalText += data.delta.text;
+              } else if (data.content?.[0]?.text) {
+                totalText += data.content[0].text;
               }
-              if (data.delta?.text) {
-                fullText += data.delta.text;
+              
+              // Handle thinking/reasoning tokens
+              if (data.thinking) {
+                thinkingText += data.thinking;
               }
-              if (data.delta?.thinking) {
-                thinkingText += data.delta.thinking;
-              }
+              
             } catch (e) {
               // Not valid JSON, skip
             }
@@ -249,97 +288,103 @@ class APIInterceptor {
         }
       }
       
-      // Count tokens in the response
-      const responseTokens = TokenEstimator.countTokens(fullText);
-      const thinkingTokens = TokenEstimator.countTokens(thinkingText);
+      // Calculate total tokens
+      const textTokens = window.TokenEstimator ?
+        window.TokenEstimator.countTokens(totalText) :
+        Math.ceil(totalText.length / 4);
+        
+      const thinkingTokens = window.TokenEstimator ?
+        window.TokenEstimator.countTokens(thinkingText) :
+        Math.ceil(thinkingText.length / 4);
       
+      // Trigger callback
       if (this.callbacks.onMessageReceived) {
         this.callbacks.onMessageReceived({
-          responseTokens,
+          textTokens,
           thinkingTokens,
-          totalTokens: responseTokens + thinkingTokens
+          totalTokens: textTokens + thinkingTokens
         });
       }
+      
     } catch (error) {
       CUP.logError('Error processing streaming response:', error);
     }
   }
   
   /**
-   * Process JSON response
+   * Process conversation load
    */
-  processJSONResponse(url, data) {
-    // Check if this is a conversation load
-    if (this.isConversationUrl(url) && data.chat_messages) {
-      this.processConversationLoad(data);
-      return;
-    }
-    
-    // Check for usage data in response
-    if (data.usage) {
-      if (this.callbacks.onMessageReceived) {
-        this.callbacks.onMessageReceived({
-          inputTokens: data.usage.input_tokens || 0,
-          outputTokens: data.usage.output_tokens || 0,
-          totalTokens: (data.usage.input_tokens || 0) + (data.usage.output_tokens || 0)
+  processConversationLoad(url, data) {
+    try {
+      const conversationId = url.match(/chat_conversations\/([a-f0-9-]+)/)?.[1];
+      const messages = data.chat_messages || [];
+      const model = data.model || 'claude-sonnet-4';
+      
+      let totalTokens = 0;
+      let projectTokens = 0;
+      let fileTokens = 0;
+      
+      // Process all messages
+      for (const msg of messages) {
+        // User messages
+        if (msg.text) {
+          totalTokens += window.TokenEstimator ?
+            window.TokenEstimator.countTokens(msg.text) :
+            Math.ceil(msg.text.length / 4);
+        }
+        
+        // Assistant messages
+        if (msg.content) {
+          for (const block of msg.content) {
+            if (block.text) {
+              totalTokens += window.TokenEstimator ?
+                window.TokenEstimator.countTokens(block.text) :
+                Math.ceil(block.text.length / 4);
+            }
+          }
+        }
+        
+        // Attachments
+        if (msg.attachments) {
+          for (const att of msg.attachments) {
+            if (att.extracted_content) {
+              fileTokens += window.TokenEstimator ?
+                window.TokenEstimator.countTokens(att.extracted_content) :
+                Math.ceil(att.extracted_content.length / 4);
+            }
+          }
+        }
+      }
+      
+      // Add project context if present
+      if (data.project) {
+        const projectContext = data.project.prompt_template || '';
+        projectTokens = window.TokenEstimator ?
+          window.TokenEstimator.countTokens(projectContext) :
+          Math.ceil(projectContext.length / 4);
+      }
+      
+      totalTokens += fileTokens + projectTokens;
+      
+      // Trigger callback
+      if (this.callbacks.onConversationLoaded) {
+        this.callbacks.onConversationLoaded({
+          conversationId,
+          totalTokens,
+          model,
+          messageCount: messages.length,
+          projectTokens,
+          fileTokens
         });
       }
-    }
-  }
-  
-  /**
-   * Process XHR response
-   */
-  processXHRResponse(url, responseText) {
-    try {
-      const data = JSON.parse(responseText);
-      this.processJSONResponse(url, data);
+      
     } catch (error) {
-      // Not JSON, skip
-    }
-  }
-  
-  /**
-   * Process conversation load to calculate total tokens
-   */
-  processConversationLoad(data) {
-    let totalTokens = 0;
-    let messageCount = 0;
-    
-    if (data.chat_messages && Array.isArray(data.chat_messages)) {
-      for (const message of data.chat_messages) {
-        totalTokens += TokenEstimator.countMessageTokens(message);
-        messageCount++;
-      }
-    }
-    
-    // Check for project knowledge
-    let projectTokens = 0;
-    if (data.project) {
-      projectTokens = data.project.knowledge_tokens || 0;
-    }
-    
-    // Check for files
-    let fileTokens = 0;
-    if (data.files && Array.isArray(data.files)) {
-      for (const file of data.files) {
-        fileTokens += TokenEstimator.estimateFileTokens(file);
-      }
-    }
-    
-    if (this.callbacks.onConversationLoaded) {
-      this.callbacks.onConversationLoaded({
-        conversationId: data.uuid,
-        totalTokens,
-        messageCount,
-        projectTokens,
-        fileTokens,
-        model: data.model || 'claude-sonnet-4',
-        name: data.name
-      });
+      CUP.logError('Error processing conversation load:', error);
     }
   }
 }
 
-// Create singleton instance
-window.APIInterceptor = new APIInterceptor();
+// Create singleton instance and expose globally
+window.APIInterceptor = new APIInterceptorClass();
+
+CUP.log('APIInterceptor loaded (singleton instance)');
