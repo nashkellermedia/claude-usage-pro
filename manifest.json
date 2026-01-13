@@ -1,51 +1,51 @@
 {
   "manifest_version": 3,
   "name": "Claude Usage Pro",
-  "version": "0.2.0",
-  "description": "Track your Claude.ai token usage, costs, and optimize your AI workflow with real-time analytics.",
+  "version": "1.0.0",
+  "description": "Track your Claude.ai token usage with embedded UI and detailed analytics",
   "author": "Nash Keller Media",
+  
   "permissions": [
     "storage",
     "alarms",
-    "notifications"
+    "tabs"
   ],
+  
   "host_permissions": [
-    "https://claude.ai/*",
-    "https://api.claude.ai/*",
-    "https://*.anthropic.com/*"
+    "https://claude.ai/*"
   ],
+  
   "background": {
-    "service_worker": "background/service-worker.js"
+    "service_worker": "background/service-worker.js",
+    "type": "module"
   },
+  
   "content_scripts": [
     {
-      "matches": [
-        "https://claude.ai/*"
-      ],
+      "matches": ["https://claude.ai/*"],
       "js": [
-        "content/debug-helper.js",
-        "content/message-tracker.js",
-        "content/content-script.js"
+        "lib/tokenizer.js",
+        "content/utils.js",
+        "content/data-classes.js",
+        "content/api-interceptor.js",
+        "content/sidebar-ui.js",
+        "content/chat-ui.js",
+        "content/main.js"
       ],
-      "css": [
-        "styles/overlay.css"
-      ],
-      "run_at": "document_end"
+      "css": ["styles/content.css"],
+      "run_at": "document_idle"
     }
   ],
+  
   "action": {
     "default_popup": "popup/popup.html",
-    "default_title": "Claude Usage Pro - View Stats"
+    "default_title": "Claude Usage Pro"
   },
-  "options_page": "options/options.html",
+  
   "web_accessible_resources": [
     {
-      "resources": [
-        "styles/*.css"
-      ],
-      "matches": [
-        "https://claude.ai/*"
-      ]
+      "resources": ["styles/*.css", "injections/*.js"],
+      "matches": ["https://claude.ai/*"]
     }
   ]
 }

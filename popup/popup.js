@@ -1,225 +1,225 @@
 /**
- * Claude Usage Pro - Popup JavaScript
+ * Claude Usage Pro - Popup Script
  */
 
-let currentStats = null;
-let settings = null;
+// Elements
+const elements = {
+  // Main stats
+  mainProgress: document.getElementById('mainProgress'),
+  usedTokens: document.getElementById('usedTokens'),
+  totalTokens: document.getElementById('totalTokens'),
+  usagePercent: document.getElementById('usagePercent'),
+  resetTime: document.getElementById('resetTime'),
+  messagesCount: document.getElementById('messagesCount'),
+  avgTokens: document.getElementById('avgTokens'),
+  remaining: document.getElementById('remaining'),
+  
+  // Model breakdown
+  sonnetTokens: document.getElementById('sonnetTokens'),
+  sonnetProgress: document.getElementById('sonnetProgress'),
+  opusTokens: document.getElementById('opusTokens'),
+  opusProgress: document.getElementById('opusProgress'),
+  haikuTokens: document.getElementById('haikuTokens'),
+  haikuProgress: document.getElementById('haikuProgress'),
+  
+  // Settings
+  settingsBtn: document.getElementById('settingsBtn'),
+  settingsPanel: document.getElementById('settingsPanel'),
+  quotaInput: document.getElementById('quotaInput'),
+  notificationsToggle: document.getElementById('notificationsToggle'),
+  saveSettings: document.getElementById('saveSettings'),
+  resetUsage: document.getElementById('resetUsage')
+};
 
-// Initialize popup
-document.addEventListener('DOMContentLoaded', async () => {
-  await loadData();
-  setupEventListeners();
-  startTimers();
-});
+// Model multipliers
+const MODEL_MULTIPLIERS = {
+  'claude-sonnet-4': 1.0,
+  'claude-haiku-4': 0.2,
+  'claude-opus-4': 5.0
+};
 
 /**
- * Load stats and settings
+ * Format large numbers
+ */
+function formatNumber(num) {
+  if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+  if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+  return num.toLocaleString();
+}
+
+/**
+ * Format time remaining
+ */
+function formatTimeRemaining(ms) {
+  if (ms <= 0) return 'Now!';
+  
+  const hours = Math.floor(ms / (1000 * 60 * 60));
+  const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+  
+  if (hours > 24) {
+    const days = Math.floor(hours / 24);
+    return `${days}d ${hours % 24}h`;
+  }
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
+/**
+ * Calculate weighted total
+ */
+function getWeightedTotal(modelUsage) {
+  let total = 0;
+  for (const [model, tokens] of Object.entries(modelUsage || {})) {
+    const mult = MODEL_MULTIPLIERS[model] || 1.0;
+    total += tokens * mult;
+  }
+  return Math.round(total);
+}
+
+/**
+ * Get color based on percentage
+ */
+function getColorClass(percentage) {
+  if (percentage >= 95) return 'danger';
+  if (percentage >= 80) return 'warning';
+  return '';
+}
+
+/**
+ * Update the UI with usage data
+ */
+function updateUI(usageData) {
+  if (!usageData) return;
+  
+  const modelUsage = usageData.modelUsage || {};
+  const weightedTotal = getWeightedTotal(modelUsage);
+  const cap = usageData.usageCap || 45000000;
+  const percentage = (weightedTotal / cap) * 100;
+  const remaining = Math.max(0, cap - weightedTotal);
+  const timeUntilReset = usageData.resetTimestamp ? usageData.resetTimestamp - Date.now() : 0;
+  
+  // Main progress
+  elements.mainProgress.style.width = `${Math.min(percentage, 100)}%`;
+  elements.mainProgress.className = `progress-bar ${getColorClass(percentage)}`;
+  
+  elements.usedTokens.textContent = formatNumber(weightedTotal);
+  elements.totalTokens.textContent = formatNumber(cap);
+  elements.usagePercent.textContent = `${percentage.toFixed(1)}%`;
+  elements.usagePercent.style.color = percentage >= 95 ? '#de2929' : percentage >= 80 ? '#f59e0b' : '#2c84db';
+  
+  // Reset time
+  elements.resetTime.textContent = `Reset: ${formatTimeRemaining(timeUntilReset)}`;
+  
+  // Quick stats
+  elements.messagesCount.textContent = usageData.messagesCount || 0;
+  elements.remaining.textContent = formatNumber(remaining);
+  
+  if (usageData.messagesCount > 0) {
+    const avg = Math.round(usageData.tokensUsed / usageData.messagesCount);
+    elements.avgTokens.textContent = formatNumber(avg);
+  } else {
+    elements.avgTokens.textContent = '--';
+  }
+  
+  // Model breakdown
+  const sonnet = modelUsage['claude-sonnet-4'] || 0;
+  const opus = modelUsage['claude-opus-4'] || 0;
+  const haiku = modelUsage['claude-haiku-4'] || 0;
+  
+  // Sonnet (1x multiplier)
+  elements.sonnetTokens.textContent = formatNumber(sonnet);
+  elements.sonnetProgress.style.width = `${Math.min((sonnet / cap) * 100, 100)}%`;
+  
+  // Opus (5x multiplier)
+  const opusWeighted = opus * 5;
+  elements.opusTokens.textContent = `${formatNumber(opus)} (${formatNumber(opusWeighted)} weighted)`;
+  elements.opusProgress.style.width = `${Math.min((opusWeighted / cap) * 100, 100)}%`;
+  
+  // Haiku (0.2x multiplier)
+  const haikuWeighted = opus * 0.2;
+  elements.haikuTokens.textContent = `${formatNumber(haiku)} (${formatNumber(haikuWeighted)} weighted)`;
+  elements.haikuProgress.style.width = `${Math.min((haikuWeighted / cap) * 100, 100)}%`;
+}
+
+/**
+ * Load and display data
  */
 async function loadData() {
   try {
-    // Get stats
-    const statsResponse = await chrome.runtime.sendMessage({ type: 'GET_STATS' });
-    currentStats = statsResponse.stats;
-    
-    // Get settings
-    const settingsResponse = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
-    settings = settingsResponse.settings;
-    
-    // Update UI
-    updateUI();
-    
-    // Hide loading, show content
-    document.getElementById('loading').style.display = 'none';
-    document.getElementById('content').style.display = 'block';
-    
+    const response = await chrome.runtime.sendMessage({ type: 'GET_USAGE_DATA' });
+    if (response?.usageData) {
+      updateUI(response.usageData);
+    }
   } catch (error) {
     console.error('Error loading data:', error);
-    showError('Failed to load data. Please refresh.');
   }
 }
 
 /**
- * Update all UI elements
+ * Load settings
  */
-function updateUI() {
-  if (!currentStats || !settings) return;
-  
-  // Update progress bar
-  const percentage = currentStats.usagePercentage;
-  const progressBar = document.getElementById('progressBar');
-  const progressText = document.getElementById('progressText');
-  
-  progressBar.style.width = Math.min(percentage, 100) + '%';
-  progressBar.style.backgroundColor = getUsageColor(percentage);
-  progressText.textContent = Math.round(percentage) + '%';
-  
-  // Update tokens
-  document.getElementById('tokensUsed').textContent = 
-    `${formatNumber(currentStats.tokensUsed)} / ${formatNumber(currentStats.quota)}`;
-  
-  // Update cost
-  document.getElementById('costUsed').textContent = 
-    `${formatCurrency(currentStats.costUsed)} / ${formatCurrency(currentStats.budget)}`;
-  
-  // Update reset timer
-  updateResetTimer();
-  
-  // Update chat stats (placeholder for now)
-  document.getElementById('chatTokens').textContent = '--';
-  document.getElementById('chatCost').textContent = '--';
-  document.getElementById('cachedTokens').textContent = '-- cached (--)';
-  
-  // Update quick stats
-  document.getElementById('messagesCount').textContent = 
-    `• ${currentStats.messagesCount} messages today`;
-  
-  const avgTokens = currentStats.messagesCount > 0 
-    ? Math.round(currentStats.tokensUsed / currentStats.messagesCount)
-    : 0;
-  document.getElementById('avgTokens').textContent = 
-    `• Avg ${formatNumber(avgTokens)} per message`;
-  
-  document.getElementById('peakHour').textContent = '• Peak hour: --';
-  
-  // Update badge mode selector
-  const badgeModeSelect = document.getElementById('badgeMode');
-  badgeModeSelect.value = settings.badgeMode;
-  
-  const customInput = document.getElementById('customBadgeText');
-  if (settings.badgeMode === 'custom') {
-    customInput.style.display = 'block';
-    customInput.value = settings.badgeCustomText || '';
-  } else {
-    customInput.style.display = 'none';
-  }
-}
-
-/**
- * Update reset timer
- */
-function updateResetTimer() {
-  if (!currentStats) return;
-  
-  const timer = document.getElementById('resetTimer');
-  const timeLeft = formatTimeUntilReset(currentStats.nextReset);
-  timer.textContent = timeLeft;
-}
-
-/**
- * Setup event listeners
- */
-function setupEventListeners() {
-  // Refresh button
-  document.getElementById('refreshBtn').addEventListener('click', async () => {
-    await loadData();
-  });
-  
-  // Settings buttons
-  document.getElementById('settingsBtn').addEventListener('click', openSettings);
-  document.getElementById('settingsBtn2').addEventListener('click', openSettings);
-  
-  // Analytics button
-  document.getElementById('analyticsBtn').addEventListener('click', () => {
-    // TODO: Open analytics page
-    alert('Analytics page coming soon!');
-  });
-  
-  // Badge mode selector
-  document.getElementById('badgeMode').addEventListener('change', async (e) => {
-    const mode = e.target.value;
-    settings.badgeMode = mode;
-    
-    const customInput = document.getElementById('customBadgeText');
-    if (mode === 'custom') {
-      customInput.style.display = 'block';
-    } else {
-      customInput.style.display = 'none';
-    }
-    
-    await saveBadgeSettings();
-  });
-  
-  // Custom badge text input
-  document.getElementById('customBadgeText').addEventListener('input', async (e) => {
-    settings.badgeCustomText = e.target.value;
-    await saveBadgeSettings();
-  });
-}
-
-/**
- * Save badge settings
- */
-async function saveBadgeSettings() {
+async function loadSettings() {
   try {
-    await chrome.runtime.sendMessage({ 
-      type: 'UPDATE_SETTINGS',
-      settings: settings
-    });
+    const response = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
+    if (response?.settings) {
+      elements.quotaInput.value = response.settings.quota || 45000000;
+      elements.notificationsToggle.checked = response.settings.notifications !== false;
+    }
+  } catch (error) {
+    console.error('Error loading settings:', error);
+  }
+}
+
+/**
+ * Save settings
+ */
+async function saveSettings() {
+  try {
+    const settings = {
+      quota: parseInt(elements.quotaInput.value, 10),
+      notifications: elements.notificationsToggle.checked
+    };
+    
+    await chrome.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings });
+    
+    // Hide settings panel and refresh data
+    elements.settingsPanel.classList.add('hidden');
+    await loadData();
   } catch (error) {
     console.error('Error saving settings:', error);
   }
 }
 
 /**
- * Open settings page
+ * Reset usage
  */
-function openSettings() {
-  chrome.runtime.openOptionsPage();
-}
-
-/**
- * Start timers
- */
-function startTimers() {
-  // Update reset timer every second
-  setInterval(updateResetTimer, 1000);
-  
-  // Refresh data every 30 seconds
-  setInterval(loadData, 30000);
-}
-
-/**
- * Utility functions
- */
-function formatNumber(num) {
-  if (num >= 1000000) {
-    return (num / 1000000).toFixed(1) + 'M';
-  } else if (num >= 1000) {
-    return (num / 1000).toFixed(1) + 'K';
+async function resetUsage() {
+  if (!confirm('Are you sure you want to reset your usage statistics? This cannot be undone.')) {
+    return;
   }
-  return num.toLocaleString();
-}
-
-function formatCurrency(amount) {
-  return '$' + amount.toFixed(2);
-}
-
-function getUsageColor(percentage) {
-  if (percentage >= 95) return '#EF4444';
-  if (percentage >= 80) return '#F59E0B';
-  if (percentage >= 50) return '#FBBF24';
-  return '#10B981';
-}
-
-function formatTimeUntilReset(resetTimestamp) {
-  const now = Date.now();
-  const diff = resetTimestamp - now;
   
-  if (diff <= 0) return 'Resetting...';
-  
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-  const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-  
-  if (days > 0) {
-    return `${days}d ${hours}h`;
-  } else if (hours > 0) {
-    return `${hours}h ${minutes}m`;
-  } else {
-    return `${minutes}m`;
+  try {
+    await chrome.runtime.sendMessage({ type: 'RESET_USAGE' });
+    await loadData();
+    elements.settingsPanel.classList.add('hidden');
+  } catch (error) {
+    console.error('Error resetting usage:', error);
   }
 }
 
-function showError(message) {
-  alert(message);
-}
+// Event listeners
+elements.settingsBtn.addEventListener('click', () => {
+  elements.settingsPanel.classList.toggle('hidden');
+  if (!elements.settingsPanel.classList.contains('hidden')) {
+    loadSettings();
+  }
+});
+
+elements.saveSettings.addEventListener('click', saveSettings);
+elements.resetUsage.addEventListener('click', resetUsage);
+
+// Initial load
+loadData();
+
+// Auto-refresh every 5 seconds
+setInterval(loadData, 5000);

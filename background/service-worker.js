@@ -1,273 +1,346 @@
 /**
  * Claude Usage Pro - Background Service Worker
- * Handles token tracking, storage, and badge updates
+ * 
+ * Handles:
+ * - Storage of usage data
+ * - Communication with content scripts
+ * - Badge updates
+ * - Alarms for reset checks
  */
 
-console.log('🚀 Service worker starting...');
+// Default usage quota (45M tokens for Pro)
+const DEFAULT_QUOTA = 45000000;
 
-// Inline utils
-const Utils = {
-  formatNumber(num) {
-    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
-    if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
-    return num.toLocaleString();
-  },
-
-  formatCurrency(amount, decimals = 2) {
-    return '$' + amount.toFixed(decimals);
-  },
-
-  getUsageColor(percentage) {
-    if (percentage >= 95) return '#EF4444';
-    if (percentage >= 80) return '#F59E0B';
-    if (percentage >= 50) return '#FBBF24';
-    return '#10B981';
-  },
-
-  getDefaultSettings() {
-    return {
-      badgeMode: 'percentage',
-      badgeCustomText: '',
-      alertThresholds: [50, 75, 90, 95],
-      notificationsEnabled: true,
-      theme: 'auto',
-      dailyQuota: 100000,
-      monthlyCost: 1.00,
-      firebaseEnabled: false,
-      trackingEnabled: true
-    };
-  },
-
-  storage: {
-    async get(key, defaultValue = null) {
-      try {
-        const result = await chrome.storage.local.get(key);
-        return result[key] !== undefined ? result[key] : defaultValue;
-      } catch (error) {
-        console.error('Storage get error:', error);
-        return defaultValue;
-      }
-    },
-
-    async set(key, value) {
-      try {
-        await chrome.storage.local.set({ [key]: value });
-        return true;
-      } catch (error) {
-        console.error('Storage set error:', error);
-        return false;
-      }
-    },
-
-    async getSettings() {
-      try {
-        const result = await chrome.storage.sync.get('settings');
-        const defaults = Utils.getDefaultSettings();
-        return { ...defaults, ...result.settings };
-      } catch (error) {
-        console.error('Get settings error:', error);
-        return Utils.getDefaultSettings();
-      }
-    },
-
-    async setSettings(settings) {
-      try {
-        await chrome.storage.sync.set({ settings });
-        return true;
-      } catch (error) {
-        console.error('Set settings error:', error);
-        return false;
-      }
-    }
-  },
-
-  async updateBadge(stats, settings) {
-    const { badgeMode } = settings;
-    let text = '';
-    let color = Utils.getUsageColor(stats.usagePercentage);
-    
-    switch (badgeMode) {
-      case 'percentage':
-        text = Math.round(stats.usagePercentage) + '%';
-        break;
-      case 'tokens':
-        const remaining = stats.quota - stats.tokensUsed;
-        text = Utils.formatNumber(remaining);
-        break;
-      case 'cost':
-        const costRemaining = stats.budget - stats.costUsed;
-        text = Utils.formatCurrency(costRemaining, 1).replace('$', '');
-        break;
-      case 'messages':
-        text = stats.messagesCount.toString();
-        color = '#8B5CF6';
-        break;
-      case 'custom':
-        text = settings.badgeCustomText || '---';
-        color = '#8B5CF6';
-        break;
-      default:
-        text = '0%';
-    }
-    
-    try {
-      await chrome.action.setBadgeText({ text });
-      await chrome.action.setBadgeBackgroundColor({ color });
-    } catch (error) {
-      console.error('Badge update error:', error);
-    }
-  }
+// Storage keys
+const STORAGE_KEYS = {
+  USAGE_DATA: 'usageData',
+  SETTINGS: 'settings',
+  CONVERSATIONS: 'conversations'
 };
 
-// Initialize stats if they don't exist
-async function initializeStats() {
-  const stats = await Utils.storage.get('currentStats');
+/**
+ * Initialize default usage data
+ */
+async function initializeUsageData() {
+  const data = await chrome.storage.local.get(STORAGE_KEYS.USAGE_DATA);
   
-  if (!stats) {
-    const newStats = {
+  if (!data[STORAGE_KEYS.USAGE_DATA]) {
+    const defaultData = {
       tokensUsed: 0,
-      quota: 100000,
-      costUsed: 0,
-      budget: 1.00,
-      usagePercentage: 0,
+      usageCap: DEFAULT_QUOTA,
+      resetTimestamp: getNextResetTimestamp(),
       messagesCount: 0,
-      nextReset: Date.now() + (24 * 60 * 60 * 1000),
-      lastUpdated: Date.now()
+      lastUpdated: Date.now(),
+      modelUsage: {
+        'claude-sonnet-4': 0,
+        'claude-haiku-4': 0,
+        'claude-opus-4': 0
+      }
     };
     
-    await Utils.storage.set('currentStats', newStats);
-    console.log('✅ Initialized default stats:', newStats);
-    return newStats;
+    await chrome.storage.local.set({ [STORAGE_KEYS.USAGE_DATA]: defaultData });
+    console.log('[CUP] Initialized default usage data');
+    return defaultData;
   }
   
-  return stats;
+  return data[STORAGE_KEYS.USAGE_DATA];
 }
 
-// Get current stats
-async function getStats() {
-  let stats = await Utils.storage.get('currentStats');
+/**
+ * Get next reset timestamp (next day at midnight UTC, or configurable)
+ */
+function getNextResetTimestamp() {
+  const now = new Date();
+  const tomorrow = new Date(now);
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+  tomorrow.setUTCHours(0, 0, 0, 0);
+  return tomorrow.getTime();
+}
+
+/**
+ * Get usage data from storage
+ */
+async function getUsageData() {
+  const data = await chrome.storage.local.get(STORAGE_KEYS.USAGE_DATA);
+  return data[STORAGE_KEYS.USAGE_DATA] || await initializeUsageData();
+}
+
+/**
+ * Save usage data to storage
+ */
+async function saveUsageData(usageData) {
+  await chrome.storage.local.set({ [STORAGE_KEYS.USAGE_DATA]: usageData });
+}
+
+/**
+ * Add usage for a message
+ */
+async function addUsage(tokens, model) {
+  const usageData = await getUsageData();
   
-  if (!stats) {
-    stats = await initializeStats();
+  // Normalize model name
+  const normalizedModel = normalizeModel(model);
+  
+  // Add to model-specific usage
+  usageData.modelUsage[normalizedModel] = (usageData.modelUsage[normalizedModel] || 0) + tokens;
+  
+  // Update totals
+  usageData.tokensUsed += tokens;
+  usageData.messagesCount++;
+  usageData.lastUpdated = Date.now();
+  
+  await saveUsageData(usageData);
+  await updateBadge(usageData);
+  await notifyAllTabs(usageData);
+  
+  console.log(`[CUP] Added ${tokens} tokens for ${normalizedModel}`);
+  return usageData;
+}
+
+/**
+ * Normalize model name
+ */
+function normalizeModel(model) {
+  if (!model) return 'claude-sonnet-4';
+  
+  const lower = model.toLowerCase();
+  if (lower.includes('opus')) return 'claude-opus-4';
+  if (lower.includes('haiku')) return 'claude-haiku-4';
+  return 'claude-sonnet-4';
+}
+
+/**
+ * Check and reset if expired
+ */
+async function checkAndReset() {
+  const usageData = await getUsageData();
+  
+  if (Date.now() >= usageData.resetTimestamp) {
+    console.log('[CUP] Usage period expired, resetting...');
+    
+    const newData = {
+      tokensUsed: 0,
+      usageCap: usageData.usageCap,
+      resetTimestamp: getNextResetTimestamp(),
+      messagesCount: 0,
+      lastUpdated: Date.now(),
+      modelUsage: {
+        'claude-sonnet-4': 0,
+        'claude-haiku-4': 0,
+        'claude-opus-4': 0
+      }
+    };
+    
+    await saveUsageData(newData);
+    await updateBadge(newData);
+    await notifyAllTabs(newData);
+    
+    // Show notification
+    await showResetNotification();
+    
+    return newData;
   }
   
-  console.log('📊 Getting stats:', stats);
-  return stats;
+  return usageData;
 }
 
-// Handle stats update from content script
-async function handleStatsUpdate(delta, usage) {
-  console.log('📊 Updating stats with delta:', delta);
-  
-  // Get current stats
-  let stats = await getStats();
-  
-  // Update stats
-  stats.tokensUsed += delta.tokens || 0;
-  stats.costUsed += delta.cost || 0;
-  stats.messagesCount += delta.messages || 0;
-  stats.usagePercentage = (stats.tokensUsed / stats.quota) * 100;
-  stats.lastUpdated = Date.now();
-  
-  // Save updated stats
-  await Utils.storage.set('currentStats', stats);
-  
-  // Update badge
-  const settings = await Utils.storage.getSettings();
-  await Utils.updateBadge(stats, settings);
-  
-  console.log('✅ Stats updated:', stats);
-  
-  return stats;
-}
-
-// Reset stats daily
-async function resetDailyStats() {
-  console.log('🔄 Resetting daily stats...');
-  
-  const newStats = {
-    tokensUsed: 0,
-    quota: 100000,
-    costUsed: 0,
-    budget: 1.00,
-    usagePercentage: 0,
-    messagesCount: 0,
-    nextReset: Date.now() + (24 * 60 * 60 * 1000),
-    lastUpdated: Date.now()
+/**
+ * Update the extension badge
+ */
+async function updateBadge(usageData) {
+  // Calculate weighted usage percentage
+  let weightedTotal = 0;
+  const multipliers = {
+    'claude-sonnet-4': 1.0,
+    'claude-haiku-4': 0.2,
+    'claude-opus-4': 5.0
   };
   
-  await Utils.storage.set('currentStats', newStats);
+  for (const [model, tokens] of Object.entries(usageData.modelUsage || {})) {
+    const mult = multipliers[model] || 1.0;
+    weightedTotal += tokens * mult;
+  }
   
-  const settings = await Utils.storage.getSettings();
-  await Utils.updateBadge(newStats, settings);
+  const percentage = (weightedTotal / usageData.usageCap) * 100;
   
-  console.log('✅ Stats reset');
+  // Set badge text
+  const badgeText = percentage >= 100 ? '!' : Math.round(percentage) + '%';
+  await chrome.action.setBadgeText({ text: badgeText });
+  
+  // Set badge color
+  let color = '#2c84db'; // Blue
+  if (percentage >= 95) color = '#de2929'; // Red
+  else if (percentage >= 80) color = '#f59e0b'; // Yellow
+  
+  await chrome.action.setBadgeBackgroundColor({ color });
 }
 
-// Message handler - SINGLE LISTENER
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  console.log('📬 Service worker received message:', message.type);
+/**
+ * Notify all Claude.ai tabs of updated data
+ */
+async function notifyAllTabs(usageData) {
+  const tabs = await chrome.tabs.query({ url: 'https://claude.ai/*' });
   
-  // Handle async operations properly
+  for (const tab of tabs) {
+    try {
+      await chrome.tabs.sendMessage(tab.id, {
+        type: 'USAGE_UPDATED',
+        usageData
+      });
+    } catch (error) {
+      // Tab might not have content script loaded
+    }
+  }
+}
+
+/**
+ * Show reset notification
+ */
+async function showResetNotification() {
+  const settings = await getSettings();
+  
+  if (settings.notifications !== false) {
+    // Check if we have notification permission
+    const permission = await chrome.permissions.contains({ permissions: ['notifications'] });
+    
+    if (permission) {
+      chrome.notifications.create({
+        type: 'basic',
+        iconUrl: 'icons/icon128.png',
+        title: 'Claude Usage Reset',
+        message: 'Your usage quota has been reset! You\'re back to full capacity.'
+      });
+    }
+  }
+}
+
+/**
+ * Get settings
+ */
+async function getSettings() {
+  const data = await chrome.storage.sync.get(STORAGE_KEYS.SETTINGS);
+  return data[STORAGE_KEYS.SETTINGS] || {
+    notifications: true,
+    showBadge: true,
+    quota: DEFAULT_QUOTA
+  };
+}
+
+/**
+ * Save settings
+ */
+async function saveSettings(settings) {
+  await chrome.storage.sync.set({ [STORAGE_KEYS.SETTINGS]: settings });
+}
+
+// Message handler
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
     try {
       switch (message.type) {
-        case 'GET_STATS': {
-          const stats = await getStats();
-          sendResponse({ success: true, stats });
+        case 'GET_USAGE_DATA': {
+          const usageData = await getUsageData();
+          sendResponse({ usageData });
           break;
         }
         
-        case 'UPDATE_STATS': {
-          const stats = await handleStatsUpdate(message.delta, message.usage);
-          sendResponse({ success: true, stats });
+        case 'MESSAGE_SENT':
+        case 'MESSAGE_RECEIVED': {
+          const usageData = await addUsage(message.tokens, message.model);
+          sendResponse({ usageData });
+          break;
+        }
+        
+        case 'CHECK_RESET': {
+          const usageData = await checkAndReset();
+          sendResponse({ usageData });
+          break;
+        }
+        
+        case 'GET_SETTINGS': {
+          const settings = await getSettings();
+          sendResponse({ settings });
+          break;
+        }
+        
+        case 'SAVE_SETTINGS': {
+          await saveSettings(message.settings);
+          
+          // Update quota if changed
+          if (message.settings.quota) {
+            const usageData = await getUsageData();
+            usageData.usageCap = message.settings.quota;
+            await saveUsageData(usageData);
+            await updateBadge(usageData);
+          }
+          
+          sendResponse({ success: true });
+          break;
+        }
+        
+        case 'RESET_USAGE': {
+          const newData = {
+            tokensUsed: 0,
+            usageCap: (await getSettings()).quota || DEFAULT_QUOTA,
+            resetTimestamp: getNextResetTimestamp(),
+            messagesCount: 0,
+            lastUpdated: Date.now(),
+            modelUsage: {
+              'claude-sonnet-4': 0,
+              'claude-haiku-4': 0,
+              'claude-opus-4': 0
+            }
+          };
+          
+          await saveUsageData(newData);
+          await updateBadge(newData);
+          await notifyAllTabs(newData);
+          sendResponse({ usageData: newData });
           break;
         }
         
         case 'OPEN_POPUP': {
-          await chrome.action.openPopup();
+          // Can't programmatically open popup, but can open options page
+          chrome.runtime.openOptionsPage();
           sendResponse({ success: true });
           break;
         }
         
         default:
-          sendResponse({ success: false, error: 'Unknown message type' });
+          sendResponse({ error: 'Unknown message type' });
       }
     } catch (error) {
-      console.error('❌ Message handler error:', error);
-      sendResponse({ success: false, error: error.message });
+      console.error('[CUP] Error handling message:', error);
+      sendResponse({ error: error.message });
     }
   })();
   
   return true; // Keep channel open for async response
 });
 
-// Setup daily reset alarm
-chrome.alarms.create('dailyReset', {
-  periodInMinutes: 24 * 60
-});
+// Setup alarm for periodic reset check
+chrome.alarms.create('checkReset', { periodInMinutes: 5 });
 
-chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === 'dailyReset') {
-    resetDailyStats();
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name === 'checkReset') {
+    await checkAndReset();
   }
 });
 
-// Initialize on install
+// Initialize on install/update
 chrome.runtime.onInstalled.addListener(async () => {
-  console.log('🎉 Extension installed/updated');
-  await initializeStats();
+  console.log('[CUP] Extension installed/updated');
   
-  const settings = await Utils.storage.getSettings();
-  const stats = await getStats();
-  await Utils.updateBadge(stats, settings);
+  const usageData = await initializeUsageData();
+  await updateBadge(usageData);
 });
 
 // Initialize on startup
 (async () => {
-  await initializeStats();
-  const settings = await Utils.storage.getSettings();
-  const stats = await getStats();
-  await Utils.updateBadge(stats, settings);
-  console.log('✅ Service worker ready');
+  console.log('[CUP] Service worker starting...');
+  
+  const usageData = await initializeUsageData();
+  await updateBadge(usageData);
+  
+  console.log('[CUP] Service worker ready');
 })();

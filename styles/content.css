@@ -1,0 +1,115 @@
+/**
+ * Claude Usage Pro - Content Styles
+ * 
+ * Styles for embedded UI elements on claude.ai
+ * Uses Claude's design system variables where possible
+ */
+
+/* Sidebar Section */
+.cup-sidebar-section {
+  margin-bottom: 1rem;
+}
+
+.cup-settings-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.cup-settings-btn:hover {
+  background-color: var(--bg-400, rgba(0, 0, 0, 0.1));
+}
+
+/* Progress bars */
+.cup-progress-container {
+  position: relative;
+  cursor: help;
+}
+
+.cup-progress-bar {
+  border-radius: 9999px;
+  transition: width 0.3s ease, background-color 0.3s ease;
+}
+
+/* Tooltips */
+.cup-tooltip {
+  position: fixed;
+  z-index: 99999;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+  max-width: 300px;
+  word-wrap: break-word;
+}
+
+/* Title stats */
+.cup-title-stats {
+  font-family: inherit;
+  line-height: 1.4;
+}
+
+.cup-title-stats span {
+  font-weight: 500;
+}
+
+/* Input stats */
+.cup-input-stats {
+  font-family: inherit;
+  padding: 4px 8px;
+  border-top: 1px solid var(--border-300, rgba(0, 0, 0, 0.1));
+  margin-top: 4px;
+}
+
+/* Animations */
+@keyframes cup-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.cup-updating {
+  animation: cup-pulse 1s ease-in-out;
+}
+
+/* Dark mode adjustments */
+@media (prefers-color-scheme: dark) {
+  .cup-tooltip {
+    background-color: var(--bg-500, #374151);
+    color: var(--text-100, #f3f4f6);
+    border: 1px solid var(--border-400, #4b5563);
+  }
+}
+
+/* Mobile adjustments */
+@media (max-width: 768px) {
+  .cup-input-stats {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  
+  .cup-title-stats {
+    font-size: 11px;
+  }
+}
+
+/* Accessibility */
+.cup-sidebar-section:focus-within {
+  outline: 2px solid var(--accent-primary, #2c84db);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Ensure our elements don't break Claude's layout */
+.cup-sidebar-section,
+.cup-title-stats,
+.cup-input-stats {
+  box-sizing: border-box;
+}

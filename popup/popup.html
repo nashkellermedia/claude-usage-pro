@@ -9,122 +9,115 @@
 <body>
   <div class="container">
     <!-- Header -->
-    <div class="header">
-      <div class="header-left">
-        <h1>🎯 Claude Usage Pro</h1>
+    <header class="header">
+      <div class="header-title">
+        <span class="logo">📊</span>
+        <h1>Claude Usage Pro</h1>
       </div>
-      <div class="header-right">
-        <button id="settingsBtn" class="icon-btn" title="Settings">⚙️</button>
-        <button id="refreshBtn" class="icon-btn" title="Refresh">🔄</button>
+      <button id="settingsBtn" class="icon-btn" title="Settings">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M19.43 12.98c.04-.32.07-.64.07-.98 0-.34-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98 0 .33.03.66.07.98l-2.11 1.65c-.19.15-.24.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.25 1.17-.59 1.69-.98l2.49 1c.23.09.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z"/>
+        </svg>
+      </button>
+    </header>
+
+    <!-- Main Stats Card -->
+    <section class="card main-stats">
+      <div class="card-header">
+        <h2>Overall Usage</h2>
+        <span id="resetTime" class="reset-badge">Reset: --</span>
       </div>
-    </div>
-
-    <!-- Loading State -->
-    <div id="loading" class="loading">
-      <div class="spinner"></div>
-      <p>Loading stats...</p>
-    </div>
-
-    <!-- Main Content -->
-    <div id="content" class="content" style="display: none;">
       
-      <!-- Today's Usage Card -->
-      <div class="card">
-        <div class="card-header">
-          <h2>📊 TODAY'S USAGE</h2>
+      <div class="progress-section">
+        <div class="progress-bar-container">
+          <div id="mainProgress" class="progress-bar"></div>
         </div>
-        <div class="card-body">
-          <div class="progress-container">
-            <div id="progressBar" class="progress-bar"></div>
-            <div id="progressText" class="progress-text">0%</div>
-          </div>
-          <div class="stats-row">
-            <div class="stat">
-              <div class="stat-label">Tokens</div>
-              <div id="tokensUsed" class="stat-value">0 / 100K</div>
-            </div>
-            <div class="stat">
-              <div class="stat-label">Cost</div>
-              <div id="costUsed" class="stat-value">$0.00 / $1.00</div>
-            </div>
-          </div>
-          <div class="reset-timer">
-            ⏱ Resets in <span id="resetTimer">--</span>
-          </div>
+        <div class="progress-labels">
+          <span id="usedTokens">0</span>
+          <span id="usagePercent" class="percentage">0%</span>
+          <span id="totalTokens">0</span>
         </div>
       </div>
-
-      <!-- Active Chat Card -->
-      <div class="card">
-        <div class="card-header">
-          <h2>💬 ACTIVE CHAT</h2>
+      
+      <div class="quick-stats">
+        <div class="stat-item">
+          <span class="stat-value" id="messagesCount">0</span>
+          <span class="stat-label">Messages</span>
         </div>
-        <div class="card-body">
-          <div class="stats-row">
-            <div class="stat">
-              <div class="stat-label">Tokens</div>
-              <div id="chatTokens" class="stat-value">--</div>
-            </div>
-            <div class="stat">
-              <div class="stat-label">Cost</div>
-              <div id="chatCost" class="stat-value">--</div>
-            </div>
-          </div>
-          <div id="cachedTokens" class="cached-info">
-            -- cached (--)
-          </div>
+        <div class="stat-item">
+          <span class="stat-value" id="avgTokens">0</span>
+          <span class="stat-label">Avg/Msg</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-value" id="remaining">0</span>
+          <span class="stat-label">Remaining</span>
         </div>
       </div>
+    </section>
 
-      <!-- Quick Stats Card -->
-      <div class="card">
-        <div class="card-header">
-          <h2>📈 QUICK STATS</h2>
+    <!-- Model Breakdown -->
+    <section class="card model-breakdown">
+      <h2>By Model</h2>
+      
+      <div class="model-item">
+        <div class="model-header">
+          <span class="model-name">🟣 Sonnet</span>
+          <span class="model-tokens" id="sonnetTokens">0</span>
         </div>
-        <div class="card-body">
-          <ul class="quick-stats">
-            <li id="messagesCount">• -- messages today</li>
-            <li id="avgTokens">• Avg -- per message</li>
-            <li id="peakHour">• Peak hour: --</li>
-          </ul>
+        <div class="model-progress">
+          <div id="sonnetProgress" class="progress-bar"></div>
         </div>
       </div>
+      
+      <div class="model-item">
+        <div class="model-header">
+          <span class="model-name">🟠 Opus (5x)</span>
+          <span class="model-tokens" id="opusTokens">0</span>
+        </div>
+        <div class="model-progress">
+          <div id="opusProgress" class="progress-bar opus"></div>
+        </div>
+      </div>
+      
+      <div class="model-item">
+        <div class="model-header">
+          <span class="model-name">🟢 Haiku (0.2x)</span>
+          <span class="model-tokens" id="haikuTokens">0</span>
+        </div>
+        <div class="model-progress">
+          <div id="haikuProgress" class="progress-bar haiku"></div>
+        </div>
+      </div>
+    </section>
 
-      <!-- Action Buttons -->
+    <!-- Settings Panel (hidden by default) -->
+    <section id="settingsPanel" class="card settings-panel hidden">
+      <h2>Settings</h2>
+      
+      <div class="setting-item">
+        <label for="quotaInput">Daily Quota (tokens)</label>
+        <input type="number" id="quotaInput" value="45000000" min="1000000" step="1000000">
+        <span class="setting-hint">Pro: 45M, Max: varies</span>
+      </div>
+      
+      <div class="setting-item">
+        <label class="checkbox-label">
+          <input type="checkbox" id="notificationsToggle" checked>
+          <span>Show reset notifications</span>
+        </label>
+      </div>
+      
       <div class="actions">
-        <button id="analyticsBtn" class="btn btn-primary">
-          📊 Analytics
-        </button>
-        <button id="settingsBtn2" class="btn btn-secondary">
-          ⚙️ Settings
-        </button>
+        <button id="saveSettings" class="btn btn-primary">Save Settings</button>
+        <button id="resetUsage" class="btn btn-danger">Reset Usage</button>
       </div>
+    </section>
 
-      <!-- Badge Mode Switcher -->
-      <div class="card badge-switcher">
-        <div class="card-header">
-          <h2>🏷️ BADGE DISPLAY</h2>
-        </div>
-        <div class="card-body">
-          <select id="badgeMode" class="badge-select">
-            <option value="percentage">Percentage (%)</option>
-            <option value="tokens">Tokens Remaining</option>
-            <option value="cost">Cost Remaining</option>
-            <option value="messages">Message Count</option>
-            <option value="custom">Custom Text</option>
-          </select>
-          <input 
-            id="customBadgeText" 
-            type="text" 
-            class="custom-badge-input"
-            placeholder="Custom text..."
-            style="display: none;"
-            maxlength="4"
-          />
-        </div>
-      </div>
-
-    </div>
+    <!-- Footer -->
+    <footer class="footer">
+      <span>v1.0.0</span>
+      <a href="https://github.com/NashKellerMedia/claude-usage-pro" target="_blank">GitHub</a>
+    </footer>
   </div>
 
   <script src="popup.js"></script>

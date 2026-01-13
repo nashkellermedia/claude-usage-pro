@@ -1,24 +1,4 @@
-# Node modules (if we add build tools later)
 node_modules/
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# IDE
-.vscode/
-.idea/
-
-# Build artifacts
-dist/
 *.zip
-
-# Logs
-*.log
-
-# Temporary files
-*.tmp
-.cache/
-
-# Firebase config (sensitive)
-firebase-config.json
+*.crx
+.DS_Store
