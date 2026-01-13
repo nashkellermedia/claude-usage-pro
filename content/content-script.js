@@ -101,23 +101,23 @@ function updateBadge(stats) {
  * Show detailed overlay on hover
  */
 function showDetailedOverlay() {
-  const badge = document.getElementById('claude-usage-badge');
-  if (!badge) return;
-  
   // Check if overlay already exists
   let overlay = document.getElementById('claude-usage-overlay');
   if (overlay) {
-    overlay.style.display = 'block';
+    overlay.classList.add('show');
     return;
   }
   
   // Create detailed overlay
   overlay = document.createElement('div');
   overlay.id = 'claude-usage-overlay';
-  overlay.className = 'claude-usage-overlay';
+  overlay.className = 'claude-usage-overlay show';
   
   chrome.runtime.sendMessage({ type: 'GET_STATS' }, (response) => {
-    if (!response || !response.stats) return;
+    if (!response || !response.stats) {
+      overlay.innerHTML = '<div class="overlay-body"><p>Loading...</p></div>';
+      return;
+    }
     
     const stats = response.stats;
     overlay.innerHTML = `
@@ -147,8 +147,6 @@ function showDetailedOverlay() {
       </div>
     `;
     
-    badge.appendChild(overlay);
-    
     // Add dashboard button handler
     const dashboardBtn = overlay.querySelector('#open-dashboard');
     if (dashboardBtn) {
@@ -158,6 +156,8 @@ function showDetailedOverlay() {
       });
     }
   });
+  
+  document.body.appendChild(overlay);
 }
 
 /**
@@ -166,7 +166,7 @@ function showDetailedOverlay() {
 function hideDetailedOverlay() {
   const overlay = document.getElementById('claude-usage-overlay');
   if (overlay) {
-    overlay.style.display = 'none';
+    overlay.classList.remove('show');
   }
 }
 

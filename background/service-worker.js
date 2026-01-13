@@ -259,3 +259,78 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   await Utils.updateBadge(currentStats, settings);
   console.log('✅ Claude Usage Pro background service worker ready!');
 })();
+
+// Message handler for content script
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  console.log('📬 Service worker received message:', message.type);
+  
+  if (message.type === 'UPDATE_STATS') {
+    handleStatsUpdate(message.delta, message.usage)
+      .then(stats => sendResponse({ success: true, stats }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true; // Keep channel open for async response
+  }
+  
+  if (message.type === 'GET_STATS') {
+    getStats()
+      .then(stats => sendResponse({ success: true, stats }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+  
+  if (message.type === 'OPEN_POPUP') {
+    chrome.action.openPopup();
+    sendResponse({ success: true });
+    return true;
+  }
+});
+
+// Handle stats update from content script
+async function handleStatsUpdate(delta, usage) {
+  console.log('📊 Updating stats:', delta);
+  
+  // Get current stats
+  let stats = await Utils.storage.get('currentStats', {
+    tokensUsed: 0,
+    quota: 100000,
+    costUsed: 0,
+    budget: 1.00,
+    usagePercentage: 0,
+    messagesCount: 0,
+    nextReset: Date.now() + (24 * 60 * 60 * 1000)
+  });
+  
+  // Update stats
+  stats.tokensUsed += delta.tokens || 0;
+  stats.costUsed += delta.cost || 0;
+  stats.messagesCount += delta.messages || 0;
+  stats.usagePercentage = (stats.tokensUsed / stats.quota) * 100;
+  
+  // Save updated stats
+  await Utils.storage.set('currentStats', stats);
+  
+  // Update badge
+  const settings = await Utils.storage.getSettings();
+  await Utils.updateBadge(stats, settings);
+  
+  console.log('✅ Stats updated:', stats);
+  
+  return stats;
+}
+
+// Get current stats
+async function getStats() {
+  const stats = await Utils.storage.get('currentStats', {
+    tokensUsed: 0,
+    quota: 100000,
+    costUsed: 0,
+    budget: 1.00,
+    usagePercentage: 0,
+    messagesCount: 0,
+    nextReset: Date.now() + (24 * 60 * 60 * 1000)
+  });
+  
+  return stats;
+}
+
+console.log('🎯 Service worker fully loaded with message handlers');

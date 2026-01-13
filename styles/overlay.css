@@ -45,16 +45,17 @@
 
 /* Detailed overlay on hover */
 .claude-usage-overlay {
-  position: absolute;
-  bottom: 100%;
-  right: 0;
-  margin-bottom: 12px;
+  position: fixed;
+  bottom: 80px;
+  right: 20px;
   width: 280px;
   background: white;
   border-radius: 12px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
   overflow: hidden;
   animation: slideUp 0.2s ease;
+  z-index: 999998;
+  display: none;
 }
 
 @keyframes slideUp {
@@ -68,16 +69,8 @@
   }
 }
 
-.claude-usage-overlay::after {
-  content: '';
-  position: absolute;
-  bottom: -8px;
-  right: 24px;
-  width: 16px;
-  height: 16px;
-  background: white;
-  transform: rotate(45deg);
-  box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+.claude-usage-overlay.show {
+  display: block !important;
 }
 
 .overlay-header {
@@ -175,10 +168,6 @@
   .overlay-footer {
     background: #111827;
     border-top-color: #374151;
-  }
-  
-  .claude-usage-overlay::after {
-    background: #1F2937;
   }
 }
 
