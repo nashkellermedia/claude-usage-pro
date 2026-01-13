@@ -39,15 +39,8 @@ class ClaudeUsagePro {
       // Initialize chat UI (creates elements)
       this.chatUI.initialize();
       
-      // Setup API interceptor callbacks
-      this.setupInterceptor();
-      
-      // Start the API interceptor
-      if (window.APIInterceptor && typeof window.APIInterceptor.start === 'function') {
-        window.APIInterceptor.start();
-      } else {
-        CUP.logWarn('APIInterceptor not available, skipping');
-      }
+      // Setup API interceptor callbacks (with retry)
+      await this.setupInterceptorWithRetry();
       
       // Initialize sidebar UI
       CUP.log('Initializing sidebar UI...');
@@ -76,14 +69,32 @@ class ClaudeUsagePro {
   }
   
   /**
+   * Setup API interceptor with retry logic
+   */
+  async setupInterceptorWithRetry() {
+    // Try up to 5 times with 200ms delay
+    for (let i = 0; i < 5; i++) {
+      if (window.APIInterceptor && typeof window.APIInterceptor.on === 'function') {
+        this.setupInterceptor();
+        
+        // Start the interceptor
+        if (typeof window.APIInterceptor.start === 'function') {
+          window.APIInterceptor.start();
+        }
+        return;
+      }
+      CUP.log(`Waiting for APIInterceptor... attempt ${i + 1}/5`);
+      await CUP.sleep(200);
+    }
+    
+    CUP.logWarn('APIInterceptor not available after retries, will rely on DOM observation');
+  }
+  
+  /**
    * Setup API interceptor callbacks
    */
   setupInterceptor() {
-    // Check if APIInterceptor is available
-    if (!window.APIInterceptor || typeof window.APIInterceptor.on !== 'function') {
-      CUP.logWarn('APIInterceptor not ready, will rely on DOM observation');
-      return;
-    }
+    CUP.log('Setting up APIInterceptor callbacks...');
     
     // When a message is sent
     window.APIInterceptor.on('onMessageSent', (data) => {
@@ -133,7 +144,7 @@ class ClaudeUsagePro {
       this.chatUI.updateConversation(this.conversationData, this.currentModel);
     });
     
-    CUP.log('API interceptor callbacks registered');
+    CUP.log('API interceptor callbacks registered successfully');
   }
   
   /**
