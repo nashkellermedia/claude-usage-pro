@@ -108,14 +108,41 @@ function showDetailedOverlay() {
     return;
   }
   
-  // Create detailed overlay
+  // Create detailed overlay with loading state
   overlay = document.createElement('div');
   overlay.id = 'claude-usage-overlay';
   overlay.className = 'claude-usage-overlay show';
+  overlay.innerHTML = `
+    <div class="overlay-header">
+      <h3>Usage Overview</h3>
+    </div>
+    <div class="overlay-body">
+      <div class="stat-row">
+        <span class="stat-label">Loading...</span>
+        <span class="stat-value">⏳</span>
+      </div>
+    </div>
+  `;
   
+  document.body.appendChild(overlay);
+  
+  // Load stats
   chrome.runtime.sendMessage({ type: 'GET_STATS' }, (response) => {
-    if (!response || !response.stats) {
-      overlay.innerHTML = '<div class="overlay-body"><p>Loading...</p></div>';
+    console.log('📊 GET_STATS response:', response);
+    
+    if (!response || !response.success || !response.stats) {
+      overlay.innerHTML = `
+        <div class="overlay-header">
+          <h3>Usage Overview</h3>
+        </div>
+        <div class="overlay-body">
+          <div class="stat-row">
+            <span class="stat-label">Error loading stats</span>
+            <span class="stat-value">❌</span>
+          </div>
+        </div>
+      `;
+      console.error('Failed to get stats:', response);
       return;
     }
     
@@ -156,8 +183,6 @@ function showDetailedOverlay() {
       });
     }
   });
-  
-  document.body.appendChild(overlay);
 }
 
 /**

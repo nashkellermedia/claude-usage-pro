@@ -3,7 +3,9 @@
  * Handles token tracking, storage, and badge updates
  */
 
-// Inline utils since importScripts doesn't work with ES modules
+console.log('🚀 Service worker starting...');
+
+// Inline utils
 const Utils = {
   formatNumber(num) {
     if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
@@ -101,210 +103,71 @@ const Utils = {
         color = '#8B5CF6';
         break;
       case 'custom':
-        text = settings.badgeCustomText || '';
+        text = settings.badgeCustomText || '---';
         color = '#8B5CF6';
         break;
       default:
-        text = Math.round(stats.usagePercentage) + '%';
+        text = '0%';
     }
     
-    await chrome.action.setBadgeText({ text });
-    await chrome.action.setBadgeBackgroundColor({ color });
-  }
-};
-
-// State management
-let currentStats = {
-  tokensUsed: 0,
-  quota: 100000,
-  costUsed: 0,
-  budget: 1.00,
-  usagePercentage: 0,
-  messagesCount: 0,
-  lastReset: Date.now(),
-  nextReset: Date.now() + (24 * 60 * 60 * 1000)
-};
-
-/**
- * Initialize extension on install
- */
-chrome.runtime.onInstalled.addListener(async (details) => {
-  console.log('🎯 Claude Usage Pro installed!', details.reason);
-  
-  const settings = Utils.getDefaultSettings();
-  await Utils.storage.setSettings(settings);
-  await initializeStats();
-  
-  chrome.alarms.create('dailyReset', {
-    periodInMinutes: 60 * 24
-  });
-  
-  await Utils.updateBadge(currentStats, settings);
-});
-
-/**
- * Initialize or load stats
- */
-async function initializeStats() {
-  const stored = await Utils.storage.get('currentStats');
-  
-  if (stored) {
-    currentStats = stored;
-  } else {
-    await Utils.storage.set('currentStats', currentStats);
-  }
-  
-  return currentStats;
-}
-
-/**
- * Update stats
- */
-async function updateStats(delta) {
-  currentStats.tokensUsed += delta.tokens || 0;
-  currentStats.costUsed += delta.cost || 0;
-  currentStats.messagesCount += delta.messages || 0;
-  currentStats.usagePercentage = (currentStats.tokensUsed / currentStats.quota) * 100;
-  
-  await Utils.storage.set('currentStats', currentStats);
-  
-  const settings = await Utils.storage.getSettings();
-  await Utils.updateBadge(currentStats, settings);
-  
-  return currentStats;
-}
-
-/**
- * Reset daily stats
- */
-async function resetDailyStats() {
-  console.log('🔄 Resetting daily stats...');
-  
-  currentStats = {
-    tokensUsed: 0,
-    quota: 100000,
-    costUsed: 0,
-    budget: 1.00,
-    usagePercentage: 0,
-    messagesCount: 0,
-    lastReset: Date.now(),
-    nextReset: Date.now() + (24 * 60 * 60 * 1000)
-  };
-  
-  await Utils.storage.set('currentStats', currentStats);
-  await Utils.storage.set('triggeredAlerts', []);
-  
-  const settings = await Utils.storage.getSettings();
-  await Utils.updateBadge(currentStats, settings);
-}
-
-/**
- * Handle alarms
- */
-chrome.alarms.onAlarm.addListener(async (alarm) => {
-  if (alarm.name === 'dailyReset') {
-    await resetDailyStats();
-  }
-});
-
-/**
- * Message handler
- */
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  (async () => {
     try {
-      switch (message.type) {
-        case 'GET_STATS':
-          await initializeStats();
-          sendResponse({ stats: currentStats });
-          break;
-          
-        case 'UPDATE_STATS':
-          const updated = await updateStats(message.delta);
-          sendResponse({ stats: updated });
-          break;
-          
-        case 'GET_SETTINGS':
-          const settings = await Utils.storage.getSettings();
-          sendResponse({ settings });
-          break;
-          
-        case 'UPDATE_SETTINGS':
-          await Utils.storage.setSettings(message.settings);
-          await Utils.updateBadge(currentStats, message.settings);
-          sendResponse({ success: true });
-          break;
-          
-        case 'RESET_STATS':
-          await resetDailyStats();
-          sendResponse({ stats: currentStats });
-          break;
-          
-        default:
-          sendResponse({ error: 'Unknown message type' });
-      }
+      await chrome.action.setBadgeText({ text });
+      await chrome.action.setBadgeBackgroundColor({ color });
     } catch (error) {
-      console.error('Message handler error:', error);
-      sendResponse({ error: error.message });
+      console.error('Badge update error:', error);
     }
-  })();
-  
-  return true;
-});
+  }
+};
 
-// Initialize on startup
-(async () => {
-  await initializeStats();
-  const settings = await Utils.storage.getSettings();
-  await Utils.updateBadge(currentStats, settings);
-  console.log('✅ Claude Usage Pro background service worker ready!');
-})();
+// Initialize stats if they don't exist
+async function initializeStats() {
+  const stats = await Utils.storage.get('currentStats');
+  
+  if (!stats) {
+    const newStats = {
+      tokensUsed: 0,
+      quota: 100000,
+      costUsed: 0,
+      budget: 1.00,
+      usagePercentage: 0,
+      messagesCount: 0,
+      nextReset: Date.now() + (24 * 60 * 60 * 1000),
+      lastUpdated: Date.now()
+    };
+    
+    await Utils.storage.set('currentStats', newStats);
+    console.log('✅ Initialized default stats:', newStats);
+    return newStats;
+  }
+  
+  return stats;
+}
 
-// Message handler for content script
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  console.log('📬 Service worker received message:', message.type);
+// Get current stats
+async function getStats() {
+  let stats = await Utils.storage.get('currentStats');
   
-  if (message.type === 'UPDATE_STATS') {
-    handleStatsUpdate(message.delta, message.usage)
-      .then(stats => sendResponse({ success: true, stats }))
-      .catch(error => sendResponse({ success: false, error: error.message }));
-    return true; // Keep channel open for async response
+  if (!stats) {
+    stats = await initializeStats();
   }
   
-  if (message.type === 'GET_STATS') {
-    getStats()
-      .then(stats => sendResponse({ success: true, stats }))
-      .catch(error => sendResponse({ success: false, error: error.message }));
-    return true;
-  }
-  
-  if (message.type === 'OPEN_POPUP') {
-    chrome.action.openPopup();
-    sendResponse({ success: true });
-    return true;
-  }
-});
+  console.log('📊 Getting stats:', stats);
+  return stats;
+}
 
 // Handle stats update from content script
 async function handleStatsUpdate(delta, usage) {
-  console.log('📊 Updating stats:', delta);
+  console.log('📊 Updating stats with delta:', delta);
   
   // Get current stats
-  let stats = await Utils.storage.get('currentStats', {
-    tokensUsed: 0,
-    quota: 100000,
-    costUsed: 0,
-    budget: 1.00,
-    usagePercentage: 0,
-    messagesCount: 0,
-    nextReset: Date.now() + (24 * 60 * 60 * 1000)
-  });
+  let stats = await getStats();
   
   // Update stats
   stats.tokensUsed += delta.tokens || 0;
   stats.costUsed += delta.cost || 0;
   stats.messagesCount += delta.messages || 0;
   stats.usagePercentage = (stats.tokensUsed / stats.quota) * 100;
+  stats.lastUpdated = Date.now();
   
   // Save updated stats
   await Utils.storage.set('currentStats', stats);
@@ -318,19 +181,93 @@ async function handleStatsUpdate(delta, usage) {
   return stats;
 }
 
-// Get current stats
-async function getStats() {
-  const stats = await Utils.storage.get('currentStats', {
+// Reset stats daily
+async function resetDailyStats() {
+  console.log('🔄 Resetting daily stats...');
+  
+  const newStats = {
     tokensUsed: 0,
     quota: 100000,
     costUsed: 0,
     budget: 1.00,
     usagePercentage: 0,
     messagesCount: 0,
-    nextReset: Date.now() + (24 * 60 * 60 * 1000)
-  });
+    nextReset: Date.now() + (24 * 60 * 60 * 1000),
+    lastUpdated: Date.now()
+  };
   
-  return stats;
+  await Utils.storage.set('currentStats', newStats);
+  
+  const settings = await Utils.storage.getSettings();
+  await Utils.updateBadge(newStats, settings);
+  
+  console.log('✅ Stats reset');
 }
 
-console.log('🎯 Service worker fully loaded with message handlers');
+// Message handler - SINGLE LISTENER
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  console.log('📬 Service worker received message:', message.type);
+  
+  // Handle async operations properly
+  (async () => {
+    try {
+      switch (message.type) {
+        case 'GET_STATS': {
+          const stats = await getStats();
+          sendResponse({ success: true, stats });
+          break;
+        }
+        
+        case 'UPDATE_STATS': {
+          const stats = await handleStatsUpdate(message.delta, message.usage);
+          sendResponse({ success: true, stats });
+          break;
+        }
+        
+        case 'OPEN_POPUP': {
+          await chrome.action.openPopup();
+          sendResponse({ success: true });
+          break;
+        }
+        
+        default:
+          sendResponse({ success: false, error: 'Unknown message type' });
+      }
+    } catch (error) {
+      console.error('❌ Message handler error:', error);
+      sendResponse({ success: false, error: error.message });
+    }
+  })();
+  
+  return true; // Keep channel open for async response
+});
+
+// Setup daily reset alarm
+chrome.alarms.create('dailyReset', {
+  periodInMinutes: 24 * 60
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === 'dailyReset') {
+    resetDailyStats();
+  }
+});
+
+// Initialize on install
+chrome.runtime.onInstalled.addListener(async () => {
+  console.log('🎉 Extension installed/updated');
+  await initializeStats();
+  
+  const settings = await Utils.storage.getSettings();
+  const stats = await getStats();
+  await Utils.updateBadge(stats, settings);
+});
+
+// Initialize on startup
+(async () => {
+  await initializeStats();
+  const settings = await Utils.storage.getSettings();
+  const stats = await getStats();
+  await Utils.updateBadge(stats, settings);
+  console.log('✅ Service worker ready');
+})();
