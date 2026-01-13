@@ -52,11 +52,19 @@ function initializeOverlay() {
   loadStats();
   
   // Add hover functionality
-  badge.addEventListener('mouseenter', showDetailedOverlay);
-  badge.addEventListener('mouseleave', hideDetailedOverlay);
+  badge.addEventListener('mouseenter', () => {
+    console.log('🖱️ Badge hover - showing overlay');
+    showDetailedOverlay();
+  });
+  
+  badge.addEventListener('mouseleave', () => {
+    console.log('🖱️ Badge unhover - hiding overlay');
+    hideDetailedOverlay();
+  });
   
   // Add click to open popup
   badge.addEventListener('click', () => {
+    console.log('🖱️ Badge clicked');
     chrome.runtime.sendMessage({ type: 'OPEN_POPUP' });
   });
 }
@@ -65,13 +73,24 @@ function initializeOverlay() {
  * Load current stats and update badge
  */
 async function loadStats() {
+  console.log('📊 Loading stats...');
   try {
-    const response = await chrome.runtime.sendMessage({ type: 'GET_STATS' });
-    if (response && response.stats) {
-      updateBadge(response.stats);
-    }
+    chrome.runtime.sendMessage({ type: 'GET_STATS' }, (response) => {
+      console.log('📊 loadStats response:', response);
+      
+      if (chrome.runtime.lastError) {
+        console.error('❌ Runtime error:', chrome.runtime.lastError);
+        return;
+      }
+      
+      if (response && response.stats) {
+        updateBadge(response.stats);
+      } else {
+        console.error('❌ No stats in response');
+      }
+    });
   } catch (error) {
-    console.error('Failed to load stats:', error);
+    console.error('❌ Failed to load stats:', error);
   }
 }
 
@@ -79,12 +98,18 @@ async function loadStats() {
  * Update badge display
  */
 function updateBadge(stats) {
+  console.log('🔄 Updating badge with stats:', stats);
+  
   const badge = document.getElementById('claude-usage-badge');
-  if (!badge) return;
+  if (!badge) {
+    console.error('❌ Badge not found');
+    return;
+  }
   
   const textElement = badge.querySelector('.badge-text');
   if (textElement) {
     textElement.textContent = Math.round(stats.usagePercentage) + '%';
+    console.log('✅ Badge updated to:', textElement.textContent);
   }
   
   // Update color based on usage
@@ -101,12 +126,17 @@ function updateBadge(stats) {
  * Show detailed overlay on hover
  */
 function showDetailedOverlay() {
+  console.log('📋 showDetailedOverlay called');
+  
   // Check if overlay already exists
   let overlay = document.getElementById('claude-usage-overlay');
   if (overlay) {
+    console.log('📋 Overlay exists, showing it');
     overlay.classList.add('show');
     return;
   }
+  
+  console.log('📋 Creating new overlay');
   
   // Create detailed overlay with loading state
   overlay = document.createElement('div');
@@ -125,12 +155,31 @@ function showDetailedOverlay() {
   `;
   
   document.body.appendChild(overlay);
+  console.log('📋 Overlay added to DOM');
   
   // Load stats
+  console.log('📊 Requesting stats for overlay...');
   chrome.runtime.sendMessage({ type: 'GET_STATS' }, (response) => {
-    console.log('📊 GET_STATS response:', response);
+    console.log('📊 Overlay GET_STATS response:', response);
+    
+    if (chrome.runtime.lastError) {
+      console.error('❌ Runtime error in overlay:', chrome.runtime.lastError);
+      overlay.innerHTML = `
+        <div class="overlay-header">
+          <h3>Usage Overview</h3>
+        </div>
+        <div class="overlay-body">
+          <div class="stat-row">
+            <span class="stat-label">Error:</span>
+            <span class="stat-value">${chrome.runtime.lastError.message}</span>
+          </div>
+        </div>
+      `;
+      return;
+    }
     
     if (!response || !response.success || !response.stats) {
+      console.error('❌ Invalid response:', response);
       overlay.innerHTML = `
         <div class="overlay-header">
           <h3>Usage Overview</h3>
@@ -142,10 +191,10 @@ function showDetailedOverlay() {
           </div>
         </div>
       `;
-      console.error('Failed to get stats:', response);
       return;
     }
     
+    console.log('✅ Got valid stats, updating overlay');
     const stats = response.stats;
     overlay.innerHTML = `
       <div class="overlay-header">
@@ -173,6 +222,8 @@ function showDetailedOverlay() {
         <button class="overlay-btn" id="open-dashboard">📊 Dashboard</button>
       </div>
     `;
+    
+    console.log('✅ Overlay HTML updated');
     
     // Add dashboard button handler
     const dashboardBtn = overlay.querySelector('#open-dashboard');
@@ -205,7 +256,7 @@ function handleUsageUpdate(event) {
     
     // Update overlay if visible
     const overlay = document.getElementById('claude-usage-overlay');
-    if (overlay && overlay.style.display !== 'none') {
+    if (overlay && overlay.classList.contains('show')) {
       showDetailedOverlay(); // Refresh overlay content
     }
   }
