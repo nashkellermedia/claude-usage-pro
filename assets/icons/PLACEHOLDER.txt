@@ -1,8 +1,0 @@
-Icon files will be added before first release.
-For testing, Chrome will use default extension icon.
-
-TODO: Design and create proper icons:
-- Purple/gradient background
-- "C" or gauge/chart icon
-- Professional looking
-- All sizes: 16x16, 32x32, 48x48, 128x128
