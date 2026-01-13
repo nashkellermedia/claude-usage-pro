@@ -43,7 +43,11 @@ class ClaudeUsagePro {
       this.setupInterceptor();
       
       // Start the API interceptor
-      APIInterceptor.start();
+      if (window.APIInterceptor && typeof window.APIInterceptor.start === 'function') {
+        window.APIInterceptor.start();
+      } else {
+        CUP.logWarn('APIInterceptor not available, skipping');
+      }
       
       // Initialize sidebar UI
       CUP.log('Initializing sidebar UI...');
@@ -75,8 +79,14 @@ class ClaudeUsagePro {
    * Setup API interceptor callbacks
    */
   setupInterceptor() {
+    // Check if APIInterceptor is available
+    if (!window.APIInterceptor || typeof window.APIInterceptor.on !== 'function') {
+      CUP.logWarn('APIInterceptor not ready, will rely on DOM observation');
+      return;
+    }
+    
     // When a message is sent
-    APIInterceptor.on('onMessageSent', (data) => {
+    window.APIInterceptor.on('onMessageSent', (data) => {
       CUP.log('Message sent:', data);
       
       CUP.sendToBackground({
@@ -87,7 +97,7 @@ class ClaudeUsagePro {
     });
     
     // When a response is received
-    APIInterceptor.on('onMessageReceived', (data) => {
+    window.APIInterceptor.on('onMessageReceived', (data) => {
       CUP.log('Message received:', data);
       
       if (this.conversationData) {
@@ -98,65 +108,32 @@ class ClaudeUsagePro {
       
       CUP.sendToBackground({
         type: 'MESSAGE_RECEIVED',
-        tokens: data.totalTokens || 0,
+        tokens: data.totalTokens,
         model: this.currentModel
       });
     });
     
     // When a conversation is loaded
-    APIInterceptor.on('onConversationLoaded', (data) => {
+    window.APIInterceptor.on('onConversationLoaded', (data) => {
       CUP.log('Conversation loaded:', data);
       
-      this.conversationData = new ConversationData({
-        conversationId: data.conversationId,
-        length: data.totalTokens,
-        model: data.model,
-        messageCount: data.messageCount,
-        projectTokens: data.projectTokens,
-        fileTokens: data.fileTokens,
-        hasProject: data.projectTokens > 0,
-        hasFiles: data.fileTokens > 0
-      });
-      
       this.currentConversationId = data.conversationId;
+      this.currentModel = data.model || this.currentModel;
+      
+      this.conversationData = new ConversationData(
+        data.conversationId,
+        data.totalTokens,
+        data.messageCount,
+        data.model,
+        data.projectTokens,
+        data.fileTokens
+      );
+      
+      // Update chat UI
       this.chatUI.updateConversation(this.conversationData, this.currentModel);
-      
-      CUP.sendToBackground({
-        type: 'CONVERSATION_LOADED',
-        data: this.conversationData.toJSON()
-      });
     });
-  }
-  
-  /**
-   * Request data from background
-   */
-  async requestData() {
-    const response = await CUP.sendToBackground({ type: 'GET_USAGE_DATA' });
     
-    if (response?.usageData) {
-      CUP.log('Got usage data:', response.usageData);
-      this.usageData = UsageData.fromJSON(response.usageData);
-      this.updateAllUI();
-    } else {
-      CUP.logWarn('No usage data received');
-    }
-  }
-  
-  /**
-   * Setup message listener for background updates
-   */
-  setupMessageListener() {
-    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-      if (message.type === 'USAGE_UPDATED') {
-        this.usageData = UsageData.fromJSON(message.usageData);
-        this.updateAllUI();
-      }
-      
-      if (message.type === 'GET_CURRENT_MODEL') {
-        sendResponse({ model: this.currentModel });
-      }
-    });
+    CUP.log('API interceptor callbacks registered');
   }
   
   /**
@@ -166,31 +143,45 @@ class ClaudeUsagePro {
     if (this.isRunning) return;
     this.isRunning = true;
     
-    const loop = async (timestamp) => {
+    const loop = async () => {
       if (!this.isRunning) return;
       
+      const now = Date.now();
+      
       try {
-        // High frequency updates (1s)
-        if (timestamp - this.lastHighUpdate >= CUP.CONFIG.HIGH_FREQ_UPDATE) {
-          await this.highFrequencyUpdate();
-          this.lastHighUpdate = timestamp;
+        // High frequency updates (every 1s) - progress bar animations
+        if (now - this.lastHighUpdate >= CUP.UPDATE_INTERVALS.HIGH_FREQ) {
+          this.lastHighUpdate = now;
+          // Smooth progress bar updates handled by CSS
         }
         
-        // Medium frequency updates (2s)
-        if (timestamp - this.lastMedUpdate >= CUP.CONFIG.MED_FREQ_UPDATE) {
-          await this.mediumFrequencyUpdate();
-          this.lastMedUpdate = timestamp;
+        // Medium frequency updates (every 2s) - check model, reinject if needed
+        if (now - this.lastMedUpdate >= CUP.UPDATE_INTERVALS.MED_FREQ) {
+          this.lastMedUpdate = now;
+          
+          // Check current model from UI
+          const modelFromUI = CUP.getCurrentModel();
+          if (modelFromUI && modelFromUI !== this.currentModel) {
+            this.currentModel = modelFromUI;
+            CUP.log('Model changed to:', modelFromUI);
+          }
+          
+          // Ensure UI is still injected
+          this.sidebarUI.checkAndReinject();
+          this.chatUI.checkAndReinject();
         }
         
-        // Low frequency updates (5s)
-        if (timestamp - this.lastLowUpdate >= CUP.CONFIG.LOW_FREQ_UPDATE) {
-          await this.lowFrequencyUpdate();
-          this.lastLowUpdate = timestamp;
+        // Low frequency updates (every 5s) - sync with background
+        if (now - this.lastLowUpdate >= CUP.UPDATE_INTERVALS.LOW_FREQ) {
+          this.lastLowUpdate = now;
+          await this.requestData();
         }
+        
       } catch (error) {
         CUP.logError('Update loop error:', error);
       }
       
+      // Schedule next iteration
       requestAnimationFrame(loop);
     };
     
@@ -198,108 +189,90 @@ class ClaudeUsagePro {
   }
   
   /**
-   * High frequency updates
+   * Request data from background script
    */
-  async highFrequencyUpdate() {
-    // Check model changes
-    const newModel = await CUP.getCurrentModel();
-    if (newModel && newModel !== this.currentModel) {
-      this.currentModel = newModel;
-      CUP.log('Model changed to:', this.currentModel);
+  async requestData() {
+    try {
+      const response = await CUP.sendToBackground({ type: 'GET_USAGE_DATA' });
       
-      if (this.conversationData) {
-        this.chatUI.updateConversation(this.conversationData, this.currentModel);
-      }
-    }
-    
-    // Update cached time display
-    if (this.chatUI) {
-      const cacheExpired = this.chatUI.updateCachedTime();
-      if (cacheExpired && this.conversationData) {
-        this.conversationData.cachedUntil = null;
-      }
-    }
-    
-    // Check UI presence
-    if (this.sidebarUI) {
-      await this.sidebarUI.checkAndReinject();
-    }
-    if (this.chatUI) {
-      await this.chatUI.checkAndReinject();
-    }
-  }
-  
-  /**
-   * Medium frequency updates
-   */
-  async mediumFrequencyUpdate() {
-    const newConvId = CUP.getConversationId();
-    
-    if (newConvId !== this.currentConversationId) {
-      this.currentConversationId = newConvId;
-      
-      if (newConvId) {
-        CUP.log('Conversation changed to:', newConvId);
-        await CUP.sendToBackground({
-          type: 'REQUEST_CONVERSATION_DATA',
-          conversationId: newConvId
-        });
-      } else {
-        this.conversationData = null;
-        if (this.chatUI) {
-          this.chatUI.clearTitleDisplay();
-        }
-      }
-    }
-    
-    if (this.usageData?.isExpired()) {
-      CUP.log('Usage data expired');
-      await CUP.sendToBackground({ type: 'CHECK_RESET' });
-    }
-  }
-  
-  /**
-   * Low frequency updates
-   */
-  async lowFrequencyUpdate() {
-    if (this.usageData && this.chatUI) {
-      this.chatUI.updateUsage(this.usageData, this.conversationData, this.currentModel);
-    }
-    
-    await this.requestData();
-  }
-  
-  /**
-   * Update all UI components
-   */
-  updateAllUI() {
-    if (this.usageData) {
-      if (this.sidebarUI) {
+      if (response && response.success) {
+        this.usageData = new UsageData(
+          response.data.tokensUsed,
+          response.data.tokenQuota,
+          response.data.resetTime,
+          response.data.plan,
+          response.data.messageHistory
+        );
+        
+        // Update sidebar
         this.sidebarUI.update(this.usageData);
+        
+        // Update chat UI quota area
+        this.chatUI.updateQuota(this.usageData, this.currentModel);
       }
-      if (this.chatUI) {
-        this.chatUI.updateUsage(this.usageData, this.conversationData, this.currentModel);
+    } catch (error) {
+      CUP.logError('Failed to request data:', error);
+    }
+  }
+  
+  /**
+   * Setup message listener for background script updates
+   */
+  setupMessageListener() {
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+      if (message.type === 'USAGE_UPDATE') {
+        this.usageData = new UsageData(
+          message.data.tokensUsed,
+          message.data.tokenQuota,
+          message.data.resetTime,
+          message.data.plan,
+          message.data.messageHistory
+        );
+        
+        // Update all UI
+        this.sidebarUI.update(this.usageData);
+        this.chatUI.updateQuota(this.usageData, this.currentModel);
+        
+        sendResponse({ received: true });
       }
-    }
-    
-    if (this.conversationData && this.chatUI) {
-      this.chatUI.updateConversation(this.conversationData, this.currentModel);
-    }
+      
+      return true;
+    });
+  }
+  
+  /**
+   * Stop the extension
+   */
+  stop() {
+    this.isRunning = false;
+    this.sidebarUI.remove();
+    this.chatUI.remove();
   }
 }
 
-// Initialize when page is ready
-CUP.log('Main script loaded, waiting for page...');
+// Global instance
+let claudeUsagePro = null;
 
-function startExtension() {
+// Start extension
+async function startExtension() {
+  // Wait for DOM
+  if (document.readyState !== 'complete') {
+    await new Promise(resolve => {
+      window.addEventListener('load', resolve, { once: true });
+    });
+  }
+  
+  // Additional wait for Claude's SPA to hydrate
+  await CUP.sleep(1000);
+  
   CUP.log('Starting extension...');
-  window.claudeUsagePro = new ClaudeUsagePro();
-  window.claudeUsagePro.initialize();
+  claudeUsagePro = new ClaudeUsagePro();
+  await claudeUsagePro.initialize();
 }
 
-// Try to start after a short delay to ensure page is ready
-if (document.readyState === 'complete') {
-  startExtension();
-} else {
-  window.addEventListener('load', startExtension);
-}
+// Initialize
+startExtension().catch(error => {
+  CUP.logError('Failed to start extension:', error);
+});
+
+CUP.log('Main script loaded, waiting for page...');
