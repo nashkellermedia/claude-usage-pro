@@ -24,17 +24,17 @@ class ClaudeUsagePro {
    * Initialize the extension
    */
   async initialize() {
-    CUP.log('=== Initializing Claude Usage Pro ===');
+    window.CUP.log('=== Initializing Claude Usage Pro ===');
     
     try {
       // Wait for page to be somewhat ready
-      CUP.log('Waiting for page to load...');
-      await CUP.sleep(2000);
+      window.CUP.log('Waiting for page to load...');
+      await window.CUP.sleep(2000);
       
       // Initialize UI components
-      CUP.log('Creating UI components...');
-      this.sidebarUI = new SidebarUI();
-      this.chatUI = new ChatUI();
+      window.CUP.log('Creating UI components...');
+      this.sidebarUI = new window.SidebarUI();
+      this.chatUI = new window.ChatUI();
       
       // Initialize chat UI (creates elements)
       this.chatUI.initialize();
@@ -43,28 +43,28 @@ class ClaudeUsagePro {
       await this.setupInterceptorWithRetry();
       
       // Initialize sidebar UI
-      CUP.log('Initializing sidebar UI...');
+      window.CUP.log('Initializing sidebar UI...');
       await this.sidebarUI.initialize();
       
       // Inject chat UI
-      CUP.log('Injecting chat UI...');
+      window.CUP.log('Injecting chat UI...');
       await this.chatUI.injectUI();
       
       // Request initial data from background
-      CUP.log('Requesting initial data...');
+      window.CUP.log('Requesting initial data...');
       await this.requestData();
       
       // Start update loop
-      CUP.log('Starting update loop...');
+      window.CUP.log('Starting update loop...');
       this.startUpdateLoop();
       
       // Listen for messages from background
       this.setupMessageListener();
       
-      CUP.log('=== Claude Usage Pro initialized! ===');
+      window.CUP.log('=== Claude Usage Pro initialized! ===');
       
     } catch (error) {
-      CUP.logError('Failed to initialize:', error);
+      window.CUP.logError('Failed to initialize:', error);
     }
   }
   
@@ -83,24 +83,24 @@ class ClaudeUsagePro {
         }
         return;
       }
-      CUP.log(`Waiting for APIInterceptor... attempt ${i + 1}/5`);
-      await CUP.sleep(200);
+      window.CUP.log(`Waiting for APIInterceptor... attempt ${i + 1}/5`);
+      await window.CUP.sleep(200);
     }
     
-    CUP.logWarn('APIInterceptor not available after retries, will rely on DOM observation');
+    window.CUP.logWarn('APIInterceptor not available after retries, will rely on DOM observation');
   }
   
   /**
    * Setup API interceptor callbacks
    */
   setupInterceptor() {
-    CUP.log('Setting up APIInterceptor callbacks...');
+    window.CUP.log('Setting up APIInterceptor callbacks...');
     
     // When a message is sent
     window.APIInterceptor.on('onMessageSent', (data) => {
-      CUP.log('Message sent:', data);
+      window.CUP.log('Message sent:', data);
       
-      CUP.sendToBackground({
+      window.CUP.sendToBackground({
         type: 'MESSAGE_SENT',
         tokens: data.tokens,
         model: data.model || this.currentModel
@@ -109,7 +109,7 @@ class ClaudeUsagePro {
     
     // When a response is received
     window.APIInterceptor.on('onMessageReceived', (data) => {
-      CUP.log('Message received:', data);
+      window.CUP.log('Message received:', data);
       
       if (this.conversationData) {
         this.conversationData.length += data.totalTokens || 0;
@@ -117,7 +117,7 @@ class ClaudeUsagePro {
         this.chatUI.updateConversation(this.conversationData, this.currentModel);
       }
       
-      CUP.sendToBackground({
+      window.CUP.sendToBackground({
         type: 'MESSAGE_RECEIVED',
         tokens: data.totalTokens,
         model: this.currentModel
@@ -126,12 +126,12 @@ class ClaudeUsagePro {
     
     // When a conversation is loaded
     window.APIInterceptor.on('onConversationLoaded', (data) => {
-      CUP.log('Conversation loaded:', data);
+      window.CUP.log('Conversation loaded:', data);
       
       this.currentConversationId = data.conversationId;
       this.currentModel = data.model || this.currentModel;
       
-      this.conversationData = new ConversationData(
+      this.conversationData = new window.ConversationData(
         data.conversationId,
         data.totalTokens,
         data.messageCount,
@@ -144,7 +144,7 @@ class ClaudeUsagePro {
       this.chatUI.updateConversation(this.conversationData, this.currentModel);
     });
     
-    CUP.log('API interceptor callbacks registered successfully');
+    window.CUP.log('API interceptor callbacks registered successfully');
   }
   
   /**
@@ -161,20 +161,20 @@ class ClaudeUsagePro {
       
       try {
         // High frequency updates (every 1s) - progress bar animations
-        if (now - this.lastHighUpdate >= CUP.UPDATE_INTERVALS.HIGH_FREQ) {
+        if (now - this.lastHighUpdate >= window.CUP.UPDATE_INTERVALS.HIGH_FREQ) {
           this.lastHighUpdate = now;
           // Smooth progress bar updates handled by CSS
         }
         
         // Medium frequency updates (every 2s) - check model, reinject if needed
-        if (now - this.lastMedUpdate >= CUP.UPDATE_INTERVALS.MED_FREQ) {
+        if (now - this.lastMedUpdate >= window.CUP.UPDATE_INTERVALS.MED_FREQ) {
           this.lastMedUpdate = now;
           
           // Check current model from UI
-          const modelFromUI = CUP.getCurrentModel();
+          const modelFromUI = window.CUP.getCurrentModel();
           if (modelFromUI && modelFromUI !== this.currentModel) {
             this.currentModel = modelFromUI;
-            CUP.log('Model changed to:', modelFromUI);
+            window.CUP.log('Model changed to:', modelFromUI);
           }
           
           // Ensure UI is still injected
@@ -183,13 +183,13 @@ class ClaudeUsagePro {
         }
         
         // Low frequency updates (every 5s) - sync with background
-        if (now - this.lastLowUpdate >= CUP.UPDATE_INTERVALS.LOW_FREQ) {
+        if (now - this.lastLowUpdate >= window.CUP.UPDATE_INTERVALS.LOW_FREQ) {
           this.lastLowUpdate = now;
           await this.requestData();
         }
         
       } catch (error) {
-        CUP.logError('Update loop error:', error);
+        window.CUP.logError('Update loop error:', error);
       }
       
       // Schedule next iteration
@@ -204,10 +204,10 @@ class ClaudeUsagePro {
    */
   async requestData() {
     try {
-      const response = await CUP.sendToBackground({ type: 'GET_USAGE_DATA' });
+      const response = await window.CUP.sendToBackground({ type: 'GET_USAGE_DATA' });
       
       if (response && response.success) {
-        this.usageData = new UsageData(
+        this.usageData = new window.UsageData(
           response.data.tokensUsed,
           response.data.tokenQuota,
           response.data.resetTime,
@@ -222,7 +222,7 @@ class ClaudeUsagePro {
         this.chatUI.updateQuota(this.usageData, this.currentModel);
       }
     } catch (error) {
-      CUP.logError('Failed to request data:', error);
+      window.CUP.logError('Failed to request data:', error);
     }
   }
   
@@ -232,7 +232,7 @@ class ClaudeUsagePro {
   setupMessageListener() {
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (message.type === 'USAGE_UPDATE') {
-        this.usageData = new UsageData(
+        this.usageData = new window.UsageData(
           message.data.tokensUsed,
           message.data.tokenQuota,
           message.data.resetTime,
@@ -274,16 +274,16 @@ async function startExtension() {
   }
   
   // Additional wait for Claude's SPA to hydrate
-  await CUP.sleep(1000);
+  await window.CUP.sleep(1000);
   
-  CUP.log('Starting extension...');
+  window.CUP.log('Starting extension...');
   claudeUsagePro = new ClaudeUsagePro();
   await claudeUsagePro.initialize();
 }
 
 // Initialize
 startExtension().catch(error => {
-  CUP.logError('Failed to start extension:', error);
+  window.CUP.logError('Failed to start extension:', error);
 });
 
-CUP.log('Main script loaded, waiting for page...');
+window.CUP.log('Main script loaded, waiting for page...');

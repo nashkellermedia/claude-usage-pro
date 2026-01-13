@@ -19,7 +19,7 @@ class SidebarUI {
    * Initialize and inject the sidebar UI
    */
   async initialize() {
-    CUP.log('SidebarUI: Initializing...');
+    window.CUP.log('SidebarUI: Initializing...');
     
     // Build the UI elements
     this.buildUI();
@@ -28,9 +28,9 @@ class SidebarUI {
     const success = await this.inject();
     
     if (success) {
-      CUP.log('SidebarUI: Initialized successfully');
+      window.CUP.log('SidebarUI: Initialized successfully');
     } else {
-      CUP.logWarn('SidebarUI: Could not inject into sidebar');
+      window.CUP.logWarn('SidebarUI: Could not inject into sidebar');
     }
   }
   
@@ -83,7 +83,7 @@ class SidebarUI {
     settingsBtn.title = 'Open Usage Dashboard';
     settingsBtn.addEventListener('click', () => {
       // Open popup by clicking extension icon (can't do programmatically)
-      CUP.log('Settings clicked - open extension popup');
+      window.CUP.log('Settings clicked - open extension popup');
     });
     
     header.appendChild(title);
@@ -103,7 +103,7 @@ class SidebarUI {
     this.percentageDisplay = document.createElement('span');
     this.percentageDisplay.style.cssText = `
       font-weight: 600;
-      color: ${CUP.COLORS.BLUE};
+      color: ${window.CUP.COLORS.BLUE};
     `;
     this.percentageDisplay.textContent = '0%';
     
@@ -132,7 +132,7 @@ class SidebarUI {
     this.progressBar.style.cssText = `
       height: 100%;
       width: 0%;
-      background: ${CUP.COLORS.BLUE};
+      background: ${window.CUP.COLORS.BLUE};
       border-radius: 3px;
       transition: width 0.3s ease, background-color 0.3s ease;
     `;
@@ -157,34 +157,34 @@ class SidebarUI {
     this.tooltip.textContent = '0 / 0 tokens (0%)';
     document.body.appendChild(this.tooltip);
     
-    CUP.setupTooltip(progressContainer, this.tooltip);
+    window.CUP.setupTooltip(progressContainer, this.tooltip);
     
     // Assemble
     this.container.appendChild(header);
     this.container.appendChild(statsRow);
     this.container.appendChild(progressContainer);
     
-    CUP.log('SidebarUI: Built UI elements');
+    window.CUP.log('SidebarUI: Built UI elements');
   }
   
   /**
    * Find sidebar and inject our UI
    */
   async inject() {
-    CUP.log('SidebarUI: Looking for sidebar...');
+    window.CUP.log('SidebarUI: Looking for sidebar...');
     
     // Wait a bit for the page to fully render
-    await CUP.sleep(1000);
+    await window.CUP.sleep(1000);
     
     // Try to find sidebar
-    const sidebar = CUP.findSidebar();
+    const sidebar = window.CUP.findSidebar();
     
     if (!sidebar) {
-      CUP.logWarn('SidebarUI: Sidebar not found');
+      window.CUP.logWarn('SidebarUI: Sidebar not found');
       return false;
     }
     
-    CUP.log('SidebarUI: Found sidebar:', sidebar);
+    window.CUP.log('SidebarUI: Found sidebar:', sidebar);
     
     // Look for a good injection point
     // Try to find the scrollable container
@@ -200,7 +200,7 @@ class SidebarUI {
       const text = section.textContent.toLowerCase();
       if (text.includes('starred') || text.includes('recent') || text.includes('today')) {
         injectionPoint = section.closest('div') || section.parentElement;
-        CUP.log('SidebarUI: Found injection point near:', text);
+        window.CUP.log('SidebarUI: Found injection point near:', text);
         break;
       }
     }
@@ -213,7 +213,7 @@ class SidebarUI {
       
       if (innerContainer && innerContainer.firstChild) {
         injectionPoint = innerContainer.firstChild;
-        CUP.log('SidebarUI: Using first child as injection point');
+        window.CUP.log('SidebarUI: Using first child as injection point');
       }
     }
     
@@ -221,13 +221,13 @@ class SidebarUI {
     if (injectionPoint) {
       injectionPoint.parentNode.insertBefore(this.container, injectionPoint);
       this.isInjected = true;
-      CUP.log('SidebarUI: Injected successfully');
+      window.CUP.log('SidebarUI: Injected successfully');
       return true;
     } else {
       // Fallback: append to scrollContainer
       scrollContainer.prepend(this.container);
       this.isInjected = true;
-      CUP.log('SidebarUI: Injected at top of sidebar');
+      window.CUP.log('SidebarUI: Injected at top of sidebar');
       return true;
     }
   }
@@ -237,7 +237,7 @@ class SidebarUI {
    */
   async checkAndReinject() {
     if (!document.contains(this.container)) {
-      CUP.log('SidebarUI: Container removed, reinjecting...');
+      window.CUP.log('SidebarUI: Container removed, reinjecting...');
       this.isInjected = false;
       await this.inject();
     }
@@ -250,7 +250,7 @@ class SidebarUI {
     if (!usageData) return;
     
     const percentage = usageData.getUsagePercentage();
-    const color = CUP.getUsageColor(percentage);
+    const color = window.CUP.getUsageColor(percentage);
     const weighted = usageData.getWeightedTotal();
     const cap = usageData.usageCap;
     const resetInfo = usageData.getResetTimeInfo();
@@ -265,17 +265,17 @@ class SidebarUI {
     
     // Update reset time
     if (resetInfo.expired) {
-      this.resetTimeDisplay.innerHTML = `<span style="color: ${CUP.COLORS.GREEN}">Reset: Now!</span>`;
+      this.resetTimeDisplay.innerHTML = `<span style="color: ${window.CUP.COLORS.GREEN}">Reset: Now!</span>`;
     } else {
       this.resetTimeDisplay.textContent = `Reset: ${resetInfo.formatted}`;
     }
     
     // Update tooltip
-    this.tooltip.textContent = `${CUP.formatNumber(weighted)} / ${CUP.formatNumber(cap)} tokens (${percentage.toFixed(1)}%)`;
+    this.tooltip.textContent = `${window.CUP.formatNumber(weighted)} / ${window.CUP.formatNumber(cap)} tokens (${percentage.toFixed(1)}%)`;
   }
 }
 
 // Expose globally
 window.SidebarUI = SidebarUI;
 
-CUP.log('SidebarUI class loaded');
+window.CUP.log('SidebarUI class loaded');

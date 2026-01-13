@@ -10,7 +10,7 @@
 class UsageData {
   constructor(data = {}) {
     this.tokensUsed = data.tokensUsed || 0;
-    this.usageCap = data.usageCap || CUP.CONFIG.DEFAULT_QUOTA;
+    this.usageCap = data.usageCap || window.CUP.CONFIG.DEFAULT_QUOTA;
     this.resetTimestamp = data.resetTimestamp || (Date.now() + 24 * 60 * 60 * 1000);
     this.messagesCount = data.messagesCount || 0;
     this.lastUpdated = data.lastUpdated || Date.now();
@@ -28,7 +28,7 @@ class UsageData {
    */
   getWeightedTotal() {
     let total = 0;
-    const multipliers = CUP.CONFIG.MODEL_MULTIPLIERS;
+    const multipliers = window.CUP.CONFIG.MODEL_MULTIPLIERS;
     
     for (const [model, tokens] of Object.entries(this.modelUsage)) {
       const mult = multipliers[model] || 1.0;
@@ -50,14 +50,14 @@ class UsageData {
    * Check if near limit
    */
   isNearLimit() {
-    return this.getUsagePercentage() >= CUP.CONFIG.WARNING_THRESHOLD * 100;
+    return this.getUsagePercentage() >= window.CUP.CONFIG.WARNING_THRESHOLD * 100;
   }
   
   /**
    * Check if at limit
    */
   isAtLimit() {
-    return this.getUsagePercentage() >= CUP.CONFIG.DANGER_THRESHOLD * 100;
+    return this.getUsagePercentage() >= window.CUP.CONFIG.DANGER_THRESHOLD * 100;
   }
   
   /**
@@ -81,7 +81,7 @@ class UsageData {
     const ms = this.getTimeUntilReset();
     return {
       expired: ms <= 0,
-      formatted: CUP.formatTimeRemaining(ms),
+      formatted: window.CUP.formatTimeRemaining(ms),
       timestamp: this.resetTimestamp
     };
   }
@@ -180,7 +180,7 @@ class ConversationData {
    */
   getWeightedFutureCost(currentModel = null) {
     const model = currentModel || this.model;
-    const mult = CUP.CONFIG.MODEL_MULTIPLIERS[model] || 1.0;
+    const mult = window.CUP.CONFIG.MODEL_MULTIPLIERS[model] || 1.0;
     
     // Base cost is conversation length
     let cost = this.length * mult;

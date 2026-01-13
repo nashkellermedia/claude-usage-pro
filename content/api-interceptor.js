@@ -27,7 +27,7 @@ class APIInterceptorClass {
     this.interceptXHR();
     this.isActive = true;
     
-    CUP.log('API interceptor started');
+    window.CUP.log('API interceptor started');
   }
   
   /**
@@ -36,7 +36,7 @@ class APIInterceptorClass {
   on(event, callback) {
     if (this.callbacks.hasOwnProperty(event)) {
       this.callbacks[event] = callback;
-      CUP.log('Registered callback for:', event);
+      window.CUP.log('Registered callback for:', event);
     }
   }
   
@@ -79,7 +79,7 @@ class APIInterceptorClass {
           return response;
           
         } catch (error) {
-          CUP.logError('Fetch intercept error:', error);
+          window.CUP.logError('Fetch intercept error:', error);
           return originalFetch.apply(this, args);
         }
       }
@@ -198,7 +198,7 @@ class APIInterceptorClass {
       }
       
     } catch (error) {
-      CUP.logError('Error processing outgoing request:', error);
+      window.CUP.logError('Error processing outgoing request:', error);
     }
   }
   
@@ -222,7 +222,7 @@ class APIInterceptorClass {
       }
       
     } catch (error) {
-      CUP.logError('Error processing response:', error);
+      window.CUP.logError('Error processing response:', error);
     }
   }
   
@@ -236,7 +236,7 @@ class APIInterceptorClass {
         this.processConversationLoad(url, data);
       }
     } catch (error) {
-      CUP.logError('Error processing XHR response:', error);
+      window.CUP.logError('Error processing XHR response:', error);
     }
   }
   
@@ -307,7 +307,7 @@ class APIInterceptorClass {
       }
       
     } catch (error) {
-      CUP.logError('Error processing streaming response:', error);
+      window.CUP.logError('Error processing streaming response:', error);
     }
   }
   
@@ -379,7 +379,7 @@ class APIInterceptorClass {
       }
       
     } catch (error) {
-      CUP.logError('Error processing conversation load:', error);
+      window.CUP.logError('Error processing conversation load:', error);
     }
   }
 }
@@ -387,4 +387,4 @@ class APIInterceptorClass {
 // Create singleton instance and expose globally
 window.APIInterceptor = new APIInterceptorClass();
 
-CUP.log('APIInterceptor loaded (singleton instance)');
+window.CUP.log('APIInterceptor loaded (singleton instance)');

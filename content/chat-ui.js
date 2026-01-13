@@ -37,7 +37,7 @@ class ChatUI {
     this.buildInputUI();
     this.createTooltips();
     
-    CUP.log('Chat UI initialized');
+    window.CUP.log('Chat UI initialized');
   }
   
   /**
@@ -69,14 +69,14 @@ class ChatUI {
     this.quotaDisplay.textContent = 'Quota: --';
     
     // Mini progress bar (desktop only)
-    if (!CUP.isMobileView()) {
+    if (!window.CUP.isMobileView()) {
       const progressWrapper = document.createElement('div');
       progressWrapper.className = 'w-16 h-1 bg-bg-300 rounded-full overflow-hidden';
       
       this.inputProgressBar = document.createElement('div');
       this.inputProgressBar.className = 'h-full transition-all duration-300';
       this.inputProgressBar.style.width = '0%';
-      this.inputProgressBar.style.backgroundColor = CUP.COLORS.BLUE;
+      this.inputProgressBar.style.backgroundColor = window.CUP.COLORS.BLUE;
       
       progressWrapper.appendChild(this.inputProgressBar);
       quotaWrapper.appendChild(progressWrapper);
@@ -102,7 +102,7 @@ class ChatUI {
     this.inputStatsContainer.appendChild(quotaWrapper);
     this.inputStatsContainer.appendChild(spacer);
     
-    if (!CUP.isMobileView()) {
+    if (!window.CUP.isMobileView()) {
       this.inputStatsContainer.appendChild(this.estimateDisplay);
     }
     this.inputStatsContainer.appendChild(this.resetDisplay);
@@ -145,7 +145,7 @@ class ChatUI {
    */
   async injectTitleUI() {
     // Find the chat menu button
-    const chatMenu = document.querySelector(CUP.SELECTORS.CHAT_MENU);
+    const chatMenu = document.querySelector(window.CUP.SELECTORS.CHAT_MENU);
     if (!chatMenu) return;
     
     // Find the title line container
@@ -170,7 +170,7 @@ class ChatUI {
    */
   async injectInputUI() {
     // Find the model selector
-    const modelSelector = document.querySelector(CUP.SELECTORS.MODEL_SELECTOR);
+    const modelSelector = document.querySelector(window.CUP.SELECTORS.MODEL_SELECTOR);
     if (!modelSelector) return;
     
     // Find the row containing the model selector
@@ -187,8 +187,8 @@ class ChatUI {
    * Check and reinject if needed
    */
   async checkAndReinject() {
-    const menuExists = document.querySelector(CUP.SELECTORS.CHAT_MENU);
-    const modelExists = document.querySelector(CUP.SELECTORS.MODEL_SELECTOR);
+    const menuExists = document.querySelector(window.CUP.SELECTORS.CHAT_MENU);
+    const modelExists = document.querySelector(window.CUP.SELECTORS.MODEL_SELECTOR);
     
     if (menuExists && !document.contains(this.titleContainer)) {
       await this.injectTitleUI();
@@ -213,13 +213,13 @@ class ChatUI {
     const isCached = conversationData.isCurrentlyCached();
     
     // Length display
-    const lengthColor = conversationData.isLong() ? CUP.COLORS.RED : CUP.COLORS.BLUE;
-    this.lengthDisplay.innerHTML = `Length: <span style="color: ${lengthColor}">${CUP.formatNumber(length)}</span>`;
+    const lengthColor = conversationData.isLong() ? window.CUP.COLORS.RED : window.CUP.COLORS.BLUE;
+    this.lengthDisplay.innerHTML = `Length: <span style="color: ${lengthColor}">${window.CUP.formatNumber(length)}</span>`;
     
     // Cost display (desktop only)
-    if (!CUP.isMobileView()) {
-      const costColor = isCached ? CUP.COLORS.GREEN : (conversationData.isExpensive() ? CUP.COLORS.RED : CUP.COLORS.BLUE);
-      this.costDisplay.innerHTML = ` | Cost: <span style="color: ${costColor}">${CUP.formatNumber(cost)}</span>`;
+    if (!window.CUP.isMobileView()) {
+      const costColor = isCached ? window.CUP.COLORS.GREEN : (conversationData.isExpensive() ? window.CUP.COLORS.RED : window.CUP.COLORS.BLUE);
+      this.costDisplay.innerHTML = ` | Cost: <span style="color: ${costColor}">${window.CUP.formatNumber(cost)}</span>`;
     } else {
       this.costDisplay.innerHTML = '';
     }
@@ -228,7 +228,7 @@ class ChatUI {
     if (isCached) {
       this.lastCachedUntil = conversationData.cachedUntil;
       const cacheTime = conversationData.getTimeUntilCacheExpires();
-      this.cachedDisplay.innerHTML = ` | <span style="color: ${CUP.COLORS.GREEN}">Cached: ${cacheTime.minutes}m</span>`;
+      this.cachedDisplay.innerHTML = ` | <span style="color: ${window.CUP.COLORS.GREEN}">Cached: ${cacheTime.minutes}m</span>`;
     } else {
       this.lastCachedUntil = null;
       this.cachedDisplay.innerHTML = '';
@@ -238,10 +238,10 @@ class ChatUI {
     this.updateTitleContainer();
     
     // Setup tooltips
-    CUP.setupTooltip(this.lengthDisplay, this.tooltips.length);
-    CUP.setupTooltip(this.costDisplay, this.tooltips.cost);
+    window.CUP.setupTooltip(this.lengthDisplay, this.tooltips.length);
+    window.CUP.setupTooltip(this.costDisplay, this.tooltips.cost);
     if (isCached) {
-      CUP.setupTooltip(this.cachedDisplay, this.tooltips.cached);
+      window.CUP.setupTooltip(this.cachedDisplay, this.tooltips.cached);
     }
   }
   
@@ -252,7 +252,7 @@ class ChatUI {
     if (!usageData) return;
     
     const percentage = usageData.getUsagePercentage();
-    const color = CUP.getUsageColor(percentage);
+    const color = window.CUP.getUsageColor(percentage);
     const resetInfo = usageData.getResetTimeInfo();
     
     // Quota display
@@ -265,9 +265,9 @@ class ChatUI {
     }
     
     // Messages remaining estimate
-    if (conversationData && !CUP.isMobileView()) {
+    if (conversationData && !window.CUP.isMobileView()) {
       const estimate = conversationData.estimateMessagesRemaining(usageData, currentModel);
-      const estColor = estimate < 15 ? CUP.COLORS.RED : CUP.COLORS.BLUE;
+      const estColor = estimate < 15 ? window.CUP.COLORS.RED : window.CUP.COLORS.BLUE;
       
       if (estimate === Infinity || isNaN(estimate)) {
         this.estimateDisplay.textContent = 'Messages left: N/A';
@@ -278,15 +278,15 @@ class ChatUI {
     
     // Reset time
     if (resetInfo.expired) {
-      this.resetDisplay.innerHTML = `<span style="color: ${CUP.COLORS.GREEN}">Reset: Now!</span>`;
+      this.resetDisplay.innerHTML = `<span style="color: ${window.CUP.COLORS.GREEN}">Reset: Now!</span>`;
     } else {
       this.resetDisplay.textContent = `Reset: ${resetInfo.formatted}`;
     }
     
     // Setup tooltips
-    CUP.setupTooltip(this.quotaDisplay, this.tooltips.quota);
-    CUP.setupTooltip(this.estimateDisplay, this.tooltips.estimate);
-    CUP.setupTooltip(this.resetDisplay, this.tooltips.reset);
+    window.CUP.setupTooltip(this.quotaDisplay, this.tooltips.quota);
+    window.CUP.setupTooltip(this.estimateDisplay, this.tooltips.estimate);
+    window.CUP.setupTooltip(this.resetDisplay, this.tooltips.reset);
   }
   
   /**
@@ -305,7 +305,7 @@ class ChatUI {
     }
     
     const minutes = Math.ceil(remaining / (1000 * 60));
-    this.cachedDisplay.innerHTML = ` | <span style="color: ${CUP.COLORS.GREEN}">Cached: ${minutes}m</span>`;
+    this.cachedDisplay.innerHTML = ` | <span style="color: ${window.CUP.COLORS.GREEN}">Cached: ${minutes}m</span>`;
     
     return false;
   }
