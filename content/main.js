@@ -161,13 +161,13 @@ class ClaudeUsagePro {
       
       try {
         // High frequency updates (every 1s) - progress bar animations
-        if (now - this.lastHighUpdate >= window.CUP.UPDATE_INTERVALS.HIGH_FREQ) {
+        if (now - this.lastHighUpdate >= window.CUP.HIGH_FREQ_UPDATE) {
           this.lastHighUpdate = now;
           // Smooth progress bar updates handled by CSS
         }
         
         // Medium frequency updates (every 2s) - check model, reinject if needed
-        if (now - this.lastMedUpdate >= window.CUP.UPDATE_INTERVALS.MED_FREQ) {
+        if (now - this.lastMedUpdate >= window.CUP.MED_FREQ_UPDATE) {
           this.lastMedUpdate = now;
           
           // Check current model from UI
@@ -183,7 +183,7 @@ class ClaudeUsagePro {
         }
         
         // Low frequency updates (every 5s) - sync with background
-        if (now - this.lastLowUpdate >= window.CUP.UPDATE_INTERVALS.LOW_FREQ) {
+        if (now - this.lastLowUpdate >= window.CUP.LOW_FREQ_UPDATE) {
           this.lastLowUpdate = now;
           await this.requestData();
         }
