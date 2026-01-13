@@ -4,19 +4,16 @@
  */
 
 console.log('🎯 Claude Usage Pro content script loaded!');
+console.log('🎯 Document ready state:', document.readyState);
 
 // Wait for page to be ready
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initializeExtension);
-} else {
-  initializeExtension();
-}
-
 function initializeExtension() {
   console.log('🚀 Initializing Claude Usage Pro...');
+  console.log('🚀 Body exists:', !!document.body);
   
   // Start message tracking
   if (window.ClaudeMessageTracker) {
+    console.log('✅ Message tracker found');
     window.ClaudeMessageTracker.start();
   } else {
     console.error('❌ Message tracker not found');
@@ -35,6 +32,14 @@ function initializeExtension() {
  * Initialize the hybrid contextual overlay
  */
 function initializeOverlay() {
+  console.log('🎨 initializeOverlay called');
+  
+  // Check if badge already exists
+  if (document.getElementById('claude-usage-badge')) {
+    console.log('⚠️ Badge already exists, removing it');
+    document.getElementById('claude-usage-badge').remove();
+  }
+  
   // Create minimal badge in corner
   const badge = document.createElement('div');
   badge.id = 'claude-usage-badge';
@@ -46,27 +51,64 @@ function initializeOverlay() {
     </div>
   `;
   
+  console.log('🎨 Badge element created:', badge);
+  
   document.body.appendChild(badge);
+  
+  console.log('🎨 Badge appended to body');
+  console.log('🎨 Badge in DOM:', !!document.getElementById('claude-usage-badge'));
+  
+  // Test if badge is visible
+  const rect = badge.getBoundingClientRect();
+  console.log('🎨 Badge position:', {
+    top: rect.top,
+    left: rect.left,
+    width: rect.width,
+    height: rect.height,
+    visible: rect.width > 0 && rect.height > 0
+  });
   
   // Load current stats
   loadStats();
   
-  // Add hover functionality
-  badge.addEventListener('mouseenter', () => {
-    console.log('🖱️ Badge hover - showing overlay');
+  // Add hover functionality with detailed logging
+  console.log('🎨 Adding mouseenter listener');
+  badge.addEventListener('mouseenter', function(e) {
+    console.log('🖱️ MOUSEENTER EVENT FIRED!', e);
     showDetailedOverlay();
   });
   
-  badge.addEventListener('mouseleave', () => {
-    console.log('🖱️ Badge unhover - hiding overlay');
+  console.log('🎨 Adding mouseleave listener');
+  badge.addEventListener('mouseleave', function(e) {
+    console.log('🖱️ MOUSELEAVE EVENT FIRED!', e);
     hideDetailedOverlay();
   });
   
   // Add click to open popup
-  badge.addEventListener('click', () => {
-    console.log('🖱️ Badge clicked');
+  console.log('🎨 Adding click listener');
+  badge.addEventListener('click', function(e) {
+    console.log('🖱️ CLICK EVENT FIRED!', e);
     chrome.runtime.sendMessage({ type: 'OPEN_POPUP' });
   });
+  
+  console.log('✅ All event listeners attached');
+  
+  // Test event listener manually
+  setTimeout(() => {
+    console.log('🧪 Testing if hover would work...');
+    const testBadge = document.getElementById('claude-usage-badge');
+    if (testBadge) {
+      console.log('🧪 Badge found by ID');
+      console.log('🧪 Badge onmouseenter:', testBadge.onmouseenter);
+      console.log('🧪 Badge onclick:', testBadge.onclick);
+      
+      // Try to manually trigger
+      console.log('🧪 Manually dispatching mouseenter event...');
+      testBadge.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+    } else {
+      console.error('🧪 Badge NOT found by ID after timeout!');
+    }
+  }, 2000);
 }
 
 /**
@@ -102,14 +144,14 @@ function updateBadge(stats) {
   
   const badge = document.getElementById('claude-usage-badge');
   if (!badge) {
-    console.error('❌ Badge not found');
+    console.error('❌ Badge not found in updateBadge');
     return;
   }
   
   const textElement = badge.querySelector('.badge-text');
   if (textElement) {
     textElement.textContent = Math.round(stats.usagePercentage) + '%';
-    console.log('✅ Badge updated to:', textElement.textContent);
+    console.log('✅ Badge text updated to:', textElement.textContent);
   }
   
   // Update color based on usage
@@ -126,7 +168,9 @@ function updateBadge(stats) {
  * Show detailed overlay on hover
  */
 function showDetailedOverlay() {
+  console.log('📋 ==========================================');
   console.log('📋 showDetailedOverlay called');
+  console.log('📋 ==========================================');
   
   // Check if overlay already exists
   let overlay = document.getElementById('claude-usage-overlay');
@@ -156,6 +200,8 @@ function showDetailedOverlay() {
   
   document.body.appendChild(overlay);
   console.log('📋 Overlay added to DOM');
+  console.log('📋 Overlay classList:', overlay.classList.toString());
+  console.log('📋 Overlay display style:', window.getComputedStyle(overlay).display);
   
   // Load stats
   console.log('📊 Requesting stats for overlay...');
@@ -188,6 +234,10 @@ function showDetailedOverlay() {
           <div class="stat-row">
             <span class="stat-label">Error loading stats</span>
             <span class="stat-value">❌</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Response:</span>
+            <span class="stat-value">${JSON.stringify(response)}</span>
           </div>
         </div>
       `;
@@ -240,9 +290,11 @@ function showDetailedOverlay() {
  * Hide detailed overlay
  */
 function hideDetailedOverlay() {
+  console.log('📋 hideDetailedOverlay called');
   const overlay = document.getElementById('claude-usage-overlay');
   if (overlay) {
     overlay.classList.remove('show');
+    console.log('📋 Overlay hidden');
   }
 }
 
@@ -286,4 +338,13 @@ function formatTimeUntilReset(resetTimestamp) {
   
   if (hours > 0) return `${hours}h ${minutes}m`;
   return `${minutes}m`;
+}
+
+// Initialize based on document state
+if (document.readyState === 'loading') {
+  console.log('🎯 Document still loading, waiting for DOMContentLoaded');
+  document.addEventListener('DOMContentLoaded', initializeExtension);
+} else {
+  console.log('🎯 Document already loaded, initializing now');
+  initializeExtension();
 }
