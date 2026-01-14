@@ -2,7 +2,6 @@
  * Claude Usage Pro - Popup
  */
 
-// DOM Elements
 const els = {
   refreshBtn: document.getElementById('refreshBtn'),
   settingsBtn: document.getElementById('settingsBtn'),
@@ -40,7 +39,6 @@ function updateUsageBar(barEl, percentEl, percent) {
   barEl.style.width = Math.min(percent, 100) + '%';
   percentEl.textContent = percent + '%';
   
-  // Remove old classes
   barEl.classList.remove('warning', 'danger');
   percentEl.classList.remove('warning', 'danger');
   
@@ -55,6 +53,8 @@ function updateUsageBar(barEl, percentEl, percent) {
 
 function updateUI(usageData) {
   if (!usageData) return;
+  
+  console.log('[CUP Popup] Updating UI with:', usageData);
   
   // Current Session
   if (usageData.currentSession) {
@@ -80,31 +80,9 @@ function updateUI(usageData) {
     }
   }
   
-  // Fallback: Convert token-based data to percentage
-  if (!usageData.currentSession && usageData.modelUsage) {
-    const cap = usageData.usageCap || 45000000;
-    let total = 0;
-    const mu = usageData.modelUsage;
-    total += (mu['claude-sonnet-4'] || 0);
-    total += (mu['claude-opus-4'] || 0) * 5;
-    total += (mu['claude-haiku-4'] || 0) * 0.2;
-    
-    const percent = Math.round((total / cap) * 100);
-    updateUsageBar(els.sessionBar, els.sessionPercent, percent);
-    
-    if (usageData.resetTimestamp) {
-      const ms = usageData.resetTimestamp - Date.now();
-      if (ms > 0) {
-        const h = Math.floor(ms / 3600000);
-        const m = Math.floor((ms % 3600000) / 60000);
-        els.sessionMeta.textContent = `Resets in ${h}h ${m}m`;
-      }
-    }
-  }
-  
   // Current Model
   if (usageData.currentModel) {
-    const model = usageData.currentModel.toLowerCase();
+    const model = (usageData.currentModel || '').toLowerCase();
     els.currentModel.classList.remove('opus', 'haiku');
     
     if (model.includes('opus')) {
@@ -122,11 +100,12 @@ function updateUI(usageData) {
 async function loadUsageData() {
   try {
     const response = await chrome.runtime.sendMessage({ type: 'GET_USAGE_DATA' });
+    console.log('[CUP Popup] Got usage data:', response);
     if (response?.usageData) {
       updateUI(response.usageData);
     }
   } catch (e) {
-    console.error('Load usage error:', e);
+    console.error('[CUP Popup] Load error:', e);
   }
 }
 
@@ -138,7 +117,6 @@ async function loadSettings() {
     els.refreshInterval.value = settings.refreshInterval || '5';
     els.showBadge.checked = settings.showBadge !== false;
     
-    // Firebase config
     if (settings.firebase) {
       els.firebaseApiKey.value = settings.firebase.apiKey || '';
       els.firebaseProjectId.value = settings.firebase.projectId || '';
@@ -150,77 +128,50 @@ async function loadSettings() {
       }
     }
   } catch (e) {
-    console.error('Load settings error:', e);
+    console.error('[CUP Popup] Settings error:', e);
   }
 }
 
 async function saveSettings() {
-  try {
-    const settings = {
-      refreshInterval: els.refreshInterval.value,
-      showBadge: els.showBadge.checked
-    };
-    
-    await chrome.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings });
-    els.settingsPanel.classList.add('hidden');
-  } catch (e) {
-    console.error('Save settings error:', e);
-  }
+  const settings = {
+    refreshInterval: els.refreshInterval.value,
+    showBadge: els.showBadge.checked
+  };
+  await chrome.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings });
+  els.settingsPanel.classList.add('hidden');
 }
 
 async function saveFirebaseConfig() {
-  try {
-    const firebase = {
-      apiKey: els.firebaseApiKey.value.trim(),
-      projectId: els.firebaseProjectId.value.trim(),
-      appId: els.firebaseAppId.value.trim()
-    };
-    
-    if (firebase.apiKey && firebase.projectId) {
-      await chrome.runtime.sendMessage({ 
-        type: 'SAVE_SETTINGS', 
-        settings: { firebase } 
-      });
-      
-      els.firebaseStatus.textContent = 'Configured ✓';
-      els.firebaseStatus.classList.add('connected');
-    } else {
-      els.firebaseStatus.textContent = 'Please fill in all fields';
-      els.firebaseStatus.classList.remove('connected');
-    }
-  } catch (e) {
-    console.error('Save Firebase error:', e);
-    els.firebaseStatus.textContent = 'Error saving config';
+  const firebase = {
+    apiKey: els.firebaseApiKey.value.trim(),
+    projectId: els.firebaseProjectId.value.trim(),
+    appId: els.firebaseAppId.value.trim()
+  };
+  
+  if (firebase.apiKey && firebase.projectId) {
+    await chrome.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings: { firebase } });
+    els.firebaseStatus.textContent = 'Configured ✓';
+    els.firebaseStatus.classList.add('connected');
+  } else {
+    els.firebaseStatus.textContent = 'Please fill in all fields';
+    els.firebaseStatus.classList.remove('connected');
   }
 }
 
 async function triggerRefresh() {
   els.refreshBtn.textContent = '⏳';
-  
-  try {
-    await chrome.runtime.sendMessage({ type: 'TRIGGER_SYNC' });
-    setTimeout(loadUsageData, 1500);
-  } catch (e) {
-    console.error('Refresh error:', e);
-  }
-  
-  setTimeout(() => {
-    els.refreshBtn.textContent = '🔄';
-  }, 2000);
+  await chrome.runtime.sendMessage({ type: 'TRIGGER_SYNC' });
+  setTimeout(loadUsageData, 2000);
+  setTimeout(() => { els.refreshBtn.textContent = '🔄'; }, 2000);
 }
 
 // Event Listeners
 els.settingsBtn.addEventListener('click', () => {
   els.settingsPanel.classList.toggle('hidden');
-  if (!els.settingsPanel.classList.contains('hidden')) {
-    loadSettings();
-  }
+  if (!els.settingsPanel.classList.contains('hidden')) loadSettings();
 });
 
-els.closeSettings.addEventListener('click', () => {
-  els.settingsPanel.classList.add('hidden');
-});
-
+els.closeSettings.addEventListener('click', () => els.settingsPanel.classList.add('hidden'));
 els.refreshBtn.addEventListener('click', triggerRefresh);
 els.saveSettings.addEventListener('click', saveSettings);
 els.saveFirebase.addEventListener('click', saveFirebaseConfig);
@@ -228,6 +179,4 @@ els.saveFirebase.addEventListener('click', saveFirebaseConfig);
 // Initialize
 loadUsageData();
 loadSettings();
-
-// Auto-refresh every 5 seconds
 setInterval(loadUsageData, 5000);

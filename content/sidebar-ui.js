@@ -1,12 +1,12 @@
 /**
  * Claude Usage Pro - Sidebar UI
- * Shows usage percentages in a clear, easy-to-read format
+ * Displays percentage-based usage data
  */
 
 class SidebarUI {
   constructor() {
     this.container = null;
-    this.isExpanded = true; // Start expanded
+    this.isExpanded = true;
     this.initialized = false;
   }
   
@@ -103,17 +103,16 @@ class SidebarUI {
         <!-- Current Model -->
         <div class="cup-model-indicator">
           <span class="cup-model-label">Current:</span>
-          <span class="cup-model-badge" id="cup-current-model">Sonnet</span>
+          <span class="cup-model-badge" id="cup-current-model">Sonnet 4.5</span>
         </div>
         
-        <!-- Quick link to usage page -->
+        <!-- Link to usage page -->
         <a href="https://claude.ai/settings/usage" class="cup-usage-link" target="_self">
           View full usage details →
         </a>
       </div>
     `;
     
-    // Toggle handler
     this.container.querySelector('#cup-widget-toggle').addEventListener('click', () => {
       this.toggleExpand();
     });
@@ -129,23 +128,21 @@ class SidebarUI {
       return;
     }
     
-    // Find injection point after Starred section
     const starredSection = sidebar.querySelector('[class*="starred"]') ||
                           sidebar.querySelector('[class*="Starred"]');
     
     if (starredSection && starredSection.parentNode) {
       starredSection.parentNode.insertBefore(this.container, starredSection.nextSibling);
-      window.CUP.log('SidebarUI: Injected after Starred');
     } else {
-      // Find first section and insert after
       const firstSection = sidebar.querySelector('div > ul') || sidebar.firstElementChild;
       if (firstSection && firstSection.parentNode) {
         firstSection.parentNode.insertBefore(this.container, firstSection.nextSibling);
       } else {
         sidebar.appendChild(this.container);
       }
-      window.CUP.log('SidebarUI: Injected into sidebar');
     }
+    
+    window.CUP.log('SidebarUI: Injected into sidebar');
   }
   
   toggleExpand() {
@@ -153,91 +150,60 @@ class SidebarUI {
     const details = document.getElementById('cup-widget-details');
     const icon = document.getElementById('cup-expand-icon');
     
-    if (details) {
-      details.classList.toggle('expanded', this.isExpanded);
-    }
-    if (icon) {
-      icon.textContent = this.isExpanded ? '▲' : '▼';
-    }
+    if (details) details.classList.toggle('expanded', this.isExpanded);
+    if (icon) icon.textContent = this.isExpanded ? '▲' : '▼';
   }
   
   /**
-   * Update with scraped usage data
+   * Update UI with usage data
    */
   update(usageData) {
     if (!usageData) return;
     
-    // Handle scraped percentage data (from usage page)
+    window.CUP.log('SidebarUI: Updating with data:', JSON.stringify(usageData));
+    
+    // Update Current Session
     if (usageData.currentSession) {
-      this.updateSection('session', usageData.currentSession);
-    }
-    if (usageData.weeklyAllModels) {
-      this.updateSection('weekly-all', usageData.weeklyAllModels);
-    }
-    if (usageData.weeklySonnet) {
-      this.updateSection('weekly-sonnet', usageData.weeklySonnet);
+      this.updateSection('session', usageData.currentSession.percent, usageData.currentSession.resetsIn, 'in');
     }
     
-    // Handle legacy token-based data (convert to percentage)
-    if (usageData.modelUsage && !usageData.currentSession) {
-      const cap = usageData.usageCap || 45000000;
-      let total = 0;
-      
-      const modelUsage = usageData.modelUsage;
-      total += (modelUsage['claude-sonnet-4'] || 0);
-      total += (modelUsage['claude-opus-4'] || 0) * 5;
-      total += (modelUsage['claude-haiku-4'] || 0) * 0.2;
-      
-      const percent = Math.round((total / cap) * 100);
-      
-      this.updateSection('session', {
-        percent: percent,
-        resetsIn: this.formatResetTime(usageData.resetTimestamp)
-      });
+    // Update Weekly All Models
+    if (usageData.weeklyAllModels) {
+      this.updateSection('weekly-all', usageData.weeklyAllModels.percent, usageData.weeklyAllModels.resetsAt, 'at');
+    }
+    
+    // Update Weekly Sonnet
+    if (usageData.weeklySonnet) {
+      this.updateSection('weekly-sonnet', usageData.weeklySonnet.percent, usageData.weeklySonnet.resetsIn, 'in');
     }
     
     // Update current model
-    if (usageData.currentModel) {
-      this.updateCurrentModel(usageData.currentModel);
-    }
+    this.updateCurrentModel(usageData.currentModel);
   }
   
-  updateSection(section, data) {
+  updateSection(section, percent, resetTime, resetType) {
     const percentEl = document.getElementById(`cup-${section}-percent`);
     const barEl = document.getElementById(`cup-${section}-bar`);
     const metaEl = document.getElementById(`cup-${section}-meta`);
     
-    if (percentEl && data.percent !== undefined) {
-      percentEl.textContent = data.percent + '%';
+    if (percentEl) {
+      percentEl.textContent = percent + '%';
       
       // Color based on percentage
-      if (data.percent >= 90) {
-        percentEl.style.color = 'var(--cup-danger)';
-      } else if (data.percent >= 70) {
-        percentEl.style.color = 'var(--cup-warning)';
-      } else {
-        percentEl.style.color = 'var(--cup-success)';
-      }
+      percentEl.style.color = percent >= 90 ? 'var(--cup-danger)' : 
+                              percent >= 70 ? 'var(--cup-warning)' : 
+                              'var(--cup-success)';
     }
     
-    if (barEl && data.percent !== undefined) {
-      barEl.style.width = Math.min(data.percent, 100) + '%';
-      
-      if (data.percent >= 90) {
-        barEl.style.background = 'var(--cup-danger)';
-      } else if (data.percent >= 70) {
-        barEl.style.background = 'var(--cup-warning)';
-      } else {
-        barEl.style.background = 'var(--cup-accent)';
-      }
+    if (barEl) {
+      barEl.style.width = Math.min(percent, 100) + '%';
+      barEl.style.background = percent >= 90 ? 'var(--cup-danger)' : 
+                               percent >= 70 ? 'var(--cup-warning)' : 
+                               'var(--cup-accent)';
     }
     
-    if (metaEl) {
-      if (data.resetsIn) {
-        metaEl.textContent = `Resets in ${data.resetsIn}`;
-      } else if (data.resetsAt) {
-        metaEl.textContent = `Resets ${data.resetsAt}`;
-      }
+    if (metaEl && resetTime) {
+      metaEl.textContent = resetType === 'in' ? `Resets in ${resetTime}` : `Resets ${resetTime}`;
     }
   }
   
@@ -245,30 +211,20 @@ class SidebarUI {
     const badge = document.getElementById('cup-current-model');
     if (!badge) return;
     
-    const modelLower = (model || '').toLowerCase();
+    const m = (model || 'sonnet').toLowerCase();
     
-    if (modelLower.includes('opus')) {
+    badge.className = 'cup-model-badge';
+    
+    if (m.includes('opus')) {
       badge.textContent = 'Opus 4.5';
-      badge.className = 'cup-model-badge cup-badge-opus';
-    } else if (modelLower.includes('haiku')) {
+      badge.classList.add('cup-badge-opus');
+    } else if (m.includes('haiku')) {
       badge.textContent = 'Haiku 4.5';
-      badge.className = 'cup-model-badge cup-badge-haiku';
+      badge.classList.add('cup-badge-haiku');
     } else {
       badge.textContent = 'Sonnet 4.5';
-      badge.className = 'cup-model-badge cup-badge-sonnet';
+      badge.classList.add('cup-badge-sonnet');
     }
-  }
-  
-  formatResetTime(timestamp) {
-    if (!timestamp) return '--';
-    const ms = timestamp - Date.now();
-    if (ms <= 0) return 'now';
-    
-    const hours = Math.floor(ms / 3600000);
-    const mins = Math.floor((ms % 3600000) / 60000);
-    
-    if (hours > 0) return `${hours}h ${mins}m`;
-    return `${mins}m`;
   }
   
   checkAndReinject() {
