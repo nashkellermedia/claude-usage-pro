@@ -1,6 +1,11 @@
 /**
  * Claude Usage Pro - Sidebar UI
  * Displays percentage-based usage data
+ * 
+ * DOM Structure (from analysis):
+ * NAV.flex → DIV.flex → DIV.flex → DIV.flex-1 → DIV.opacity-100 → DIV.px-2 → DIV.flex → H3 "Starred"
+ * 
+ * We want to insert before the DIV.px-2 that contains Starred
  */
 
 class SidebarUI {
@@ -23,52 +28,19 @@ class SidebarUI {
   
   async waitForSidebar() {
     for (let i = 0; i < 30; i++) {
-      // Wait for Starred section to appear as indicator sidebar is ready
-      const starred = this.findStarredSection();
+      const starred = this.findStarredH3();
       if (starred) return true;
       await new Promise(r => setTimeout(r, 200));
     }
     return false;
   }
   
-  findStarredSection() {
-    // Find element that contains "Starred" text
-    const walker = document.createTreeWalker(
-      document.body,
-      NodeFilter.SHOW_TEXT,
-      null,
-      false
-    );
-    
-    while (walker.nextNode()) {
-      if (walker.currentNode.textContent.trim() === 'Starred') {
-        return walker.currentNode.parentElement;
-      }
-    }
-    return null;
-  }
-  
-  findCodeSection() {
-    // Find the Code link/section
-    const allLinks = document.querySelectorAll('a, button, div');
-    for (const el of allLinks) {
-      const text = el.textContent?.trim();
-      if (text === 'Code' && el.querySelector('svg, [class*="icon"]')) {
-        return el;
-      }
-    }
-    
-    // Fallback: find by text content
-    const walker = document.createTreeWalker(
-      document.body,
-      NodeFilter.SHOW_TEXT,
-      null,
-      false
-    );
-    
-    while (walker.nextNode()) {
-      if (walker.currentNode.textContent.trim() === 'Code') {
-        return walker.currentNode.parentElement;
+  findStarredH3() {
+    // Find H3 element containing "Starred"
+    const h3s = document.querySelectorAll('h3');
+    for (const h3 of h3s) {
+      if (h3.textContent?.trim() === 'Starred') {
+        return h3;
       }
     }
     return null;
@@ -77,6 +49,8 @@ class SidebarUI {
   buildUI() {
     this.container = document.createElement('div');
     this.container.id = 'cup-sidebar-widget';
+    // Add px-2 class to match Claude's sidebar styling
+    this.container.className = 'px-2';
     this.container.innerHTML = `
       <div class="cup-widget-header" id="cup-widget-toggle">
         <span class="cup-widget-icon">📊</span>
@@ -135,51 +109,46 @@ class SidebarUI {
   }
   
   async injectIntoSidebar() {
-    // Strategy: Find "Starred" text element, then find its container, 
-    // and insert our widget right before that container
+    const starredH3 = this.findStarredH3();
     
-    const starredTextEl = this.findStarredSection();
-    
-    if (!starredTextEl) {
-      window.CUP.log('SidebarUI: Starred section not found, using floating');
+    if (!starredH3) {
+      window.CUP.log('SidebarUI: Starred H3 not found');
       this.container.classList.add('cup-floating');
       document.body.appendChild(this.container);
       return;
     }
     
-    // The "Starred" text is inside a heading/label element
-    // We need to find its parent container that represents the whole "Starred" section
-    // This is typically a few levels up
+    // Path: H3 → DIV.flex → DIV.px-2
+    // We want to insert before DIV.px-2
     
-    let starredSection = starredTextEl;
-    
-    // Walk up to find the section container
-    // We're looking for a container that has siblings (other sections like Code, Artifacts, etc)
-    for (let i = 0; i < 5; i++) {
-      const parent = starredSection.parentElement;
-      if (!parent) break;
-      
-      // Check if parent has multiple children that look like nav sections
-      const siblings = Array.from(parent.children);
-      if (siblings.length > 1) {
-        // Found the level with multiple sections
-        // Insert before the Starred section at this level
-        parent.insertBefore(this.container, starredSection);
-        window.CUP.log('SidebarUI: Injected before Starred at level', i);
-        return;
-      }
-      
-      starredSection = parent;
+    // Go up to find the DIV.px-2 container
+    let pxContainer = starredH3.parentElement; // DIV.flex
+    if (pxContainer) {
+      pxContainer = pxContainer.parentElement; // DIV.px-2
     }
     
-    // Fallback: just insert before whatever element we found
-    if (starredTextEl.parentElement) {
-      starredTextEl.parentElement.insertBefore(this.container, starredTextEl);
-      window.CUP.log('SidebarUI: Fallback - inserted before Starred text parent');
+    if (pxContainer && pxContainer.classList.contains('px-2')) {
+      // Insert before this px-2 container
+      pxContainer.parentElement.insertBefore(this.container, pxContainer);
+      window.CUP.log('SidebarUI: Injected before DIV.px-2 containing Starred');
     } else {
+      // Fallback: try to find px-2 by walking up more
+      let current = starredH3;
+      for (let i = 0; i < 5; i++) {
+        current = current.parentElement;
+        if (!current) break;
+        
+        if (current.classList.contains('px-2')) {
+          current.parentElement.insertBefore(this.container, current);
+          window.CUP.log('SidebarUI: Injected before px-2 (fallback)');
+          return;
+        }
+      }
+      
+      // Last resort fallback
+      window.CUP.log('SidebarUI: Could not find px-2, using floating');
       this.container.classList.add('cup-floating');
       document.body.appendChild(this.container);
-      window.CUP.log('SidebarUI: Using floating widget');
     }
   }
   
