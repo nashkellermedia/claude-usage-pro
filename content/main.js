@@ -132,15 +132,21 @@ class ClaudeUsagePro {
     }
     
     // Send to background
+    window.CUP.log('Sending MESSAGE_SENT to background...');
     const response = await window.CUP.sendToBackground({
       type: 'MESSAGE_SENT',
       tokens: data.tokens,
       model: this.currentModel
     });
     
+    window.CUP.log('Background response for MESSAGE_SENT:', response);
+    
     if (response?.usageData) {
       this.usageData = new window.UsageData(response.usageData);
+      window.CUP.log('Updating UI with usage data:', this.usageData);
       this.updateUI();
+    } else {
+      window.CUP.log('No usageData in response');
     }
   }
   
@@ -156,15 +162,21 @@ class ClaudeUsagePro {
     }
     
     // Send to background
+    window.CUP.log('Sending MESSAGE_RECEIVED to background...');
     const response = await window.CUP.sendToBackground({
       type: 'MESSAGE_RECEIVED',
       tokens: data.totalTokens,
       model: this.currentModel
     });
     
+    window.CUP.log('Background response for MESSAGE_RECEIVED:', response);
+    
     if (response?.usageData) {
       this.usageData = new window.UsageData(response.usageData);
+      window.CUP.log('Updating UI with usage data:', this.usageData);
       this.updateUI();
+    } else {
+      window.CUP.log('No usageData in response');
     }
   }
   
