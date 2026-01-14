@@ -201,10 +201,10 @@ class ClaudeUsagePro {
   updateUI() {
     if (this.usageData) {
       if (this.sidebarUI) {
-        this.sidebarUI.updateUsage(this.usageData);
+        this.sidebarUI.update(this.usageData);
       }
       if (this.chatUI) {
-        this.chatUI.updateUsage(this.usageData);
+        this.chatUI.updateUsage(this.usageData, this.conversationData, this.currentModel);
       }
     }
   }
