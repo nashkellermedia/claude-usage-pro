@@ -1,311 +1,326 @@
 /**
  * Claude Usage Pro - Content Styles
- * Dark theme, modern design
+ * Seamless integration with Claude.ai UI
+ * Auto dark/light mode detection
  */
 
 /* ============================================
-   TOP STATS BAR
+   THEME DETECTION
+   Claude.ai uses 'dark' class on html element
+   ============================================ */
+
+/* Light mode defaults */
+:root {
+  --cup-bg: rgba(255, 255, 255, 0.8);
+  --cup-bg-solid: #ffffff;
+  --cup-border: rgba(0, 0, 0, 0.08);
+  --cup-text: #374151;
+  --cup-text-muted: #6b7280;
+  --cup-text-dim: #9ca3af;
+  --cup-accent: #6366f1;
+  --cup-success: #10b981;
+  --cup-warning: #f59e0b;
+  --cup-danger: #ef4444;
+  --cup-progress-bg: rgba(0, 0, 0, 0.06);
+}
+
+/* Dark mode - triggered by Claude's dark class or prefers-color-scheme */
+html.dark,
+html[data-theme="dark"],
+.dark {
+  --cup-bg: rgba(32, 33, 35, 0.85);
+  --cup-bg-solid: #202123;
+  --cup-border: rgba(255, 255, 255, 0.08);
+  --cup-text: #e5e7eb;
+  --cup-text-muted: #9ca3af;
+  --cup-text-dim: #6b7280;
+  --cup-accent: #818cf8;
+  --cup-success: #34d399;
+  --cup-warning: #fbbf24;
+  --cup-danger: #f87171;
+  --cup-progress-bg: rgba(255, 255, 255, 0.08);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --cup-bg: rgba(32, 33, 35, 0.85);
+    --cup-bg-solid: #202123;
+    --cup-border: rgba(255, 255, 255, 0.08);
+    --cup-text: #e5e7eb;
+    --cup-text-muted: #9ca3af;
+    --cup-text-dim: #6b7280;
+    --cup-accent: #818cf8;
+    --cup-success: #34d399;
+    --cup-warning: #fbbf24;
+    --cup-danger: #f87171;
+    --cup-progress-bg: rgba(255, 255, 255, 0.08);
+  }
+}
+
+/* ============================================
+   TOP STATS BAR - Subtle, integrated look
    ============================================ */
 
 #cup-top-bar {
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  background: linear-gradient(180deg, rgba(15, 15, 26, 0.95) 0%, rgba(26, 26, 46, 0.9) 100%);
-  backdrop-filter: blur(10px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 8px 16px;
-  margin-bottom: 8px;
-  animation: cup-slideDown 0.3s ease-out;
+  background: var(--cup-bg);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--cup-border);
+  padding: 6px 12px;
+  font-size: 12px;
+  font-family: inherit;
 }
 
 .cup-top-bar-inner {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   gap: 16px;
-  max-width: 900px;
-  margin: 0 auto;
   flex-wrap: wrap;
+  max-width: 800px;
+  margin: 0 auto;
 }
 
 .cup-stat {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: #a1a1aa;
-  padding: 4px 8px;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  gap: 4px;
+  color: var(--cup-text-muted);
 }
 
 .cup-icon {
-  font-size: 14px;
+  font-size: 12px;
+  opacity: 0.7;
 }
 
 .cup-label {
-  color: #71717a;
-  font-weight: 500;
+  color: var(--cup-text-dim);
+  font-size: 11px;
 }
 
 .cup-value {
-  color: #e4e4e7;
-  font-weight: 600;
+  color: var(--cup-text);
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 
 .cup-unit {
-  color: #52525b;
+  color: var(--cup-text-dim);
   font-size: 10px;
 }
 
-/* Model Badges */
+/* Model Badges - Subtle */
 .cup-badge {
-  padding: 2px 8px;
+  padding: 2px 6px;
   border-radius: 4px;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
 
 .cup-badge-sonnet {
-  background: #1e40af;
-  color: #93c5fd;
+  background: rgba(99, 102, 241, 0.15);
+  color: var(--cup-accent);
 }
 
 .cup-badge-opus {
-  background: #92400e;
-  color: #fcd34d;
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--cup-warning);
 }
 
 .cup-badge-haiku {
-  background: #065f46;
-  color: #6ee7b7;
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--cup-success);
 }
 
 .cup-multiplier {
   font-size: 10px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-weight: 600;
-}
-
-.cup-mult-sonnet {
-  background: rgba(59, 130, 246, 0.2);
-  color: #60a5fa;
-}
-
-.cup-mult-opus {
-  background: rgba(245, 158, 11, 0.2);
-  color: #fbbf24;
-}
-
-.cup-mult-haiku {
-  background: rgba(16, 185, 129, 0.2);
-  color: #34d399;
+  color: var(--cup-text-dim);
+  font-weight: 500;
 }
 
 /* ============================================
-   INPUT AREA STATS
+   INPUT AREA STATS - Below composer
    ============================================ */
 
 #cup-input-stats {
-  background: linear-gradient(180deg, rgba(15, 15, 26, 0.9) 0%, rgba(26, 26, 46, 0.85) 100%);
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 8px 16px;
-  margin-top: 4px;
-  border-radius: 0 0 12px 12px;
+  background: var(--cup-bg);
+  border-top: 1px solid var(--cup-border);
+  padding: 6px 12px;
+  font-size: 11px;
+  font-family: inherit;
 }
 
 .cup-input-stats-inner {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
+  gap: 12px;
+  max-width: 800px;
+  margin: 0 auto;
 }
 
-.cup-draft-section,
-.cup-remaining-section,
-.cup-reset-section {
+.cup-input-stat {
   display: flex;
   align-items: center;
   gap: 4px;
+  color: var(--cup-text-muted);
+}
+
+.cup-input-icon {
   font-size: 11px;
-  color: #a1a1aa;
+  opacity: 0.7;
 }
 
-.cup-draft-icon,
-.cup-remaining-icon,
-.cup-reset-icon {
-  font-size: 12px;
+.cup-input-label {
+  color: var(--cup-text-dim);
+  font-size: 10px;
 }
 
-.cup-draft-tokens,
-.cup-remaining-value,
-.cup-reset-value {
-  font-weight: 600;
-  color: #22c55e;
+.cup-input-value {
+  color: var(--cup-text);
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 
-.cup-draft-unit,
-.cup-remaining-label {
-  color: #52525b;
+.cup-input-unit {
+  color: var(--cup-text-dim);
   font-size: 10px;
 }
 
 /* Mini Progress Bar */
-.cup-quota-section {
+.cup-input-progress {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex: 1;
-  max-width: 200px;
+  max-width: 150px;
 }
 
-.cup-mini-progress-container {
+.cup-input-progress-bg {
   flex: 1;
-  height: 6px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 3px;
+  height: 4px;
+  background: var(--cup-progress-bg);
+  border-radius: 2px;
   overflow: hidden;
 }
 
-.cup-mini-progress-bar {
+.cup-input-progress-bar {
   height: 100%;
   width: 0%;
-  background: linear-gradient(90deg, #2563eb, #3b82f6);
-  border-radius: 3px;
-  transition: width 0.3s ease, background 0.3s ease;
+  background: var(--cup-accent);
+  border-radius: 2px;
+  transition: width 0.3s ease;
 }
 
-.cup-quota-percent {
-  font-size: 11px;
-  font-weight: 600;
-  color: #a1a1aa;
-  min-width: 40px;
+.cup-input-percent {
+  font-size: 10px;
+  color: var(--cup-text-muted);
+  min-width: 32px;
   text-align: right;
 }
 
 /* ============================================
-   SIDEBAR WIDGET
+   SIDEBAR WIDGET - Integrated into sidebar
    ============================================ */
 
 #cup-sidebar-widget {
-  background: linear-gradient(180deg, rgba(15, 15, 26, 0.98) 0%, rgba(26, 26, 46, 0.95) 100%);
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  margin: 8px;
-  overflow: hidden;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  animation: cup-fadeIn 0.3s ease-out;
+  padding: 12px;
+  margin: 8px 0;
+  border-top: 1px solid var(--cup-border);
+  border-bottom: 1px solid var(--cup-border);
+  font-family: inherit;
 }
 
-#cup-sidebar-widget.cup-floating {
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  width: 280px;
-  z-index: 10000;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
-}
-
-#cup-sidebar-widget.cup-in-sidebar {
-  margin: 12px 8px;
-}
-
-/* Widget Header */
 .cup-widget-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px;
   cursor: pointer;
-  transition: background 0.2s;
+  padding: 4px 0;
+  color: var(--cup-text);
 }
 
 .cup-widget-header:hover {
-  background: rgba(255, 255, 255, 0.05);
+  opacity: 0.8;
 }
 
 .cup-widget-icon {
-  font-size: 18px;
+  font-size: 14px;
 }
 
 .cup-widget-title {
   font-size: 13px;
-  font-weight: 600;
-  color: #e4e4e7;
+  font-weight: 500;
   flex: 1;
+  color: var(--cup-text);
 }
 
 .cup-widget-percent {
-  font-size: 14px;
-  font-weight: 700;
-  color: #22c55e;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cup-success);
   font-variant-numeric: tabular-nums;
 }
 
 .cup-widget-expand {
   font-size: 10px;
-  color: #71717a;
+  color: var(--cup-text-dim);
   transition: transform 0.2s;
 }
 
 /* Progress Bar */
 .cup-widget-progress-container {
-  padding: 0 12px 12px;
+  padding: 8px 0;
 }
 
 .cup-widget-progress-bg {
-  height: 8px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
+  height: 6px;
+  background: var(--cup-progress-bg);
+  border-radius: 3px;
   overflow: hidden;
 }
 
 .cup-widget-progress-bar {
   height: 100%;
   width: 0%;
-  background: linear-gradient(90deg, #2563eb, #8b5cf6);
-  border-radius: 4px;
-  transition: width 0.5s ease, background 0.3s ease;
+  background: var(--cup-accent);
+  border-radius: 3px;
+  transition: width 0.5s ease;
 }
 
 /* Widget Details */
 .cup-widget-details {
   display: none;
-  padding: 0 12px 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 8px;
+}
+
+.cup-widget-details.expanded {
+  display: block;
 }
 
 .cup-widget-section {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 0;
+  padding: 6px 0;
 }
 
 .cup-widget-label {
   font-size: 11px;
-  color: #71717a;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  color: var(--cup-text-dim);
 }
 
 .cup-widget-value {
-  font-size: 13px;
-  font-weight: 600;
-  color: #e4e4e7;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--cup-text);
   font-variant-numeric: tabular-nums;
 }
 
 .cup-widget-divider {
   height: 1px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--cup-border);
   margin: 4px 0;
 }
 
@@ -313,80 +328,72 @@
 .cup-model-section {
   flex-direction: column;
   align-items: flex-start;
-  gap: 6px;
+  gap: 4px;
 }
 
 .cup-model-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   width: 100%;
   font-size: 11px;
 }
 
 .cup-model-dot {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
 }
 
-.cup-dot-sonnet { background: #3b82f6; }
-.cup-dot-opus { background: #f59e0b; }
-.cup-dot-haiku { background: #10b981; }
+.cup-dot-sonnet { background: var(--cup-accent); }
+.cup-dot-opus { background: var(--cup-warning); }
+.cup-dot-haiku { background: var(--cup-success); }
 
 .cup-model-name {
   flex: 1;
-  color: #a1a1aa;
+  color: var(--cup-text-muted);
 }
 
 .cup-model-value {
-  font-weight: 600;
-  color: #e4e4e7;
+  font-weight: 500;
+  color: var(--cup-text);
 }
 
+/* Reset countdown */
 .cup-reset-countdown {
-  color: #f59e0b !important;
-}
-
-.cup-sync-time {
-  color: #71717a !important;
-  font-size: 11px !important;
+  color: var(--cup-warning) !important;
 }
 
 /* ============================================
-   ANIMATIONS
+   FLOATING WIDGET (fallback if sidebar not found)
+   ============================================ */
+
+#cup-sidebar-widget.cup-floating {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  width: 240px;
+  background: var(--cup-bg-solid);
+  border: 1px solid var(--cup-border);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  padding: 12px;
+}
+
+/* ============================================
+   ANIMATIONS - Subtle
    ============================================ */
 
 @keyframes cup-fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(-10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
-@keyframes cup-slideDown {
-  from {
-    opacity: 0;
-    transform: translateY(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes cup-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
-}
-
-/* Warning states */
-.cup-warning {
-  animation: cup-pulse 2s infinite;
+#cup-top-bar,
+#cup-input-stats,
+#cup-sidebar-widget {
+  animation: cup-fadeIn 0.2s ease-out;
 }
 
 /* ============================================
@@ -395,28 +402,20 @@
 
 @media (max-width: 768px) {
   .cup-top-bar-inner {
-    justify-content: center;
+    gap: 8px;
   }
   
   .cup-stat {
     font-size: 11px;
-    padding: 3px 6px;
+  }
+  
+  .cup-label {
+    display: none;
   }
   
   #cup-sidebar-widget.cup-floating {
-    width: 240px;
+    width: 200px;
     bottom: 10px;
     right: 10px;
-  }
-  
-  .cup-input-stats-inner {
-    justify-content: center;
-    gap: 12px;
-  }
-  
-  .cup-quota-section {
-    order: -1;
-    width: 100%;
-    max-width: none;
   }
 }

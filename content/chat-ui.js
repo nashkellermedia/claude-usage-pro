@@ -1,5 +1,6 @@
 /**
- * Claude Usage Pro - Chat UI Components
+ * Claude Usage Pro - Chat UI
+ * Top bar and input stats overlay
  */
 
 class ChatUI {
@@ -9,11 +10,18 @@ class ChatUI {
     this.initialized = false;
     this.lastDraftLength = 0;
     this.typingInterval = null;
+    this.currentModel = 'claude-sonnet-4';
   }
   
   initialize() {
-    window.CUP.log('ChatUI initialized');
+    window.CUP.log('ChatUI: Initializing...');
     this.initialized = true;
+    
+    // Detect initial model
+    this.currentModel = this.detectModel();
+    
+    // Watch for model changes
+    this.startModelWatcher();
   }
   
   async injectUI() {
@@ -22,13 +30,64 @@ class ChatUI {
     this.startDraftMonitor();
   }
   
+  /**
+   * Detect current model from page
+   */
+  detectModel() {
+    // Check the model selector/dropdown
+    const modelButton = document.querySelector('[data-testid="model-selector"]') ||
+                       document.querySelector('button[class*="model"]') ||
+                       document.querySelector('[class*="ModelSelect"]');
+    
+    if (modelButton) {
+      const text = modelButton.textContent?.toLowerCase() || '';
+      if (text.includes('opus')) return 'claude-opus-4';
+      if (text.includes('haiku')) return 'claude-haiku-4';
+      if (text.includes('sonnet')) return 'claude-sonnet-4';
+    }
+    
+    // Check for model name anywhere in bottom area (near submit button)
+    const bottomArea = document.querySelector('[class*="composer"]') ||
+                      document.querySelector('form');
+    if (bottomArea) {
+      const text = bottomArea.textContent?.toLowerCase() || '';
+      if (text.includes('opus')) return 'claude-opus-4';
+      if (text.includes('haiku')) return 'claude-haiku-4';
+    }
+    
+    // Check full page for model references
+    const allText = document.body?.innerText?.toLowerCase() || '';
+    
+    // Look for specific model version strings
+    if (allText.includes('opus 4.5') || allText.includes('opus-4')) return 'claude-opus-4';
+    if (allText.includes('haiku 4.5') || allText.includes('haiku-4')) return 'claude-haiku-4';
+    
+    return 'claude-sonnet-4';
+  }
+  
+  /**
+   * Watch for model selector changes
+   */
+  startModelWatcher() {
+    setInterval(() => {
+      const newModel = this.detectModel();
+      if (newModel !== this.currentModel) {
+        this.currentModel = newModel;
+        this.updateModelBadge(newModel);
+        window.CUP.log('ChatUI: Model changed to', newModel);
+      }
+    }, 2000);
+  }
+  
   async injectTopBar() {
-    // Find the main content area
+    // Wait for main content area
+    await new Promise(r => setTimeout(r, 500));
+    
     const mainSelectors = [
       'main',
       '[class*="conversation"]',
-      '[class*="chat-container"]',
-      '.relative.flex.flex-col'
+      '[class*="ConversationView"]',
+      '.relative.flex.h-full.flex-col'
     ];
     
     let mainContent = null;
@@ -38,7 +97,7 @@ class ChatUI {
     }
     
     if (!mainContent) {
-      window.CUP.log('ChatUI: Main content not found');
+      window.CUP.log('ChatUI: Main content not found for top bar');
       return;
     }
     
@@ -48,55 +107,67 @@ class ChatUI {
     this.topBar.id = 'cup-top-bar';
     this.topBar.innerHTML = `
       <div class="cup-top-bar-inner">
-        <div class="cup-stat" title="Conversation context length">
+        <div class="cup-stat">
           <span class="cup-icon">📝</span>
           <span class="cup-label">Context:</span>
           <span class="cup-value" id="cup-conv-tokens">0</span>
           <span class="cup-unit">tokens</span>
         </div>
-        <div class="cup-stat" title="Estimated cost for next message">
+        <div class="cup-stat">
           <span class="cup-icon">💰</span>
-          <span class="cup-label">Next msg:</span>
+          <span class="cup-label">Next:</span>
           <span class="cup-value" id="cup-next-cost">~0</span>
-          <span class="cup-unit">tokens</span>
         </div>
-        <div class="cup-stat" title="Prompt caching status">
-          <span class="cup-icon" id="cup-cache-icon">💾</span>
+        <div class="cup-stat">
+          <span class="cup-icon">💾</span>
           <span class="cup-label">Cache:</span>
-          <span class="cup-value" id="cup-cache-status">Unknown</span>
+          <span class="cup-value" id="cup-cache-status">—</span>
         </div>
-        <div class="cup-stat cup-model-stat" title="Current model">
+        <div class="cup-stat">
           <span class="cup-icon">🤖</span>
-          <span class="cup-badge" id="cup-model-badge">Sonnet</span>
+          <span class="cup-badge" id="cup-model-badge">SONNET</span>
           <span class="cup-multiplier" id="cup-model-multiplier">1x</span>
         </div>
       </div>
     `;
     
     mainContent.insertBefore(this.topBar, mainContent.firstChild);
+    
+    // Set initial model
+    this.updateModelBadge(this.currentModel);
+    
     window.CUP.log('ChatUI: Top bar injected');
   }
   
   async injectInputStats() {
-    // Find the composer/input area
+    await new Promise(r => setTimeout(r, 500));
+    
+    // Find composer area
     const composerSelectors = [
       '[class*="composer"]',
-      '[class*="input-container"]',
-      'form',
-      '[contenteditable="true"]'
+      '[class*="Composer"]',
+      'form:has([contenteditable])',
+      'form:has(textarea)'
     ];
     
     let composer = null;
     for (const sel of composerSelectors) {
-      const el = document.querySelector(sel);
-      if (el) {
-        composer = el.closest('form') || el.closest('[class*="composer"]') || el.parentElement?.parentElement;
+      try {
+        composer = document.querySelector(sel);
         if (composer) break;
+      } catch (e) {}
+    }
+    
+    // Fallback: find by contenteditable
+    if (!composer) {
+      const editable = document.querySelector('[contenteditable="true"]');
+      if (editable) {
+        composer = editable.closest('form') || editable.parentElement?.parentElement?.parentElement;
       }
     }
     
     if (!composer) {
-      window.CUP.log('ChatUI: Composer not found');
+      window.CUP.log('ChatUI: Composer not found for input stats');
       return;
     }
     
@@ -120,17 +191,23 @@ class ChatUI {
         </div>
         <div class="cup-input-stat">
           <span class="cup-input-icon">📊</span>
-          <span class="cup-input-value" id="cup-msgs-remaining">~999</span>
-          <span class="cup-input-label">msgs left</span>
+          <span class="cup-input-value" id="cup-msgs-remaining">~450</span>
+          <span class="cup-input-label">left</span>
         </div>
         <div class="cup-input-stat">
           <span class="cup-input-icon">⏱️</span>
-          <span class="cup-input-value" id="cup-reset-timer">--:--</span>
+          <span class="cup-input-value" id="cup-reset-timer">—</span>
         </div>
       </div>
     `;
     
-    composer.parentElement.appendChild(this.inputStats);
+    // Insert after composer
+    if (composer.parentElement) {
+      composer.parentElement.appendChild(this.inputStats);
+    } else {
+      composer.appendChild(this.inputStats);
+    }
+    
     window.CUP.log('ChatUI: Input stats injected');
   }
   
@@ -138,60 +215,33 @@ class ChatUI {
     if (this.typingInterval) clearInterval(this.typingInterval);
     
     this.typingInterval = setInterval(() => {
-      this.updateDraftCounter();
-    }, 500);
-  }
-  
-  updateDraftCounter() {
-    const inputSelectors = ['[class*="ProseMirror"]', '[contenteditable="true"]', 'textarea'];
-    
-    let text = '';
-    for (const sel of inputSelectors) {
-      const input = document.querySelector(sel);
+      const input = document.querySelector('[contenteditable="true"]') ||
+                   document.querySelector('textarea');
+      
       if (input) {
-        text = input.innerText || input.value || '';
-        break;
+        const text = input.innerText || input.value || '';
+        const tokens = Math.ceil(text.length / 4);
+        
+        if (tokens !== this.lastDraftLength) {
+          this.lastDraftLength = tokens;
+          const el = document.getElementById('cup-draft-tokens');
+          if (el) {
+            el.textContent = tokens.toLocaleString();
+            
+            // Color based on length
+            if (tokens > 10000) el.style.color = 'var(--cup-danger)';
+            else if (tokens > 5000) el.style.color = 'var(--cup-warning)';
+            else el.style.color = 'var(--cup-success)';
+          }
+        }
       }
-    }
-    
-    const tokens = Math.ceil(text.length / 4);
-    const draftEl = document.getElementById('cup-draft-tokens');
-    
-    if (draftEl && tokens !== this.lastDraftLength) {
-      draftEl.textContent = tokens.toLocaleString();
-      this.lastDraftLength = tokens;
-      
-      if (tokens > 10000) draftEl.style.color = '#ef4444';
-      else if (tokens > 5000) draftEl.style.color = '#f59e0b';
-      else draftEl.style.color = '#22c55e';
-    }
-  }
-  
-  updateConversation(conversationData, model) {
-    if (!conversationData) return;
-    
-    const convTokensEl = document.getElementById('cup-conv-tokens');
-    if (convTokensEl) {
-      const tokens = conversationData.length || 0;
-      convTokensEl.textContent = this.formatNumber(tokens);
-      
-      if (tokens > 150000) convTokensEl.style.color = '#ef4444';
-      else if (tokens > 100000) convTokensEl.style.color = '#f59e0b';
-      else convTokensEl.style.color = '#22c55e';
-    }
-    
-    const nextCostEl = document.getElementById('cup-next-cost');
-    if (nextCostEl) {
-      const contextCost = conversationData.length || 0;
-      nextCostEl.textContent = '~' + this.formatNumber(contextCost + 1000);
-    }
-    
-    this.updateModelBadge(model);
+    }, 300);
   }
   
   updateModelBadge(model) {
     const badgeEl = document.getElementById('cup-model-badge');
     const multEl = document.getElementById('cup-model-multiplier');
+    
     if (!badgeEl || !multEl) return;
     
     const modelLower = (model || '').toLowerCase();
@@ -200,33 +250,26 @@ class ChatUI {
       badgeEl.textContent = 'OPUS';
       badgeEl.className = 'cup-badge cup-badge-opus';
       multEl.textContent = '5x';
-      multEl.className = 'cup-multiplier cup-mult-opus';
     } else if (modelLower.includes('haiku')) {
       badgeEl.textContent = 'HAIKU';
       badgeEl.className = 'cup-badge cup-badge-haiku';
       multEl.textContent = '0.2x';
-      multEl.className = 'cup-multiplier cup-mult-haiku';
     } else {
       badgeEl.textContent = 'SONNET';
       badgeEl.className = 'cup-badge cup-badge-sonnet';
       multEl.textContent = '1x';
-      multEl.className = 'cup-multiplier cup-mult-sonnet';
     }
   }
   
-  updateCacheStatus(isCached, expiresIn) {
-    const iconEl = document.getElementById('cup-cache-icon');
-    const statusEl = document.getElementById('cup-cache-status');
-    if (!iconEl || !statusEl) return;
+  updateConversation(conversationData, model) {
+    if (conversationData) {
+      const tokens = conversationData.length || 0;
+      this.updateElement('cup-conv-tokens', this.formatNumber(tokens));
+      this.updateElement('cup-next-cost', '~' + this.formatNumber(tokens + 1000));
+    }
     
-    if (isCached) {
-      iconEl.textContent = '✅';
-      statusEl.textContent = expiresIn ? `Active (${expiresIn}m)` : 'Active';
-      statusEl.style.color = '#22c55e';
-    } else {
-      iconEl.textContent = '💾';
-      statusEl.textContent = 'Unknown';
-      statusEl.style.color = '#71717a';
+    if (model) {
+      this.updateModelBadge(model);
     }
   }
   
@@ -247,53 +290,43 @@ class ChatUI {
     
     const cap = usageData.usageCap || 45000000;
     const percentage = (weightedTotal / cap) * 100;
+    const remaining = cap - weightedTotal;
     
-    // Update mini progress bar
+    // Progress bar
     const progressEl = document.getElementById('cup-mini-progress');
     if (progressEl) {
       progressEl.style.width = Math.min(percentage, 100) + '%';
-      
-      if (percentage >= 90) progressEl.style.background = 'linear-gradient(90deg, #ef4444, #dc2626)';
-      else if (percentage >= 70) progressEl.style.background = 'linear-gradient(90deg, #f59e0b, #d97706)';
-      else progressEl.style.background = 'linear-gradient(90deg, #2563eb, #3b82f6)';
     }
     
-    // Update percentage
-    const percentEl = document.getElementById('cup-quota-percent');
-    if (percentEl) {
-      percentEl.textContent = percentage.toFixed(1) + '%';
-    }
+    // Percentage
+    this.updateElement('cup-quota-percent', percentage.toFixed(1) + '%');
     
-    // Estimate messages remaining - FIX: use reasonable defaults
-    const msgsRemainingEl = document.getElementById('cup-msgs-remaining');
-    if (msgsRemainingEl) {
-      const remaining = cap - weightedTotal;
-      
-      // Use average of 100K tokens per message if no history, otherwise calculate
-      let avgTokensPerMsg = 100000;
-      if (usageData.messagesCount > 0 && weightedTotal > 0) {
-        avgTokensPerMsg = Math.max(10000, weightedTotal / usageData.messagesCount);
-      }
-      
-      const msgsLeft = Math.max(0, Math.floor(remaining / avgTokensPerMsg));
-      msgsRemainingEl.textContent = '~' + msgsLeft.toLocaleString();
-    }
+    // Messages remaining (estimate ~100K per message)
+    const avgPerMsg = usageData.messagesCount > 0 
+      ? Math.max(50000, weightedTotal / usageData.messagesCount)
+      : 100000;
+    const msgsLeft = Math.max(0, Math.floor(remaining / avgPerMsg));
+    this.updateElement('cup-msgs-remaining', '~' + msgsLeft);
     
-    // Update reset timer
-    const resetEl = document.getElementById('cup-reset-timer');
-    if (resetEl && usageData.resetTimestamp) {
-      const msRemaining = usageData.resetTimestamp - Date.now();
-      if (msRemaining > 0) {
-        const hours = Math.floor(msRemaining / (1000 * 60 * 60));
-        const mins = Math.floor((msRemaining % (1000 * 60 * 60)) / (1000 * 60));
-        resetEl.textContent = `${hours}h ${mins}m`;
+    // Reset timer
+    if (usageData.resetTimestamp) {
+      const ms = usageData.resetTimestamp - Date.now();
+      if (ms > 0) {
+        const h = Math.floor(ms / 3600000);
+        const m = Math.floor((ms % 3600000) / 60000);
+        this.updateElement('cup-reset-timer', `${h}h ${m}m`);
       } else {
-        resetEl.textContent = 'Now!';
+        this.updateElement('cup-reset-timer', 'Now!');
       }
     }
     
-    if (conversationData) this.updateConversation(conversationData, model);
-    this.updateModelBadge(model);
+    // Update model badge
+    this.updateModelBadge(model || this.currentModel);
+  }
+  
+  updateElement(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
   }
   
   formatNumber(num) {
@@ -309,4 +342,4 @@ class ChatUI {
 }
 
 window.ChatUI = ChatUI;
-window.CUP.log('ChatUI class loaded');
+window.CUP.log('ChatUI loaded');

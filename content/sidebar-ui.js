@@ -1,12 +1,6 @@
 /**
- * Claude Usage Pro - Sidebar UI Component
- * 
- * Features:
- * - Progress bar with percentage
- * - Model breakdown (Sonnet/Opus/Haiku)
- * - Reset countdown timer
- * - Expandable details view
- * - Color-coded warnings
+ * Claude Usage Pro - Sidebar UI
+ * Integrates seamlessly into Claude's existing sidebar
  */
 
 class SidebarUI {
@@ -19,19 +13,49 @@ class SidebarUI {
   async initialize() {
     window.CUP.log('SidebarUI: Initializing...');
     
-    this.buildUI();
+    // Wait for sidebar to be available
+    await this.waitForSidebar();
     
-    // Try to find sidebar
-    const sidebar = await this.findSidebar();
-    if (sidebar) {
-      this.injectIntoSidebar(sidebar);
-    } else {
-      window.CUP.log('SidebarUI: Sidebar not found, will create floating widget');
-      this.createFloatingWidget();
-    }
+    this.buildUI();
+    await this.injectIntoSidebar();
     
     this.initialized = true;
-    window.CUP.log('SidebarUI: Initialized successfully');
+    window.CUP.log('SidebarUI: Initialized');
+  }
+  
+  async waitForSidebar() {
+    for (let i = 0; i < 20; i++) {
+      const sidebar = this.findSidebar();
+      if (sidebar) return sidebar;
+      await new Promise(r => setTimeout(r, 250));
+    }
+    return null;
+  }
+  
+  findSidebar() {
+    // Claude.ai sidebar selectors
+    const selectors = [
+      'nav[class*="flex-col"]',
+      'nav.flex.flex-col',
+      '[class*="Sidebar"]',
+      '[class*="sidebar"]',
+      'aside nav',
+      'nav'
+    ];
+    
+    for (const sel of selectors) {
+      const elements = document.querySelectorAll(sel);
+      for (const el of elements) {
+        // Check if it looks like a sidebar (has chat links, etc)
+        if (el.querySelector('a[href*="/chat"]') || 
+            el.querySelector('[class*="starred"]') ||
+            el.querySelector('[class*="recent"]') ||
+            el.innerText?.includes('New chat')) {
+          return el;
+        }
+      }
+    }
+    return null;
   }
   
   buildUI() {
@@ -42,7 +66,7 @@ class SidebarUI {
         <span class="cup-widget-icon">📊</span>
         <span class="cup-widget-title">Usage</span>
         <span class="cup-widget-percent" id="cup-sidebar-percent">0%</span>
-        <span class="cup-widget-expand">▼</span>
+        <span class="cup-widget-expand" id="cup-expand-icon">▼</span>
       </div>
       
       <div class="cup-widget-progress-container">
@@ -53,22 +77,22 @@ class SidebarUI {
       
       <div class="cup-widget-details" id="cup-widget-details">
         <div class="cup-widget-section">
-          <div class="cup-widget-label">Total Used</div>
-          <div class="cup-widget-value" id="cup-sidebar-used">0</div>
+          <span class="cup-widget-label">Used</span>
+          <span class="cup-widget-value" id="cup-sidebar-used">0</span>
         </div>
         
         <div class="cup-widget-section">
-          <div class="cup-widget-label">Remaining</div>
-          <div class="cup-widget-value" id="cup-sidebar-remaining">45M</div>
+          <span class="cup-widget-label">Remaining</span>
+          <span class="cup-widget-value" id="cup-sidebar-remaining">45M</span>
         </div>
         
         <div class="cup-widget-divider"></div>
         
         <div class="cup-widget-section cup-model-section">
-          <div class="cup-widget-label">By Model</div>
+          <span class="cup-widget-label">By Model</span>
           <div class="cup-model-row">
             <span class="cup-model-dot cup-dot-sonnet"></span>
-            <span class="cup-model-name">Sonnet (1x)</span>
+            <span class="cup-model-name">Sonnet</span>
             <span class="cup-model-value" id="cup-sidebar-sonnet">0</span>
           </div>
           <div class="cup-model-row">
@@ -78,7 +102,7 @@ class SidebarUI {
           </div>
           <div class="cup-model-row">
             <span class="cup-model-dot cup-dot-haiku"></span>
-            <span class="cup-model-name">Haiku (0.2x)</span>
+            <span class="cup-model-name">Haiku</span>
             <span class="cup-model-value" id="cup-sidebar-haiku">0</span>
           </div>
         </div>
@@ -86,105 +110,71 @@ class SidebarUI {
         <div class="cup-widget-divider"></div>
         
         <div class="cup-widget-section">
-          <div class="cup-widget-label">Messages</div>
-          <div class="cup-widget-value" id="cup-sidebar-messages">0</div>
-        </div>
-        
-        <div class="cup-widget-section">
-          <div class="cup-widget-label">Resets In</div>
-          <div class="cup-widget-value cup-reset-countdown" id="cup-sidebar-reset">--:--</div>
-        </div>
-        
-        <div class="cup-widget-section cup-sync-section">
-          <div class="cup-widget-label">Last Sync</div>
-          <div class="cup-widget-value cup-sync-time" id="cup-sidebar-sync">Never</div>
+          <span class="cup-widget-label">Resets in</span>
+          <span class="cup-widget-value cup-reset-countdown" id="cup-sidebar-reset">--:--</span>
         </div>
       </div>
     `;
     
-    // Add toggle listener
-    setTimeout(() => {
-      const toggle = document.getElementById('cup-widget-toggle');
-      if (toggle) {
-        toggle.addEventListener('click', () => this.toggleExpand());
-      }
-    }, 100);
-    
-    window.CUP.log('SidebarUI: Built UI elements');
+    // Toggle handler
+    this.container.querySelector('#cup-widget-toggle').addEventListener('click', () => {
+      this.toggleExpand();
+    });
   }
   
-  async findSidebar() {
-    const selectors = [
-      'nav.flex-col',
-      'nav[aria-label*="Sidebar"]',
-      '[class*="sidebar"]',
-      'aside',
-      '[class*="side-nav"]'
-    ];
+  async injectIntoSidebar() {
+    const sidebar = this.findSidebar();
     
-    for (const sel of selectors) {
-      const sidebar = document.querySelector(sel);
-      if (sidebar) {
-        window.CUP.log('Found sidebar with selector:', sel);
-        return sidebar;
-      }
+    if (!sidebar) {
+      window.CUP.log('SidebarUI: No sidebar found, using floating widget');
+      this.container.classList.add('cup-floating');
+      document.body.appendChild(this.container);
+      return;
     }
-    return null;
-  }
-  
-  injectIntoSidebar(sidebar) {
-    // Look for a good injection point
-    const targets = [
-      '[class*="starred"]',
-      '[class*="recent"]',
-      '[class*="history"]',
-      'ul',
-      'div'
+    
+    // Find the best injection point - after "Starred" section
+    const injectionPoints = [
+      sidebar.querySelector('[class*="starred"]'),
+      sidebar.querySelector('[class*="Starred"]'),
+      sidebar.querySelector('div > ul'),
+      sidebar.querySelector('[class*="recent"]'),
+      sidebar.firstElementChild
     ];
     
     let injectionPoint = null;
-    for (const sel of targets) {
-      const el = sidebar.querySelector(sel);
-      if (el) {
-        injectionPoint = el;
-        window.CUP.log('SidebarUI: Found injection point near:', sel);
+    for (const point of injectionPoints) {
+      if (point) {
+        injectionPoint = point;
         break;
       }
     }
     
-    if (injectionPoint) {
-      injectionPoint.parentNode.insertBefore(this.container, injectionPoint);
+    if (injectionPoint && injectionPoint.parentNode) {
+      // Insert after the injection point
+      injectionPoint.parentNode.insertBefore(this.container, injectionPoint.nextSibling);
+      window.CUP.log('SidebarUI: Injected after', injectionPoint.className || 'element');
     } else {
+      // Fallback: prepend to sidebar
       sidebar.insertBefore(this.container, sidebar.firstChild);
+      window.CUP.log('SidebarUI: Prepended to sidebar');
     }
-    
-    this.container.classList.add('cup-in-sidebar');
-    window.CUP.log('SidebarUI: Injected successfully');
-  }
-  
-  createFloatingWidget() {
-    this.container.classList.add('cup-floating');
-    document.body.appendChild(this.container);
-    window.CUP.log('SidebarUI: Created floating widget');
   }
   
   toggleExpand() {
     this.isExpanded = !this.isExpanded;
     const details = document.getElementById('cup-widget-details');
-    const expand = this.container.querySelector('.cup-widget-expand');
+    const icon = document.getElementById('cup-expand-icon');
     
     if (details) {
-      details.style.display = this.isExpanded ? 'block' : 'none';
+      details.classList.toggle('expanded', this.isExpanded);
     }
-    if (expand) {
-      expand.textContent = this.isExpanded ? '▲' : '▼';
+    if (icon) {
+      icon.textContent = this.isExpanded ? '▲' : '▼';
     }
   }
   
   update(usageData) {
     if (!usageData) return;
-    
-    window.CUP.log('SidebarUI.update() called');
     
     const modelUsage = usageData.modelUsage || {};
     const multipliers = {
@@ -203,22 +193,19 @@ class SidebarUI {
     const percentage = (weightedTotal / cap) * 100;
     const remaining = Math.max(0, cap - weightedTotal);
     
-    window.CUP.log(`SidebarUI.update: percentage=${percentage.toFixed(2)}%, weighted=${weightedTotal}, cap=${cap}`);
-    
-    // Update percentage display
+    // Update percentage
     const percentEl = document.getElementById('cup-sidebar-percent');
     if (percentEl) {
       percentEl.textContent = percentage.toFixed(1) + '%';
       
-      // Color based on usage
+      // Color based on usage level
       if (percentage >= 90) {
-        percentEl.style.color = '#ef4444';
+        percentEl.style.color = 'var(--cup-danger)';
       } else if (percentage >= 70) {
-        percentEl.style.color = '#f59e0b';
+        percentEl.style.color = 'var(--cup-warning)';
       } else {
-        percentEl.style.color = '#22c55e';
+        percentEl.style.color = 'var(--cup-success)';
       }
-      window.CUP.log(`SidebarUI.update: Updated percentage to ${percentage.toFixed(1)}%`);
     }
     
     // Update progress bar
@@ -227,26 +214,20 @@ class SidebarUI {
       progressEl.style.width = Math.min(percentage, 100) + '%';
       
       if (percentage >= 90) {
-        progressEl.style.background = 'linear-gradient(90deg, #ef4444, #dc2626)';
+        progressEl.style.background = 'var(--cup-danger)';
       } else if (percentage >= 70) {
-        progressEl.style.background = 'linear-gradient(90deg, #f59e0b, #d97706)';
+        progressEl.style.background = 'var(--cup-warning)';
       } else {
-        progressEl.style.background = 'linear-gradient(90deg, #2563eb, #8b5cf6)';
+        progressEl.style.background = 'var(--cup-accent)';
       }
-      window.CUP.log(`SidebarUI.update: Updated progress bar to ${percentage}%`);
     }
     
-    // Update totals
+    // Update text values
     this.updateElement('cup-sidebar-used', this.formatNumber(weightedTotal));
     this.updateElement('cup-sidebar-remaining', this.formatNumber(remaining));
-    
-    // Update model breakdown
     this.updateElement('cup-sidebar-sonnet', this.formatNumber(modelUsage['claude-sonnet-4'] || 0));
     this.updateElement('cup-sidebar-opus', this.formatNumber(modelUsage['claude-opus-4'] || 0));
     this.updateElement('cup-sidebar-haiku', this.formatNumber(modelUsage['claude-haiku-4'] || 0));
-    
-    // Update messages count
-    this.updateElement('cup-sidebar-messages', (usageData.messagesCount || 0).toLocaleString());
     
     // Update reset time
     if (usageData.resetTimestamp) {
@@ -258,16 +239,7 @@ class SidebarUI {
       } else {
         this.updateElement('cup-sidebar-reset', 'Now!');
       }
-      window.CUP.log(`SidebarUI.update: Updated reset time`);
     }
-    
-    // Update sync time
-    if (usageData.lastSynced) {
-      const ago = Math.round((Date.now() - usageData.lastSynced) / 60000);
-      this.updateElement('cup-sidebar-sync', ago < 1 ? 'Just now' : `${ago}m ago`);
-    }
-    
-    window.CUP.log('SidebarUI.update: Complete');
   }
   
   updateElement(id, value) {
@@ -283,10 +255,10 @@ class SidebarUI {
   
   checkAndReinject() {
     if (!document.getElementById('cup-sidebar-widget')) {
-      this.initialize();
+      this.injectIntoSidebar();
     }
   }
 }
 
 window.SidebarUI = SidebarUI;
-window.CUP.log('SidebarUI class loaded');
+window.CUP.log('SidebarUI loaded');

@@ -1,272 +1,217 @@
 /**
  * Claude Usage Pro - Background Service Worker
+ * Handles storage, sync, and cross-tab communication
  */
 
-const DEFAULT_QUOTA = 45000000;
-
-const STORAGE_KEYS = {
-  USAGE_DATA: 'usageData',
-  SETTINGS: 'settings'
+// Default usage data structure
+const DEFAULT_USAGE = {
+  modelUsage: {
+    'claude-sonnet-4': 0,
+    'claude-opus-4': 0,
+    'claude-haiku-4': 0
+  },
+  messagesCount: 0,
+  usageCap: 45000000,
+  resetTimestamp: getNextResetTime(),
+  lastSynced: null
 };
 
-async function initializeUsageData() {
-  const data = await chrome.storage.local.get(STORAGE_KEYS.USAGE_DATA);
-  
-  if (!data[STORAGE_KEYS.USAGE_DATA]) {
-    const defaultData = {
-      tokensUsed: 0,
-      usageCap: DEFAULT_QUOTA,
-      resetTimestamp: getNextResetTimestamp(),
-      messagesCount: 0,
-      lastUpdated: Date.now(),
-      lastSynced: null,
-      syncedUsagePercent: null,
-      modelUsage: {
-        'claude-sonnet-4': 0,
-        'claude-haiku-4': 0,
-        'claude-opus-4': 0
-      }
-    };
-    
-    await chrome.storage.local.set({ [STORAGE_KEYS.USAGE_DATA]: defaultData });
-    console.log('[CUP] Initialized default usage data');
-    return defaultData;
-  }
-  
-  return data[STORAGE_KEYS.USAGE_DATA];
-}
+// Firebase config (user can set this in settings)
+let firebaseConfig = null;
 
-function getNextResetTimestamp() {
+/**
+ * Get next reset time (midnight UTC)
+ */
+function getNextResetTime() {
   const now = new Date();
-  const tomorrow = new Date(now);
-  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
-  tomorrow.setUTCHours(0, 0, 0, 0);
+  const tomorrow = new Date(Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate() + 1,
+    0, 0, 0, 0
+  ));
   return tomorrow.getTime();
 }
 
-async function getUsageData() {
-  const data = await chrome.storage.local.get(STORAGE_KEYS.USAGE_DATA);
-  return data[STORAGE_KEYS.USAGE_DATA] || await initializeUsageData();
-}
-
-async function saveUsageData(usageData) {
-  await chrome.storage.local.set({ [STORAGE_KEYS.USAGE_DATA]: usageData });
-}
-
+/**
+ * Normalize model name
+ */
 function normalizeModel(model) {
-  if (!model || typeof model !== 'string') return 'claude-sonnet-4';
+  if (!model) return 'claude-sonnet-4';
   const lower = model.toLowerCase();
   if (lower.includes('opus')) return 'claude-opus-4';
   if (lower.includes('haiku')) return 'claude-haiku-4';
   return 'claude-sonnet-4';
 }
 
-async function addUsage(tokens, model) {
-  const usageData = await getUsageData();
-  const normalizedModel = normalizeModel(model);
-  
-  if (!usageData.modelUsage) {
-    usageData.modelUsage = {
-      'claude-sonnet-4': 0,
-      'claude-haiku-4': 0,
-      'claude-opus-4': 0
-    };
+/**
+ * Get stored usage data
+ */
+async function getUsageData() {
+  try {
+    const result = await chrome.storage.local.get(['usageData', 'settings']);
+    let data = result.usageData || { ...DEFAULT_USAGE };
+    
+    // Check if we need to reset (new day)
+    if (data.resetTimestamp && Date.now() >= data.resetTimestamp) {
+      console.log('[CUP BG] Resetting usage for new day');
+      data = {
+        ...DEFAULT_USAGE,
+        resetTimestamp: getNextResetTime()
+      };
+      await chrome.storage.local.set({ usageData: data });
+    }
+    
+    // Apply settings cap if set
+    if (result.settings?.quota) {
+      data.usageCap = result.settings.quota;
+    }
+    
+    return data;
+  } catch (e) {
+    console.error('[CUP BG] Get usage error:', e);
+    return { ...DEFAULT_USAGE };
   }
-  
-  usageData.modelUsage[normalizedModel] = (usageData.modelUsage[normalizedModel] || 0) + tokens;
-  usageData.tokensUsed += tokens;
-  usageData.messagesCount++;
-  usageData.lastUpdated = Date.now();
-  
-  await saveUsageData(usageData);
-  await updateBadge(usageData);
-  notifyAllTabs(usageData); // Don't await - fire and forget
-  
-  console.log(`[CUP] Added ${tokens} tokens for ${normalizedModel}`);
-  return usageData;
 }
 
-async function syncWithScrapedData(scrapedData) {
-  const usageData = await getUsageData();
-  
-  if (scrapedData && scrapedData.usagePercent !== undefined) {
-    usageData.syncedUsagePercent = scrapedData.usagePercent;
-    usageData.lastSynced = Date.now();
+/**
+ * Save usage data
+ */
+async function saveUsageData(data) {
+  try {
+    data.lastSynced = Date.now();
+    await chrome.storage.local.set({ usageData: data });
     
-    const actualTokens = Math.round((scrapedData.usagePercent / 100) * usageData.usageCap);
-    usageData.tokensUsed = actualTokens;
+    // Update badge
+    updateBadge(data);
     
-    console.log('[CUP] Synced:', scrapedData.usagePercent + '%');
+    return data;
+  } catch (e) {
+    console.error('[CUP BG] Save usage error:', e);
+    return data;
   }
-  
-  if (scrapedData && scrapedData.resetTime) {
-    usageData.resetTimestamp = scrapedData.resetTime;
-  }
-  
-  await saveUsageData(usageData);
-  await updateBadge(usageData);
-  notifyAllTabs(usageData);
-  
-  return usageData;
 }
 
-async function checkAndReset() {
-  const usageData = await getUsageData();
-  
-  if (Date.now() >= usageData.resetTimestamp) {
-    console.log('[CUP] Resetting usage...');
-    
-    const newData = {
-      tokensUsed: 0,
-      usageCap: usageData.usageCap,
-      resetTimestamp: getNextResetTimestamp(),
-      messagesCount: 0,
-      lastUpdated: Date.now(),
-      lastSynced: null,
-      syncedUsagePercent: 0,
-      modelUsage: {
-        'claude-sonnet-4': 0,
-        'claude-haiku-4': 0,
-        'claude-opus-4': 0
-      }
-    };
-    
-    await saveUsageData(newData);
-    await updateBadge(newData);
-    notifyAllTabs(newData);
-    return newData;
-  }
-  
-  return usageData;
-}
-
+/**
+ * Update extension badge
+ */
 async function updateBadge(usageData) {
-  let weightedTotal = 0;
-  const multipliers = {
-    'claude-sonnet-4': 1.0,
-    'claude-haiku-4': 0.2,
-    'claude-opus-4': 5.0
-  };
-  
-  for (const [model, tokens] of Object.entries(usageData.modelUsage || {})) {
-    weightedTotal += tokens * (multipliers[model] || 1.0);
+  try {
+    const settings = (await chrome.storage.local.get('settings')).settings || {};
+    if (settings.showBadge === false) {
+      chrome.action.setBadgeText({ text: '' });
+      return;
+    }
+    
+    const modelUsage = usageData.modelUsage || {};
+    let weightedTotal = 0;
+    weightedTotal += (modelUsage['claude-sonnet-4'] || 0) * 1.0;
+    weightedTotal += (modelUsage['claude-opus-4'] || 0) * 5.0;
+    weightedTotal += (modelUsage['claude-haiku-4'] || 0) * 0.2;
+    
+    const cap = usageData.usageCap || 45000000;
+    const percent = (weightedTotal / cap) * 100;
+    
+    // Show percentage on badge
+    const text = percent >= 100 ? '!' : Math.round(percent) + '%';
+    
+    chrome.action.setBadgeText({ text });
+    
+    // Color based on usage
+    let color = '#22c55e'; // green
+    if (percent >= 90) color = '#ef4444'; // red
+    else if (percent >= 70) color = '#f59e0b'; // yellow
+    
+    chrome.action.setBadgeBackgroundColor({ color });
+    
+  } catch (e) {
+    // Badge update failed, ignore
   }
-  
-  let percentage;
-  if (usageData.syncedUsagePercent !== null && usageData.lastSynced && 
-      (Date.now() - usageData.lastSynced) < 30 * 60 * 1000) {
-    percentage = usageData.syncedUsagePercent;
-  } else {
-    percentage = (weightedTotal / usageData.usageCap) * 100;
-  }
-  
-  const badgeText = percentage >= 100 ? '!' : Math.round(percentage) + '%';
-  await chrome.action.setBadgeText({ text: badgeText });
-  
-  let color = '#2c84db';
-  if (percentage >= 95) color = '#de2929';
-  else if (percentage >= 80) color = '#f59e0b';
-  
-  await chrome.action.setBadgeBackgroundColor({ color });
 }
 
-// Fire and forget - don't throw errors for unreachable tabs
+/**
+ * Notify all Claude tabs of update
+ */
 function notifyAllTabs(usageData) {
   chrome.tabs.query({ url: 'https://claude.ai/*' }).then(tabs => {
     for (const tab of tabs) {
-      chrome.tabs.sendMessage(tab.id, { type: 'USAGE_UPDATED', usageData }).catch(() => {
-        // Tab might not have content script - ignore
-      });
+      chrome.tabs.sendMessage(tab.id, { type: 'USAGE_UPDATED', usageData }).catch(() => {});
     }
   }).catch(() => {});
 }
 
-async function getSettings() {
-  const data = await chrome.storage.sync.get(STORAGE_KEYS.SETTINGS);
-  return data[STORAGE_KEYS.SETTINGS] || {
-    notifications: true,
-    showBadge: true,
-    quota: DEFAULT_QUOTA,
-    syncInterval: 5
-  };
-}
-
-async function saveSettings(settings) {
-  await chrome.storage.sync.set({ [STORAGE_KEYS.SETTINGS]: settings });
-}
-
-// Message handler
+/**
+ * Message handler
+ */
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  handleMessage(message, sender).then(sendResponse).catch(err => {
-    console.error('[CUP] Message error:', err);
-    sendResponse({ error: err.message });
-  });
-  return true;
+  handleMessage(message, sender).then(sendResponse);
+  return true; // Keep channel open for async response
 });
 
 async function handleMessage(message, sender) {
-  console.log('[CUP] Message:', message.type);
+  const { type } = message;
   
-  switch (message.type) {
+  switch (type) {
     case 'GET_USAGE_DATA': {
       const usageData = await getUsageData();
       return { usageData };
     }
     
-    case 'MESSAGE_SENT':
-    case 'MESSAGE_RECEIVED': {
+    case 'MESSAGE_SENT': {
+      const data = await getUsageData();
+      const model = normalizeModel(message.model);
       const tokens = message.tokens || 0;
-      const model = message.model || 'claude-sonnet-4';
-      const usageData = await addUsage(tokens, model);
-      return { usageData };
+      
+      data.modelUsage = data.modelUsage || {};
+      data.modelUsage[model] = (data.modelUsage[model] || 0) + tokens;
+      data.messagesCount = (data.messagesCount || 0) + 1;
+      
+      await saveUsageData(data);
+      notifyAllTabs(data);
+      return { usageData: data };
+    }
+    
+    case 'MESSAGE_RECEIVED': {
+      const data = await getUsageData();
+      const model = normalizeModel(message.model);
+      const tokens = message.tokens || 0;
+      
+      data.modelUsage = data.modelUsage || {};
+      data.modelUsage[model] = (data.modelUsage[model] || 0) + tokens;
+      
+      await saveUsageData(data);
+      notifyAllTabs(data);
+      return { usageData: data };
     }
     
     case 'SYNC_SCRAPED_DATA': {
-      const usageData = await syncWithScrapedData(message.data);
-      return { usageData };
-    }
-    
-    case 'CHECK_RESET': {
-      const usageData = await checkAndReset();
-      return { usageData };
-    }
-    
-    case 'GET_SETTINGS': {
-      const settings = await getSettings();
-      return { settings };
-    }
-    
-    case 'SAVE_SETTINGS': {
-      await saveSettings(message.settings);
-      if (message.settings.quota) {
-        const usageData = await getUsageData();
-        usageData.usageCap = message.settings.quota;
-        await saveUsageData(usageData);
-        await updateBadge(usageData);
-      }
-      return { success: true };
-    }
-    
-    case 'RESET_USAGE': {
-      const settings = await getSettings();
-      const newData = {
-        tokensUsed: 0,
-        usageCap: settings.quota || DEFAULT_QUOTA,
-        resetTimestamp: getNextResetTimestamp(),
-        messagesCount: 0,
-        lastUpdated: Date.now(),
-        lastSynced: null,
-        syncedUsagePercent: null,
-        modelUsage: {
-          'claude-sonnet-4': 0,
-          'claude-haiku-4': 0,
-          'claude-opus-4': 0
+      const data = await getUsageData();
+      const scraped = message.data;
+      
+      if (scraped) {
+        // Merge scraped data
+        if (scraped.totalTokens) {
+          // If we have total, distribute to default model
+          data.modelUsage = data.modelUsage || {};
+          data.modelUsage['claude-sonnet-4'] = scraped.totalTokens;
         }
-      };
-      await saveUsageData(newData);
-      await updateBadge(newData);
-      notifyAllTabs(newData);
-      return { usageData: newData };
+        if (scraped.modelUsage) {
+          data.modelUsage = { ...data.modelUsage, ...scraped.modelUsage };
+        }
+        if (scraped.messagesCount) {
+          data.messagesCount = scraped.messagesCount;
+        }
+        if (scraped.usageCap) {
+          data.usageCap = scraped.usageCap;
+        }
+        if (scraped.resetTimestamp) {
+          data.resetTimestamp = scraped.resetTimestamp;
+        }
+      }
+      
+      await saveUsageData(data);
+      notifyAllTabs(data);
+      return { usageData: data };
     }
     
     case 'TRIGGER_SYNC': {
@@ -279,30 +224,77 @@ async function handleMessage(message, sender) {
       return { success: true };
     }
     
+    case 'GET_SETTINGS': {
+      const result = await chrome.storage.local.get('settings');
+      return { settings: result.settings || {} };
+    }
+    
+    case 'SAVE_SETTINGS': {
+      await chrome.storage.local.set({ settings: message.settings });
+      
+      // Update usage cap if changed
+      if (message.settings.quota) {
+        const data = await getUsageData();
+        data.usageCap = message.settings.quota;
+        await saveUsageData(data);
+      }
+      
+      return { success: true };
+    }
+    
+    case 'RESET_USAGE': {
+      const freshData = {
+        ...DEFAULT_USAGE,
+        resetTimestamp: getNextResetTime(),
+        lastSynced: Date.now()
+      };
+      await saveUsageData(freshData);
+      notifyAllTabs(freshData);
+      return { usageData: freshData };
+    }
+    
+    case 'SET_FIREBASE_CONFIG': {
+      firebaseConfig = message.config;
+      await chrome.storage.local.set({ firebaseConfig: message.config });
+      return { success: true };
+    }
+    
     default:
       return { error: 'Unknown message type' };
   }
 }
 
-// Alarms
-chrome.alarms.create('checkReset', { periodInMinutes: 5 });
-
-chrome.alarms.onAlarm.addListener(async (alarm) => {
-  if (alarm.name === 'checkReset') {
-    await checkAndReset();
+// Initialize on install
+chrome.runtime.onInstalled.addListener(async () => {
+  console.log('[CUP BG] Extension installed/updated');
+  
+  // Initialize with default data
+  const existing = await chrome.storage.local.get('usageData');
+  if (!existing.usageData) {
+    await chrome.storage.local.set({
+      usageData: { ...DEFAULT_USAGE, resetTimestamp: getNextResetTime() }
+    });
+  }
+  
+  // Load Firebase config
+  const config = await chrome.storage.local.get('firebaseConfig');
+  if (config.firebaseConfig) {
+    firebaseConfig = config.firebaseConfig;
   }
 });
 
-// Initialize
-chrome.runtime.onInstalled.addListener(async () => {
-  console.log('[CUP] Extension installed');
-  const usageData = await initializeUsageData();
-  await updateBadge(usageData);
+// Periodic sync alarm
+chrome.alarms.create('syncUsage', { periodInMinutes: 5 });
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name === 'syncUsage') {
+    // Trigger scrape on active Claude tabs
+    try {
+      const tabs = await chrome.tabs.query({ url: 'https://claude.ai/*' });
+      if (tabs.length > 0) {
+        chrome.tabs.sendMessage(tabs[0].id, { type: 'SCRAPE_USAGE' }).catch(() => {});
+      }
+    } catch (e) {}
+  }
 });
 
-(async () => {
-  console.log('[CUP] Service worker starting...');
-  const usageData = await initializeUsageData();
-  await updateBadge(usageData);
-  console.log('[CUP] Service worker ready');
-})();
+console.log('[CUP BG] Service worker loaded');

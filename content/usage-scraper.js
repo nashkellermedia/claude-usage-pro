@@ -1,149 +1,266 @@
 /**
  * Claude Usage Pro - Usage Scraper
- * 
- * Scrapes actual usage data from Claude's UI
- * Since there's no public API, we scrape from the DOM
+ * Scrapes actual usage data from Claude.ai UI and API responses
  */
 
 class UsageScraper {
   constructor() {
-    this.lastScrape = null;
-    this.scrapeInterval = 5 * 60 * 1000; // 5 minutes
+    this.lastScrapedData = null;
+    this.scrapedFromUI = false;
   }
   
   /**
-   * Scrape usage data
+   * Main scrape function - tries multiple methods
    */
   async scrapeUsage() {
     window.CUP.log('UsageScraper: Starting scrape...');
     
-    // Method 1: Check if we're on settings page and can read directly
-    if (window.location.href.includes('/settings')) {
-      const data = this.scrapeFromSettingsPage();
-      if (data) return data;
+    let data = null;
+    
+    // Method 1: Try to get from settings/account page API
+    data = await this.scrapeFromAPI();
+    if (data) {
+      window.CUP.log('UsageScraper: Got data from API');
+      this.lastScrapedData = data;
+      return data;
     }
     
-    // Method 2: Try to find usage in page's embedded data
-    const embeddedData = this.scrapeFromEmbeddedData();
-    if (embeddedData) return embeddedData;
+    // Method 2: Scrape from UI elements
+    data = this.scrapeFromUI();
+    if (data) {
+      window.CUP.log('UsageScraper: Got data from UI');
+      this.lastScrapedData = data;
+      return data;
+    }
     
-    // Method 3: Look for any visible usage indicators
-    const visibleData = this.scrapeFromVisibleUI();
-    if (visibleData) return visibleData;
+    // Method 3: Check for usage in page data/state
+    data = this.scrapeFromPageState();
+    if (data) {
+      window.CUP.log('UsageScraper: Got data from page state');
+      this.lastScrapedData = data;
+      return data;
+    }
     
-    window.CUP.log('UsageScraper: No data found (this is normal on chat pages)');
+    window.CUP.log('UsageScraper: No data found');
     return null;
   }
   
   /**
-   * Scrape from settings page DOM
+   * Scrape from Claude API - intercept network requests
    */
-  scrapeFromSettingsPage() {
+  async scrapeFromAPI() {
     try {
-      // Look for progress bars or percentage text
-      const progressBars = document.querySelectorAll('[role="progressbar"]');
-      for (const bar of progressBars) {
-        const value = bar.getAttribute('aria-valuenow');
-        if (value) {
-          return { usagePercent: parseFloat(value) };
+      // Try to fetch usage data from Claude's API
+      const response = await fetch('https://claude.ai/api/organizations', {
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json'
         }
-      }
+      });
       
-      // Look for percentage in text
-      const bodyText = document.body.innerText;
-      const patterns = [
-        /(\d+(?:\.\d+)?)\s*%\s*(?:of|used|remaining)/i,
-        /usage[:\s]+(\d+(?:\.\d+)?)\s*%/i,
-        /(\d+(?:\.\d+)?)\s*%\s*of\s*(?:your\s+)?(?:daily\s+)?(?:limit|quota)/i
-      ];
-      
-      for (const pattern of patterns) {
-        const match = bodyText.match(pattern);
-        if (match) {
-          return { usagePercent: parseFloat(match[1]) };
-        }
-      }
-    } catch (e) {
-      window.CUP.logError('Settings scrape error:', e);
-    }
-    return null;
-  }
-  
-  /**
-   * Look for embedded JSON data in the page
-   */
-  scrapeFromEmbeddedData() {
-    try {
-      // Check __NEXT_DATA__
-      const nextData = document.getElementById('__NEXT_DATA__');
-      if (nextData) {
-        const data = JSON.parse(nextData.textContent);
-        const user = data?.props?.pageProps?.user;
-        if (user?.usage_percentage !== undefined) {
-          return {
-            usagePercent: user.usage_percentage,
-            planType: user.plan_type
-          };
-        }
-      }
-      
-      // Check for any script tags with usage data
-      const scripts = document.querySelectorAll('script:not([src])');
-      for (const script of scripts) {
-        try {
-          if (script.textContent.includes('usage')) {
-            const content = script.textContent;
-            const usageMatch = content.match(/"usage_percentage"\s*:\s*(\d+(?:\.\d+)?)/);
-            if (usageMatch) {
-              return { usagePercent: parseFloat(usageMatch[1]) };
+      if (response.ok) {
+        const orgs = await response.json();
+        if (orgs && orgs.length > 0) {
+          const org = orgs[0];
+          
+          // Try to get usage from the org
+          const usageResponse = await fetch(`https://claude.ai/api/organizations/${org.uuid}/usage`, {
+            credentials: 'include',
+            headers: {
+              'Accept': 'application/json'
             }
+          });
+          
+          if (usageResponse.ok) {
+            const usageData = await usageResponse.json();
+            return this.parseAPIUsage(usageData);
           }
-        } catch (e) {}
+        }
       }
     } catch (e) {
-      window.CUP.logError('Embedded data scrape error:', e);
+      window.CUP.log('UsageScraper: API scrape failed:', e.message);
     }
     return null;
   }
   
   /**
-   * Look for visible usage UI elements
+   * Parse usage data from API response
    */
-  scrapeFromVisibleUI() {
+  parseAPIUsage(data) {
+    if (!data) return null;
+    
     try {
-      // Look for any element that might contain usage info
-      const selectors = [
+      return {
+        totalTokens: data.total_tokens || data.tokens_used || 0,
+        messagesCount: data.message_count || data.messages || 0,
+        modelUsage: {
+          'claude-sonnet-4': data.sonnet_tokens || 0,
+          'claude-opus-4': data.opus_tokens || 0,
+          'claude-haiku-4': data.haiku_tokens || 0
+        },
+        resetTimestamp: data.reset_at ? new Date(data.reset_at).getTime() : this.getNextResetTime(),
+        usageCap: data.token_limit || data.cap || 45000000,
+        source: 'api'
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+  
+  /**
+   * Scrape from UI elements on the page
+   */
+  scrapeFromUI() {
+    try {
+      // Look for usage indicators in the UI
+      const usageSelectors = [
         '[class*="usage"]',
         '[class*="quota"]',
         '[class*="limit"]',
-        '[class*="progress"]',
-        '[data-testid*="usage"]'
+        '[data-testid*="usage"]',
+        '[aria-label*="usage"]'
       ];
       
-      for (const selector of selectors) {
-        const elements = document.querySelectorAll(selector);
+      for (const sel of usageSelectors) {
+        const elements = document.querySelectorAll(sel);
         for (const el of elements) {
-          const text = el.textContent;
-          const match = text.match(/(\d+(?:\.\d+)?)\s*%/);
-          if (match) {
-            return { usagePercent: parseFloat(match[1]) };
-          }
-          
-          // Check for width-based progress bars
-          if (el.style.width && el.style.width.includes('%')) {
-            const percent = parseFloat(el.style.width);
-            if (!isNaN(percent) && percent > 0 && percent <= 100) {
-              return { usagePercent: percent };
-            }
-          }
+          const text = el.textContent || el.innerText || '';
+          const data = this.parseUsageText(text);
+          if (data) return data;
         }
       }
+      
+      // Look for percentage displays
+      const percentMatch = document.body.innerText.match(/(\d+(?:\.\d+)?)\s*%\s*(?:used|of|usage)/i);
+      if (percentMatch) {
+        const percent = parseFloat(percentMatch[1]);
+        const cap = 45000000; // Default Pro cap
+        return {
+          totalTokens: Math.round((percent / 100) * cap),
+          usageCap: cap,
+          source: 'ui-percent'
+        };
+      }
+      
     } catch (e) {
-      window.CUP.logError('Visible UI scrape error:', e);
+      window.CUP.log('UsageScraper: UI scrape error:', e.message);
     }
     return null;
+  }
+  
+  /**
+   * Parse usage from text content
+   */
+  parseUsageText(text) {
+    if (!text) return null;
+    
+    // Look for patterns like "1.2M / 45M tokens" or "Used 5,000 tokens"
+    const patterns = [
+      /(\d+(?:,\d+)*(?:\.\d+)?)\s*[MK]?\s*(?:\/|of)\s*(\d+(?:,\d+)*(?:\.\d+)?)\s*[MK]?\s*tokens?/i,
+      /used\s*(\d+(?:,\d+)*(?:\.\d+)?)\s*[MK]?\s*tokens?/i,
+      /(\d+(?:,\d+)*(?:\.\d+)?)\s*[MK]?\s*tokens?\s*used/i
+    ];
+    
+    for (const pattern of patterns) {
+      const match = text.match(pattern);
+      if (match) {
+        const used = this.parseTokenNumber(match[1]);
+        const cap = match[2] ? this.parseTokenNumber(match[2]) : 45000000;
+        if (used > 0) {
+          return {
+            totalTokens: used,
+            usageCap: cap,
+            source: 'ui-text'
+          };
+        }
+      }
+    }
+    return null;
+  }
+  
+  /**
+   * Parse token number (handles K, M suffixes and commas)
+   */
+  parseTokenNumber(str) {
+    if (!str) return 0;
+    str = str.replace(/,/g, '');
+    let num = parseFloat(str);
+    if (str.toUpperCase().includes('M')) num *= 1000000;
+    else if (str.toUpperCase().includes('K')) num *= 1000;
+    return Math.round(num);
+  }
+  
+  /**
+   * Try to get usage from page state (React/Next.js state)
+   */
+  scrapeFromPageState() {
+    try {
+      // Look for __NEXT_DATA__ or similar
+      const nextData = document.getElementById('__NEXT_DATA__');
+      if (nextData) {
+        const data = JSON.parse(nextData.textContent);
+        if (data?.props?.pageProps?.usage) {
+          return this.parseAPIUsage(data.props.pageProps.usage);
+        }
+      }
+      
+      // Look for window state
+      if (window.__CLAUDE_STATE__ && window.__CLAUDE_STATE__.usage) {
+        return this.parseAPIUsage(window.__CLAUDE_STATE__.usage);
+      }
+      
+    } catch (e) {
+      // Silent fail
+    }
+    return null;
+  }
+  
+  /**
+   * Get next reset time (midnight UTC)
+   */
+  getNextResetTime() {
+    const now = new Date();
+    const tomorrow = new Date(Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate() + 1,
+      0, 0, 0, 0
+    ));
+    return tomorrow.getTime();
+  }
+  
+  /**
+   * Detect current model from page
+   */
+  detectCurrentModel() {
+    // Check model selector button
+    const modelSelectors = [
+      '[data-testid="model-selector"]',
+      'button[class*="model"]',
+      '[class*="ModelSelector"]'
+    ];
+    
+    for (const sel of modelSelectors) {
+      const el = document.querySelector(sel);
+      if (el) {
+        const text = (el.textContent || '').toLowerCase();
+        if (text.includes('opus')) return 'claude-opus-4';
+        if (text.includes('haiku')) return 'claude-haiku-4';
+        if (text.includes('sonnet')) return 'claude-sonnet-4';
+      }
+    }
+    
+    // Check page content
+    const pageText = document.body?.innerText?.toLowerCase() || '';
+    
+    // Look for model mentions in recent UI
+    if (pageText.includes('opus 4')) return 'claude-opus-4';
+    if (pageText.includes('haiku 4')) return 'claude-haiku-4';
+    
+    // Default to sonnet
+    return 'claude-sonnet-4';
   }
 }
 
 window.UsageScraper = UsageScraper;
-window.CUP.log('UsageScraper class loaded');
+window.CUP.log('UsageScraper loaded');
