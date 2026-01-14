@@ -1,6 +1,6 @@
 /**
  * Claude Usage Pro - Usage Scraper
- * Scrapes from Claude.ai usage page when user visits it
+ * Automatically fetches usage data from Claude.ai
  */
 
 class UsageScraper {
@@ -9,150 +9,177 @@ class UsageScraper {
     this.setupPageObserver();
   }
   
-  /**
-   * Watch for navigation to usage page
-   */
   setupPageObserver() {
-    // Check if we're on usage page now
-    this.checkAndScrapeUsagePage();
+    // Scrape if we're on usage page
+    if (window.location.pathname.includes('/settings/usage')) {
+      setTimeout(() => this.scrapeCurrentPage(), 1000);
+    }
     
-    // Watch for URL changes (SPA navigation)
+    // Watch for navigation
     let lastUrl = location.href;
     new MutationObserver(() => {
       if (location.href !== lastUrl) {
         lastUrl = location.href;
-        setTimeout(() => this.checkAndScrapeUsagePage(), 1000);
+        if (location.pathname.includes('/settings/usage')) {
+          setTimeout(() => this.scrapeCurrentPage(), 1000);
+        }
       }
     }).observe(document.body, { subtree: true, childList: true });
   }
   
   /**
-   * Check if on usage page and scrape
-   */
-  checkAndScrapeUsagePage() {
-    if (window.location.pathname.includes('/settings/usage')) {
-      window.CUP.log('UsageScraper: On usage page, scraping...');
-      setTimeout(() => this.scrapeUsagePage(), 500);
-    }
-  }
-  
-  /**
-   * Main scrape function
+   * Main scrape - fetches usage page in background
    */
   async scrapeUsage() {
-    window.CUP.log('UsageScraper: Starting scrape...');
+    window.CUP.log('UsageScraper: Starting background fetch...');
     
-    // If we're on usage page, scrape it
-    if (window.location.pathname.includes('/settings/usage')) {
-      return this.scrapeUsagePage();
+    try {
+      // Fetch the usage page HTML
+      const response = await fetch('https://claude.ai/settings/usage', {
+        credentials: 'include',
+        headers: {
+          'Accept': 'text/html'
+        }
+      });
+      
+      if (!response.ok) {
+        window.CUP.log('UsageScraper: Fetch failed:', response.status);
+        return this.lastScrapedData;
+      }
+      
+      const html = await response.text();
+      const data = this.parseUsageHTML(html);
+      
+      if (data) {
+        this.lastScrapedData = data;
+        window.CUP.log('UsageScraper: Got data:', data);
+        return data;
+      }
+      
+    } catch (e) {
+      window.CUP.logError('UsageScraper: Fetch error:', e);
     }
     
-    // Return cached data if we have it
-    if (this.lastScrapedData) {
-      return this.lastScrapedData;
-    }
-    
-    window.CUP.log('UsageScraper: No data found');
-    return null;
+    return this.lastScrapedData;
   }
   
   /**
-   * Scrape the usage settings page
+   * Parse usage data from HTML
    */
-  scrapeUsagePage() {
+  parseUsageHTML(html) {
     try {
+      // Create a DOM parser
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+      const text = doc.body?.innerText || html;
+      
       const data = {
         currentSession: null,
         weeklyAllModels: null,
         weeklySonnet: null,
-        source: 'usage-page',
+        source: 'background-fetch',
         scrapedAt: Date.now()
       };
       
-      // Get all text content
-      const pageText = document.body.innerText;
-      
-      // Method 1: Parse using regex patterns
-      // Current session: "Current session ... Resets in X hr Y min ... X% used"
-      const sessionMatch = pageText.match(/Current\s+session[\s\S]*?Resets\s+in\s+([\d]+\s*hr\s*[\d]*\s*min|[\d]+\s*min)[\s\S]*?(\d+)%\s*used/i);
+      // Parse Current Session
+      const sessionMatch = text.match(/Current\s+session[\s\S]*?Resets\s+in\s+([\d]+\s*hr?\s*[\d]*\s*min?|[\d]+\s*min?)[\s\S]*?(\d+)%\s*used/i);
       if (sessionMatch) {
         data.currentSession = {
           percent: parseInt(sessionMatch[2]),
           resetsIn: sessionMatch[1].trim()
         };
-        window.CUP.log('Scraped currentSession:', data.currentSession);
       }
       
-      // Weekly all models: "All models ... Resets Day Time ... X% used"
-      const allModelsMatch = pageText.match(/All\s+models[\s\S]*?Resets\s+([\w]+\s+[\d:]+\s*(?:AM|PM))[\s\S]*?(\d+)%\s*used/i);
-      if (allModelsMatch) {
+      // Parse Weekly All Models
+      const allMatch = text.match(/All\s+models[\s\S]*?Resets\s+([\w]+\s+[\d:]+\s*(?:AM|PM)?)[\s\S]*?(\d+)%\s*used/i);
+      if (allMatch) {
         data.weeklyAllModels = {
-          percent: parseInt(allModelsMatch[2]),
-          resetsAt: allModelsMatch[1].trim()
+          percent: parseInt(allMatch[2]),
+          resetsAt: allMatch[1].trim()
         };
-        window.CUP.log('Scraped weeklyAllModels:', data.weeklyAllModels);
       }
       
-      // Weekly Sonnet: "Sonnet only ... Resets in X hr Y min ... X% used"
-      const sonnetMatch = pageText.match(/Sonnet\s+only[\s\S]*?Resets\s+in\s+([\d]+\s*hr\s*[\d]*\s*min|[\d]+\s*min)[\s\S]*?(\d+)%\s*used/i);
+      // Parse Weekly Sonnet
+      const sonnetMatch = text.match(/Sonnet\s+only[\s\S]*?Resets\s+in\s+([\d]+\s*hr?\s*[\d]*\s*min?|[\d]+\s*min?)[\s\S]*?(\d+)%\s*used/i);
       if (sonnetMatch) {
         data.weeklySonnet = {
           percent: parseInt(sonnetMatch[2]),
           resetsIn: sonnetMatch[1].trim()
         };
-        window.CUP.log('Scraped weeklySonnet:', data.weeklySonnet);
       }
       
-      // Method 2: Find percentage elements directly
-      if (!data.currentSession || !data.weeklyAllModels || !data.weeklySonnet) {
-        const percentElements = Array.from(document.querySelectorAll('*')).filter(el => {
-          const text = el.textContent?.trim();
-          return text && /^\d+%\s*used$/.test(text);
-        });
-        
-        window.CUP.log('Found percent elements:', percentElements.length);
-      }
-      
-      // Save if we got any data
+      // Check if we got any data
       if (data.currentSession || data.weeklyAllModels || data.weeklySonnet) {
-        this.lastScrapedData = data;
-        
-        // Sync to background
-        window.CUP.sendToBackground({
-          type: 'SYNC_SCRAPED_DATA',
-          data: data
-        });
-        
-        window.CUP.log('UsageScraper: Scraped and saved:', data);
+        return data;
+      }
+      
+      // Fallback: Try to find percentages in a different format
+      const percentages = text.match(/(\d+)%\s*used/gi);
+      if (percentages && percentages.length >= 1) {
+        const percents = percentages.map(p => parseInt(p));
+        data.currentSession = { percent: percents[0] || 0, resetsIn: '--' };
+        if (percents[1]) data.weeklyAllModels = { percent: percents[1], resetsAt: '--' };
+        if (percents[2]) data.weeklySonnet = { percent: percents[2], resetsIn: '--' };
         return data;
       }
       
       return null;
       
     } catch (e) {
-      window.CUP.logError('UsageScraper: Scrape failed:', e);
+      window.CUP.logError('UsageScraper: Parse error:', e);
       return null;
     }
   }
   
   /**
-   * Detect current model from page
+   * Scrape current page (when on usage page)
    */
-  detectCurrentModel() {
-    const bodyText = document.body?.innerText?.toLowerCase() || '';
+  scrapeCurrentPage() {
+    if (!window.location.pathname.includes('/settings/usage')) return;
     
-    // Check near the input area
-    const inputArea = document.querySelector('[class*="composer"]') || document.querySelector('form');
-    if (inputArea) {
-      const text = inputArea.innerText?.toLowerCase() || '';
-      if (text.includes('opus')) return 'opus';
-      if (text.includes('haiku')) return 'haiku';
+    window.CUP.log('UsageScraper: Scraping current page...');
+    
+    const text = document.body.innerText;
+    const data = {
+      currentSession: null,
+      weeklyAllModels: null,
+      weeklySonnet: null,
+      source: 'direct-page',
+      scrapedAt: Date.now()
+    };
+    
+    // Current Session
+    const sessionMatch = text.match(/Current\s+session[\s\S]*?Resets\s+in\s+([\d]+\s*hr?\s*[\d]*\s*min?|[\d]+\s*min?)[\s\S]*?(\d+)%\s*used/i);
+    if (sessionMatch) {
+      data.currentSession = { percent: parseInt(sessionMatch[2]), resetsIn: sessionMatch[1].trim() };
     }
     
-    // Check full page
-    if (bodyText.includes('opus 4.5')) return 'opus';
-    if (bodyText.includes('haiku 4.5')) return 'haiku';
+    // Weekly All Models  
+    const allMatch = text.match(/All\s+models[\s\S]*?Resets\s+([\w]+\s+[\d:]+\s*(?:AM|PM)?)[\s\S]*?(\d+)%\s*used/i);
+    if (allMatch) {
+      data.weeklyAllModels = { percent: parseInt(allMatch[2]), resetsAt: allMatch[1].trim() };
+    }
     
+    // Weekly Sonnet
+    const sonnetMatch = text.match(/Sonnet\s+only[\s\S]*?Resets\s+in\s+([\d]+\s*hr?\s*[\d]*\s*min?|[\d]+\s*min?)[\s\S]*?(\d+)%\s*used/i);
+    if (sonnetMatch) {
+      data.weeklySonnet = { percent: parseInt(sonnetMatch[2]), resetsIn: sonnetMatch[1].trim() };
+    }
+    
+    if (data.currentSession || data.weeklyAllModels || data.weeklySonnet) {
+      this.lastScrapedData = data;
+      window.CUP.sendToBackground({ type: 'SYNC_SCRAPED_DATA', data });
+      window.CUP.log('UsageScraper: Scraped from page:', data);
+    }
+  }
+  
+  /**
+   * Detect current model
+   */
+  detectCurrentModel() {
+    const text = document.body?.innerText?.toLowerCase() || '';
+    if (text.includes('opus 4.5') || text.includes('opus-4')) return 'opus';
+    if (text.includes('haiku 4.5') || text.includes('haiku-4')) return 'haiku';
     return 'sonnet';
   }
 }
