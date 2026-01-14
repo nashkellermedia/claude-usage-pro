@@ -67,7 +67,7 @@ class SidebarUI {
       letter-spacing: 0.5px;
       color: var(--text-500, #6b7280);
     `;
-    title.textContent = '📊 Usage';
+    title.textContent = '📊 USAGE';
     
     // Settings button (optional)
     const settingsBtn = document.createElement('button');
@@ -101,14 +101,16 @@ class SidebarUI {
     
     // Left: percentage
     this.percentageDisplay = document.createElement('span');
+    this.percentageDisplay.id = 'cup-percentage';
     this.percentageDisplay.style.cssText = `
       font-weight: 600;
-      color: ${window.CUP.COLORS.BLUE};
+      color: #2c84db;
     `;
     this.percentageDisplay.textContent = '0%';
     
     // Right: reset time
     this.resetTimeDisplay = document.createElement('span');
+    this.resetTimeDisplay.id = 'cup-reset-time';
     this.resetTimeDisplay.style.cssText = `
       color: var(--text-400, #9ca3af);
       font-size: 11px;
@@ -129,10 +131,11 @@ class SidebarUI {
     `;
     
     this.progressBar = document.createElement('div');
+    this.progressBar.id = 'cup-progress-bar';
     this.progressBar.style.cssText = `
       height: 100%;
       width: 0%;
-      background: ${window.CUP.COLORS.BLUE};
+      background: #2c84db;
       border-radius: 3px;
       transition: width 0.3s ease, background-color 0.3s ease;
     `;
@@ -247,32 +250,76 @@ class SidebarUI {
    * Update the display with usage data
    */
   update(usageData) {
-    window.CUP.log('SidebarUI.update called with:', usageData);
-    if (!usageData) return;
+    window.CUP.log('SidebarUI.update() called');
     
-    const percentage = usageData.getUsagePercentage();
-    const color = window.CUP.getUsageColor(percentage);
-    const weighted = usageData.getWeightedTotal();
-    const cap = usageData.usageCap;
-    const resetInfo = usageData.getResetTimeInfo();
-    
-    // Update percentage display
-    this.percentageDisplay.textContent = `${percentage.toFixed(1)}%`;
-    this.percentageDisplay.style.color = color;
-    
-    // Update progress bar
-    this.progressBar.style.width = `${Math.min(percentage, 100)}%`;
-    this.progressBar.style.backgroundColor = color;
-    
-    // Update reset time
-    if (resetInfo.expired) {
-      this.resetTimeDisplay.innerHTML = `<span style="color: ${window.CUP.COLORS.GREEN}">Reset: Now!</span>`;
-    } else {
-      this.resetTimeDisplay.textContent = `Reset: ${resetInfo.formatted}`;
+    if (!usageData) {
+      window.CUP.logWarn('SidebarUI.update: usageData is null/undefined');
+      return;
     }
     
-    // Update tooltip
-    this.tooltip.textContent = `${window.CUP.formatNumber(weighted)} / ${window.CUP.formatNumber(cap)} tokens (${percentage.toFixed(1)}%)`;
+    try {
+      const percentage = usageData.getUsagePercentage();
+      const weighted = usageData.getWeightedTotal();
+      const cap = usageData.usageCap;
+      const resetInfo = usageData.getResetTimeInfo();
+      
+      window.CUP.log('SidebarUI.update: percentage=' + percentage.toFixed(2) + '%, weighted=' + weighted + ', cap=' + cap);
+      
+      // Get color based on percentage
+      let color = '#2c84db'; // Blue
+      if (percentage >= 95) color = '#de2929'; // Red
+      else if (percentage >= 80) color = '#f59e0b'; // Yellow
+      
+      // Update percentage display
+      if (this.percentageDisplay) {
+        this.percentageDisplay.textContent = percentage.toFixed(1) + '%';
+        this.percentageDisplay.style.color = color;
+        window.CUP.log('SidebarUI.update: Updated percentage to ' + this.percentageDisplay.textContent);
+      } else {
+        window.CUP.logError('percentageDisplay element is null!');
+      }
+      
+      // Update progress bar
+      if (this.progressBar) {
+        this.progressBar.style.width = Math.min(percentage, 100) + '%';
+        this.progressBar.style.backgroundColor = color;
+        window.CUP.log('SidebarUI.update: Updated progress bar to ' + this.progressBar.style.width);
+      } else {
+        window.CUP.logError('progressBar element is null!');
+      }
+      
+      // Update reset time
+      if (this.resetTimeDisplay) {
+        if (resetInfo.expired) {
+          this.resetTimeDisplay.innerHTML = '<span style="color: #22c55e">Reset: Now!</span>';
+        } else {
+          this.resetTimeDisplay.textContent = 'Reset: ' + resetInfo.formatted;
+        }
+        window.CUP.log('SidebarUI.update: Updated reset time to ' + this.resetTimeDisplay.textContent);
+      } else {
+        window.CUP.logError('resetTimeDisplay element is null!');
+      }
+      
+      // Update tooltip
+      if (this.tooltip) {
+        const formatted = this.formatNumber(weighted) + ' / ' + this.formatNumber(cap) + ' tokens (' + percentage.toFixed(1) + '%)';
+        this.tooltip.textContent = formatted;
+      }
+      
+      window.CUP.log('SidebarUI.update: Complete');
+      
+    } catch (error) {
+      window.CUP.logError('SidebarUI.update error:', error);
+    }
+  }
+  
+  /**
+   * Format large numbers
+   */
+  formatNumber(num) {
+    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+    if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+    return num.toLocaleString();
   }
 }
 

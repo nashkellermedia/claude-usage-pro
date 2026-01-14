@@ -10,7 +10,7 @@
 class UsageData {
   constructor(data = {}) {
     this.tokensUsed = data.tokensUsed || 0;
-    this.usageCap = data.usageCap || window.CUP.CONFIG.DEFAULT_QUOTA;
+    this.usageCap = data.usageCap || 45000000; // Default 45M
     this.resetTimestamp = data.resetTimestamp || (Date.now() + 24 * 60 * 60 * 1000);
     this.messagesCount = data.messagesCount || 0;
     this.lastUpdated = data.lastUpdated || Date.now();
@@ -28,9 +28,18 @@ class UsageData {
    */
   getWeightedTotal() {
     let total = 0;
-    const multipliers = window.CUP.CONFIG.MODEL_MULTIPLIERS;
     
-    for (const [model, tokens] of Object.entries(this.modelUsage)) {
+    // Use local multipliers to avoid dependency on window.CUP
+    const multipliers = {
+      'claude-sonnet-4': 1.0,
+      'claude-3-5-sonnet': 1.0,
+      'claude-haiku-4': 0.2,
+      'claude-3-5-haiku': 0.2,
+      'claude-opus-4': 5.0,
+      'claude-3-opus': 5.0
+    };
+    
+    for (const [model, tokens] of Object.entries(this.modelUsage || {})) {
       const mult = multipliers[model] || 1.0;
       total += tokens * mult;
     }
@@ -43,6 +52,7 @@ class UsageData {
    */
   getUsagePercentage() {
     const weighted = this.getWeightedTotal();
+    if (this.usageCap <= 0) return 0;
     return (weighted / this.usageCap) * 100;
   }
   
@@ -50,14 +60,14 @@ class UsageData {
    * Check if near limit
    */
   isNearLimit() {
-    return this.getUsagePercentage() >= window.CUP.CONFIG.WARNING_THRESHOLD * 100;
+    return this.getUsagePercentage() >= 80;
   }
   
   /**
    * Check if at limit
    */
   isAtLimit() {
-    return this.getUsagePercentage() >= window.CUP.CONFIG.DANGER_THRESHOLD * 100;
+    return this.getUsagePercentage() >= 95;
   }
   
   /**
@@ -79,9 +89,28 @@ class UsageData {
    */
   getResetTimeInfo() {
     const ms = this.getTimeUntilReset();
+    
+    // Format time locally
+    if (ms <= 0) {
+      return { expired: true, formatted: 'Now!', timestamp: this.resetTimestamp };
+    }
+    
+    const hours = Math.floor(ms / (1000 * 60 * 60));
+    const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+    
+    let formatted;
+    if (hours > 24) {
+      const days = Math.floor(hours / 24);
+      formatted = `${days}d ${hours % 24}h`;
+    } else if (hours > 0) {
+      formatted = `${hours}h ${minutes}m`;
+    } else {
+      formatted = `${minutes}m`;
+    }
+    
     return {
-      expired: ms <= 0,
-      formatted: window.CUP.formatTimeRemaining(ms),
+      expired: false,
+      formatted,
       timestamp: this.resetTimestamp
     };
   }
@@ -144,7 +173,7 @@ class UsageData {
 class ConversationData {
   constructor(data = {}) {
     this.conversationId = data.conversationId || null;
-    this.length = data.length || 0;  // Total tokens in conversation
+    this.length = data.length || data.totalTokens || 0;  // Total tokens in conversation
     this.model = data.model || 'claude-sonnet-4';
     this.cachedUntil = data.cachedUntil || null;
     this.lastMessageCost = data.lastMessageCost || 0;
@@ -180,7 +209,14 @@ class ConversationData {
    */
   getWeightedFutureCost(currentModel = null) {
     const model = currentModel || this.model;
-    const mult = window.CUP.CONFIG.MODEL_MULTIPLIERS[model] || 1.0;
+    
+    const multipliers = {
+      'claude-sonnet-4': 1.0,
+      'claude-haiku-4': 0.2,
+      'claude-opus-4': 5.0
+    };
+    
+    const mult = multipliers[model] || 1.0;
     
     // Base cost is conversation length
     let cost = this.length * mult;
@@ -248,3 +284,5 @@ class ConversationData {
 // Expose globally
 window.UsageData = UsageData;
 window.ConversationData = ConversationData;
+
+console.log('[Claude Usage Pro] Data classes loaded');
