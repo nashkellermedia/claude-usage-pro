@@ -190,11 +190,48 @@ function isMobileView() {
  */
 async function sendToBackground(message) {
   try {
+    // Check if extension context is still valid
+    if (!chrome.runtime?.id) {
+      log('Extension context invalidated - page reload required');
+      showReloadNotification();
+      return null;
+    }
     return await chrome.runtime.sendMessage(message);
   } catch (error) {
-    logError('Failed to send message to background:', error);
+    if (error.message?.includes('Extension context invalidated')) {
+      log('Extension was reloaded - page refresh required');
+      showReloadNotification();
+    } else {
+      logError('Failed to send message to background:', error);
+    }
     return null;
   }
+}
+
+/**
+ * Show a notification that the page needs to be reloaded
+ */
+function showReloadNotification() {
+  // Only show once per page load
+  if (window.__CUP_RELOAD_SHOWN__) return;
+  window.__CUP_RELOAD_SHOWN__ = true;
+  
+  const notification = document.createElement('div');
+  notification.id = 'cup-reload-notification';
+  notification.innerHTML = `
+    <div style="position: fixed; top: 20px; right: 20px; background: #f59e0b; color: #000; 
+                padding: 12px 16px; border-radius: 8px; z-index: 999999; font-family: system-ui;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3); display: flex; align-items: center; gap: 12px;">
+      <span>⚠️ Claude Usage Pro was updated. Please refresh the page.</span>
+      <button onclick="location.reload()" style="background: #000; color: #fff; border: none; 
+              padding: 6px 12px; border-radius: 4px; cursor: pointer; font-weight: 500;">
+        Refresh
+      </button>
+      <button onclick="this.parentElement.remove()" style="background: transparent; border: none; 
+              color: #000; cursor: pointer; font-size: 18px; padding: 0 4px;">×</button>
+    </div>
+  `;
+  document.body.appendChild(notification);
 }
 
 /**
@@ -269,6 +306,7 @@ window.CUP = {
   getCurrentModel,
   isMobileView,
   sendToBackground,
+  showReloadNotification,
   setupTooltip,
   findSidebar
 };
