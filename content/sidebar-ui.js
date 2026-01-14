@@ -247,6 +247,7 @@ class SidebarUI {
    * Update the display with usage data
    */
   update(usageData) {
+    window.CUP.log('SidebarUI.update called with:', usageData);
     if (!usageData) return;
     
     const percentage = usageData.getUsagePercentage();

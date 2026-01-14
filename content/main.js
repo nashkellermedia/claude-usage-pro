@@ -195,6 +195,7 @@ class ClaudeUsagePro {
     // Create conversation data object
     this.conversationData = new window.ConversationData({
       conversationId: data.conversationId,
+      length: data.totalTokens,
       totalTokens: data.totalTokens,
       messageCount: data.messageCount,
       projectTokens: data.projectTokens,
@@ -211,13 +212,26 @@ class ClaudeUsagePro {
    * Update all UI components
    */
   updateUI() {
+    window.CUP.log('updateUI called, usageData exists:', !!this.usageData);
+    
     if (this.usageData) {
+      const percentage = this.usageData.getUsagePercentage();
+      window.CUP.log('Usage percentage:', percentage.toFixed(2) + '%');
+      window.CUP.log('Weighted total:', this.usageData.getWeightedTotal());
+      window.CUP.log('Usage cap:', this.usageData.usageCap);
+      
       if (this.sidebarUI) {
+        window.CUP.log('Calling sidebarUI.update()...');
         this.sidebarUI.update(this.usageData);
+      } else {
+        window.CUP.logWarn('sidebarUI is null!');
       }
+      
       if (this.chatUI) {
         this.chatUI.updateUsage(this.usageData, this.conversationData, this.currentModel);
       }
+    } else {
+      window.CUP.logWarn('usageData is null in updateUI');
     }
   }
   
@@ -227,6 +241,7 @@ class ClaudeUsagePro {
   setupMessageListener() {
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (message.type === 'USAGE_UPDATED' && message.usageData) {
+        window.CUP.log('Received USAGE_UPDATED from background');
         this.usageData = new window.UsageData(message.usageData);
         this.updateUI();
       }
@@ -247,13 +262,13 @@ class ClaudeUsagePro {
       
       try {
         // High frequency updates (every 1s) - progress bar animations
-        if (now - this.lastHighUpdate >= window.CUP.HIGH_FREQ_UPDATE) {
+        if (now - this.lastHighUpdate >= window.CUP.CONFIG.HIGH_FREQ_UPDATE) {
           this.lastHighUpdate = now;
           // Smooth progress bar updates handled by CSS
         }
         
         // Medium frequency updates (every 2s) - check model, reinject if needed
-        if (now - this.lastMedUpdate >= window.CUP.MED_FREQ_UPDATE) {
+        if (now - this.lastMedUpdate >= window.CUP.CONFIG.MED_FREQ_UPDATE) {
           this.lastMedUpdate = now;
           
           // Check current model from UI
@@ -269,7 +284,7 @@ class ClaudeUsagePro {
         }
         
         // Low frequency updates (every 5s) - sync with background
-        if (now - this.lastLowUpdate >= window.CUP.LOW_FREQ_UPDATE) {
+        if (now - this.lastLowUpdate >= window.CUP.CONFIG.LOW_FREQ_UPDATE) {
           this.lastLowUpdate = now;
           await this.requestData();
         }
@@ -290,11 +305,17 @@ class ClaudeUsagePro {
    */
   async requestData() {
     try {
+      window.CUP.log('Requesting data from background...');
       const response = await window.CUP.sendToBackground({ type: 'GET_USAGE_DATA' });
+      
+      window.CUP.log('requestData response:', response);
       
       if (response && response.usageData) {
         this.usageData = new window.UsageData(response.usageData);
+        window.CUP.log('Got usage data, updating UI...');
         this.updateUI();
+      } else {
+        window.CUP.logWarn('No usageData in requestData response');
       }
     } catch (error) {
       window.CUP.logError('Failed to request data:', error);
