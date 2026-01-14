@@ -128,21 +128,34 @@ class SidebarUI {
       return;
     }
     
+    // Find "Starred" section and insert BEFORE it
     const starredSection = sidebar.querySelector('[class*="starred"]') ||
                           sidebar.querySelector('[class*="Starred"]');
     
-    if (starredSection && starredSection.parentNode) {
-      starredSection.parentNode.insertBefore(this.container, starredSection.nextSibling);
+    if (starredSection) {
+      // Insert BEFORE Starred
+      starredSection.parentNode.insertBefore(this.container, starredSection);
+      window.CUP.log('SidebarUI: Injected BEFORE Starred');
     } else {
-      const firstSection = sidebar.querySelector('div > ul') || sidebar.firstElementChild;
-      if (firstSection && firstSection.parentNode) {
-        firstSection.parentNode.insertBefore(this.container, firstSection.nextSibling);
+      // Fallback: find "New chat" button area and insert after it
+      const newChatArea = sidebar.querySelector('a[href*="new"]') || 
+                         sidebar.querySelector('button');
+      
+      if (newChatArea && newChatArea.parentElement) {
+        // Insert after the new chat button's container
+        const container = newChatArea.closest('div') || newChatArea.parentElement;
+        if (container.nextSibling) {
+          container.parentNode.insertBefore(this.container, container.nextSibling);
+        } else {
+          container.parentNode.appendChild(this.container);
+        }
+        window.CUP.log('SidebarUI: Injected after New Chat area');
       } else {
-        sidebar.appendChild(this.container);
+        // Last fallback: prepend to sidebar
+        sidebar.insertBefore(this.container, sidebar.firstChild);
+        window.CUP.log('SidebarUI: Prepended to sidebar');
       }
     }
-    
-    window.CUP.log('SidebarUI: Injected into sidebar');
   }
   
   toggleExpand() {
