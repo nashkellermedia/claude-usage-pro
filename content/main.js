@@ -25,7 +25,7 @@ class ClaudeUsagePro {
       this.setupPageEventListener();
       this.setupMessageListener();
       
-      // Wait for page
+      // Wait for page to be ready
       await window.CUP.sleep(1500);
       
       // Create UI components
@@ -36,7 +36,11 @@ class ClaudeUsagePro {
       // Initialize UIs
       this.chatUI.initialize();
       await this.sidebarUI.initialize();
-      await this.chatUI.injectUI();
+      
+      // Inject chat UI (top bar + input stats)
+      setTimeout(() => {
+        if (this.chatUI) this.chatUI.injectUI();
+      }, 2000);
       
       // Get initial data
       await this.requestData();
@@ -56,6 +60,8 @@ class ClaudeUsagePro {
   
   injectPageScript() {
     try {
+      if (!window.CUP.isExtensionValid()) return;
+      
       const script = document.createElement('script');
       script.src = chrome.runtime.getURL('injections/fetch-interceptor.js');
       script.onload = function() { this.remove(); };
@@ -67,15 +73,21 @@ class ClaudeUsagePro {
   
   setupPageEventListener() {
     window.addEventListener('CUP_API_EVENT', async (event) => {
+      if (!window.CUP.isExtensionValid()) return;
+      
       const { type, data } = event.detail;
       window.CUP.log('API Event:', type);
       
       try {
-        if (type === 'MESSAGE_SENT') await this.handleMessageSent(data);
-        else if (type === 'MESSAGE_RECEIVED') await this.handleMessageReceived(data);
-        else if (type === 'CONVERSATION_LOADED') await this.handleConversationLoaded(data);
+        if (type === 'MESSAGE_SENT') {
+          await this.handleMessageSent(data);
+        } else if (type === 'MESSAGE_RECEIVED') {
+          await this.handleMessageReceived(data);
+        } else if (type === 'CONVERSATION_LOADED') {
+          this.handleConversationLoaded(data);
+        }
       } catch (e) {
-        window.CUP.logError('Event error:', e);
+        window.CUP.logError('Error handling page event:', e);
       }
     });
   }
@@ -110,7 +122,7 @@ class ClaudeUsagePro {
     }
   }
   
-  async handleConversationLoaded(data) {
+  handleConversationLoaded(data) {
     if (data.model) this.currentModel = data.model;
     
     this.conversationData = new window.ConversationData({
@@ -120,7 +132,8 @@ class ClaudeUsagePro {
       model: data.model
     });
     
-    if (this.chatUI) {
+    // Update chat UI with conversation context
+    if (this.chatUI && typeof this.chatUI.updateConversation === 'function') {
       this.chatUI.updateConversation(this.conversationData, this.currentModel);
     }
   }
@@ -128,22 +141,40 @@ class ClaudeUsagePro {
   updateUI() {
     if (!this.usageData) return;
     
-    if (this.sidebarUI) this.sidebarUI.update(this.usageData);
-    if (this.chatUI) this.chatUI.updateUsage(this.usageData, this.conversationData, this.currentModel);
+    try {
+      if (this.sidebarUI && typeof this.sidebarUI.update === 'function') {
+        this.sidebarUI.update(this.usageData);
+      }
+      if (this.chatUI && typeof this.chatUI.updateUsage === 'function') {
+        this.chatUI.updateUsage(this.usageData, this.conversationData, this.currentModel);
+      }
+    } catch (e) {
+      window.CUP.logError('UI update error:', e);
+    }
   }
   
   setupMessageListener() {
-    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-      if (message.type === 'USAGE_UPDATED' && message.usageData) {
-        this.usageData = new window.UsageData(message.usageData);
-        this.updateUI();
-      }
-      if (message.type === 'SCRAPE_USAGE') {
-        this.triggerScrape();
-      }
-      sendResponse({ received: true });
-      return false;
-    });
+    if (!window.CUP.isExtensionValid()) return;
+    
+    try {
+      chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+        try {
+          if (message.type === 'USAGE_UPDATED' && message.usageData) {
+            this.usageData = new window.UsageData(message.usageData);
+            this.updateUI();
+          }
+          if (message.type === 'SCRAPE_USAGE') {
+            this.triggerScrape();
+          }
+        } catch (e) {
+          // Silently handle errors
+        }
+        sendResponse({ received: true });
+        return false;
+      });
+    } catch (e) {
+      // Extension context may be invalidated
+    }
   }
   
   startUsageScraping() {
@@ -153,40 +184,61 @@ class ClaudeUsagePro {
   
   async triggerScrape() {
     if (!this.usageScraper) return;
+    if (!window.CUP.isExtensionValid()) return;
     
-    const data = await this.usageScraper.scrapeUsage();
-    if (data) {
-      window.CUP.log('Scraped:', data);
-      const response = await window.CUP.sendToBackground({
-        type: 'SYNC_SCRAPED_DATA',
-        data: data
-      });
-      
-      if (response?.usageData) {
-        this.usageData = new window.UsageData(response.usageData);
-        this.updateUI();
+    try {
+      const data = await this.usageScraper.scrapeUsage();
+      if (data) {
+        window.CUP.log('Scraped:', data);
+        const response = await window.CUP.sendToBackground({
+          type: 'SYNC_SCRAPED_DATA',
+          data: data
+        });
+        
+        if (response?.usageData) {
+          this.usageData = new window.UsageData(response.usageData);
+          this.updateUI();
+        }
       }
+    } catch (e) {
+      // Silently handle scrape errors
     }
   }
   
   startUpdateLoop() {
     this.isRunning = true;
     
-    const loop = async () => {
+    const loop = () => {
       if (!this.isRunning) return;
+      if (!window.CUP.isExtensionValid()) {
+        this.isRunning = false;
+        return;
+      }
       
       const now = Date.now();
-      if (now - this.lastUpdate >= 2000) {
+      if (now - this.lastUpdate >= 3000) {
         this.lastUpdate = now;
         
-        const model = window.CUP.getCurrentModel();
-        if (model && model !== this.currentModel) {
-          this.currentModel = model;
-          if (this.chatUI) this.chatUI.updateConversation(this.conversationData, model);
+        try {
+          // Check for model changes
+          const model = window.CUP.getCurrentModel();
+          if (model && model !== this.currentModel) {
+            this.currentModel = model;
+            if (this.chatUI && typeof this.chatUI.updateModelBadge === 'function') {
+              this.chatUI.updateModelBadge(model);
+            }
+          }
+          
+          // Re-inject UI if needed
+          if (this.sidebarUI && typeof this.sidebarUI.checkAndReinject === 'function') {
+            this.sidebarUI.checkAndReinject();
+          }
+          if (this.chatUI && typeof this.chatUI.checkAndReinject === 'function') {
+            this.chatUI.checkAndReinject();
+          }
+        } catch (e) {
+          // Silently handle loop errors
         }
-        
-        if (this.sidebarUI) this.sidebarUI.checkAndReinject();
-        if (this.chatUI) this.chatUI.checkAndReinject();
       }
       
       requestAnimationFrame(loop);
@@ -196,6 +248,8 @@ class ClaudeUsagePro {
   }
   
   async requestData() {
+    if (!window.CUP.isExtensionValid()) return;
+    
     try {
       const response = await window.CUP.sendToBackground({ type: 'GET_USAGE_DATA' });
       
@@ -204,10 +258,10 @@ class ClaudeUsagePro {
         this.updateUI();
         window.CUP.log('Got initial data');
       } else {
-        window.CUP.log('No initial data yet - will get on first message');
+        window.CUP.log('No initial data yet - will update on first message');
       }
     } catch (e) {
-      window.CUP.logError('Request data error:', e);
+      // Silently handle request errors
     }
   }
 }
