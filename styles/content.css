@@ -1,105 +1,422 @@
-/* Claude Usage Pro - Content Styles */
+/**
+ * Claude Usage Pro - Content Styles
+ * Dark theme, modern design
+ */
 
-#cup-sidebar-usage {
-  animation: cupFadeIn 0.3s ease;
-}
-
-@keyframes cupFadeIn {
-  from { opacity: 0; transform: translateY(-10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
+/* ============================================
+   TOP STATS BAR
+   ============================================ */
 
 #cup-top-bar {
-  animation: cupSlideDown 0.3s ease;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: linear-gradient(180deg, rgba(15, 15, 26, 0.95) 0%, rgba(26, 26, 46, 0.9) 100%);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 8px 16px;
+  margin-bottom: 8px;
+  animation: cup-slideDown 0.3s ease-out;
 }
 
-@keyframes cupSlideDown {
-  from { opacity: 0; transform: translateY(-20px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-#cup-input-stats {
-  animation: cupFadeIn 0.3s ease;
-}
-
-/* Tooltip styles */
-.cup-tooltip {
-  position: fixed;
-  background: #1f2937;
-  color: #f3f4f6;
-  padding: 8px 12px;
-  border-radius: 8px;
-  font-size: 11px;
-  line-height: 1.4;
-  max-width: 250px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-  z-index: 99999;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.15s ease;
-}
-
-/* Progress bar pulse animation for warnings */
-.cup-progress-warning {
-  animation: cupPulse 2s infinite;
-}
-
-@keyframes cupPulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.7; }
-}
-
-/* Model badges */
-.cup-model-badge {
-  display: inline-flex;
+.cup-top-bar-inner {
+  display: flex;
   align-items: center;
-  gap: 4px;
+  justify-content: space-between;
+  gap: 16px;
+  max-width: 900px;
+  margin: 0 auto;
+  flex-wrap: wrap;
+}
+
+.cup-stat {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #a1a1aa;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.cup-icon {
+  font-size: 14px;
+}
+
+.cup-label {
+  color: #71717a;
+  font-weight: 500;
+}
+
+.cup-value {
+  color: #e4e4e7;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.cup-unit {
+  color: #52525b;
+  font-size: 10px;
+}
+
+/* Model Badges */
+.cup-badge {
   padding: 2px 8px;
   border-radius: 4px;
   font-size: 11px;
   font-weight: 600;
+  text-transform: uppercase;
 }
 
-.cup-model-badge.sonnet {
-  background: #dbeafe;
-  color: #1e40af;
+.cup-badge-sonnet {
+  background: #1e40af;
+  color: #93c5fd;
 }
 
-.cup-model-badge.opus {
-  background: #fef3c7;
-  color: #92400e;
+.cup-badge-opus {
+  background: #92400e;
+  color: #fcd34d;
 }
 
-.cup-model-badge.haiku {
-  background: #d1fae5;
-  color: #065f46;
+.cup-badge-haiku {
+  background: #065f46;
+  color: #6ee7b7;
 }
 
-/* Cache indicator */
-.cup-cached {
-  color: #22c55e;
+.cup-multiplier {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
   font-weight: 600;
+}
+
+.cup-mult-sonnet {
+  background: rgba(59, 130, 246, 0.2);
+  color: #60a5fa;
+}
+
+.cup-mult-opus {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+}
+
+.cup-mult-haiku {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+}
+
+/* ============================================
+   INPUT AREA STATS
+   ============================================ */
+
+#cup-input-stats {
+  background: linear-gradient(180deg, rgba(15, 15, 26, 0.9) 0%, rgba(26, 26, 46, 0.85) 100%);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 8px 16px;
+  margin-top: 4px;
+  border-radius: 0 0 12px 12px;
+}
+
+.cup-input-stats-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.cup-draft-section,
+.cup-remaining-section,
+.cup-reset-section {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #a1a1aa;
+}
+
+.cup-draft-icon,
+.cup-remaining-icon,
+.cup-reset-icon {
+  font-size: 12px;
+}
+
+.cup-draft-tokens,
+.cup-remaining-value,
+.cup-reset-value {
+  font-weight: 600;
+  color: #22c55e;
+  font-variant-numeric: tabular-nums;
+}
+
+.cup-draft-unit,
+.cup-remaining-label {
+  color: #52525b;
+  font-size: 10px;
+}
+
+/* Mini Progress Bar */
+.cup-quota-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  max-width: 200px;
+}
+
+.cup-mini-progress-container {
+  flex: 1;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.cup-mini-progress-bar {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #2563eb, #3b82f6);
+  border-radius: 3px;
+  transition: width 0.3s ease, background 0.3s ease;
+}
+
+.cup-quota-percent {
+  font-size: 11px;
+  font-weight: 600;
+  color: #a1a1aa;
+  min-width: 40px;
+  text-align: right;
+}
+
+/* ============================================
+   SIDEBAR WIDGET
+   ============================================ */
+
+#cup-sidebar-widget {
+  background: linear-gradient(180deg, rgba(15, 15, 26, 0.98) 0%, rgba(26, 26, 46, 0.95) 100%);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  margin: 8px;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  animation: cup-fadeIn 0.3s ease-out;
+}
+
+#cup-sidebar-widget.cup-floating {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 280px;
+  z-index: 10000;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+#cup-sidebar-widget.cup-in-sidebar {
+  margin: 12px 8px;
+}
+
+/* Widget Header */
+.cup-widget-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.cup-widget-header:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.cup-widget-icon {
+  font-size: 18px;
+}
+
+.cup-widget-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e4e4e7;
+  flex: 1;
+}
+
+.cup-widget-percent {
+  font-size: 14px;
+  font-weight: 700;
+  color: #22c55e;
+  font-variant-numeric: tabular-nums;
+}
+
+.cup-widget-expand {
+  font-size: 10px;
+  color: #71717a;
+  transition: transform 0.2s;
+}
+
+/* Progress Bar */
+.cup-widget-progress-container {
+  padding: 0 12px 12px;
+}
+
+.cup-widget-progress-bg {
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.cup-widget-progress-bar {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #2563eb, #8b5cf6);
+  border-radius: 4px;
+  transition: width 0.5s ease, background 0.3s ease;
+}
+
+/* Widget Details */
+.cup-widget-details {
+  display: none;
+  padding: 0 12px 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.cup-widget-section {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.cup-widget-label {
+  font-size: 11px;
+  color: #71717a;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.cup-widget-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e4e4e7;
+  font-variant-numeric: tabular-nums;
+}
+
+.cup-widget-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 4px 0;
+}
+
+/* Model Section */
+.cup-model-section {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.cup-model-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  font-size: 11px;
+}
+
+.cup-model-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.cup-dot-sonnet { background: #3b82f6; }
+.cup-dot-opus { background: #f59e0b; }
+.cup-dot-haiku { background: #10b981; }
+
+.cup-model-name {
+  flex: 1;
+  color: #a1a1aa;
+}
+
+.cup-model-value {
+  font-weight: 600;
+  color: #e4e4e7;
+}
+
+.cup-reset-countdown {
+  color: #f59e0b !important;
+}
+
+.cup-sync-time {
+  color: #71717a !important;
+  font-size: 11px !important;
+}
+
+/* ============================================
+   ANIMATIONS
+   ============================================ */
+
+@keyframes cup-fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes cup-slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes cup-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
 }
 
 /* Warning states */
 .cup-warning {
-  color: #f59e0b !important;
+  animation: cup-pulse 2s infinite;
 }
 
-.cup-danger {
-  color: #ef4444 !important;
-}
+/* ============================================
+   RESPONSIVE
+   ============================================ */
 
-/* Responsive adjustments */
 @media (max-width: 768px) {
-  #cup-top-bar {
-    flex-direction: column;
-    gap: 8px;
-    padding: 6px 12px;
+  .cup-top-bar-inner {
+    justify-content: center;
   }
   
-  #cup-input-stats {
-    flex-wrap: wrap;
-    gap: 8px;
+  .cup-stat {
+    font-size: 11px;
+    padding: 3px 6px;
+  }
+  
+  #cup-sidebar-widget.cup-floating {
+    width: 240px;
+    bottom: 10px;
+    right: 10px;
+  }
+  
+  .cup-input-stats-inner {
+    justify-content: center;
+    gap: 12px;
+  }
+  
+  .cup-quota-section {
+    order: -1;
+    width: 100%;
+    max-width: none;
   }
 }

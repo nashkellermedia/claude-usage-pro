@@ -1,329 +1,292 @@
 /**
- * Claude Usage Pro - Sidebar UI
+ * Claude Usage Pro - Sidebar UI Component
  * 
- * Embeds usage information directly into Claude's sidebar,
- * appearing between Starred and Recent conversations.
+ * Features:
+ * - Progress bar with percentage
+ * - Model breakdown (Sonnet/Opus/Haiku)
+ * - Reset countdown timer
+ * - Expandable details view
+ * - Color-coded warnings
  */
 
 class SidebarUI {
   constructor() {
     this.container = null;
-    this.progressBar = null;
-    this.percentageDisplay = null;
-    this.resetTimeDisplay = null;
-    this.tooltip = null;
-    this.isInjected = false;
+    this.isExpanded = false;
+    this.initialized = false;
   }
   
-  /**
-   * Initialize and inject the sidebar UI
-   */
   async initialize() {
     window.CUP.log('SidebarUI: Initializing...');
     
-    // Build the UI elements
     this.buildUI();
     
-    // Find injection point and inject
-    const success = await this.inject();
-    
-    if (success) {
-      window.CUP.log('SidebarUI: Initialized successfully');
+    // Try to find sidebar
+    const sidebar = await this.findSidebar();
+    if (sidebar) {
+      this.injectIntoSidebar(sidebar);
     } else {
-      window.CUP.logWarn('SidebarUI: Could not inject into sidebar');
+      window.CUP.log('SidebarUI: Sidebar not found, will create floating widget');
+      this.createFloatingWidget();
     }
+    
+    this.initialized = true;
+    window.CUP.log('SidebarUI: Initialized successfully');
   }
   
-  /**
-   * Build the sidebar UI components
-   */
   buildUI() {
-    // Main container
     this.container = document.createElement('div');
-    this.container.className = 'cup-sidebar-section';
-    this.container.id = 'cup-sidebar-usage';
-    this.container.style.cssText = `
-      margin: 0 8px 16px 8px;
-      padding: 12px;
-      background: var(--bg-200, rgba(0,0,0,0.05));
-      border-radius: 8px;
-      font-family: inherit;
+    this.container.id = 'cup-sidebar-widget';
+    this.container.innerHTML = `
+      <div class="cup-widget-header" id="cup-widget-toggle">
+        <span class="cup-widget-icon">📊</span>
+        <span class="cup-widget-title">Usage</span>
+        <span class="cup-widget-percent" id="cup-sidebar-percent">0%</span>
+        <span class="cup-widget-expand">▼</span>
+      </div>
+      
+      <div class="cup-widget-progress-container">
+        <div class="cup-widget-progress-bg">
+          <div class="cup-widget-progress-bar" id="cup-sidebar-progress"></div>
+        </div>
+      </div>
+      
+      <div class="cup-widget-details" id="cup-widget-details">
+        <div class="cup-widget-section">
+          <div class="cup-widget-label">Total Used</div>
+          <div class="cup-widget-value" id="cup-sidebar-used">0</div>
+        </div>
+        
+        <div class="cup-widget-section">
+          <div class="cup-widget-label">Remaining</div>
+          <div class="cup-widget-value" id="cup-sidebar-remaining">45M</div>
+        </div>
+        
+        <div class="cup-widget-divider"></div>
+        
+        <div class="cup-widget-section cup-model-section">
+          <div class="cup-widget-label">By Model</div>
+          <div class="cup-model-row">
+            <span class="cup-model-dot cup-dot-sonnet"></span>
+            <span class="cup-model-name">Sonnet (1x)</span>
+            <span class="cup-model-value" id="cup-sidebar-sonnet">0</span>
+          </div>
+          <div class="cup-model-row">
+            <span class="cup-model-dot cup-dot-opus"></span>
+            <span class="cup-model-name">Opus (5x)</span>
+            <span class="cup-model-value" id="cup-sidebar-opus">0</span>
+          </div>
+          <div class="cup-model-row">
+            <span class="cup-model-dot cup-dot-haiku"></span>
+            <span class="cup-model-name">Haiku (0.2x)</span>
+            <span class="cup-model-value" id="cup-sidebar-haiku">0</span>
+          </div>
+        </div>
+        
+        <div class="cup-widget-divider"></div>
+        
+        <div class="cup-widget-section">
+          <div class="cup-widget-label">Messages</div>
+          <div class="cup-widget-value" id="cup-sidebar-messages">0</div>
+        </div>
+        
+        <div class="cup-widget-section">
+          <div class="cup-widget-label">Resets In</div>
+          <div class="cup-widget-value cup-reset-countdown" id="cup-sidebar-reset">--:--</div>
+        </div>
+        
+        <div class="cup-widget-section cup-sync-section">
+          <div class="cup-widget-label">Last Sync</div>
+          <div class="cup-widget-value cup-sync-time" id="cup-sidebar-sync">Never</div>
+        </div>
+      </div>
     `;
     
-    // Header row
-    const header = document.createElement('div');
-    header.style.cssText = `
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 8px;
-    `;
-    
-    const title = document.createElement('span');
-    title.style.cssText = `
-      font-size: 11px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: var(--text-500, #6b7280);
-    `;
-    title.textContent = '📊 USAGE';
-    
-    // Settings button (optional)
-    const settingsBtn = document.createElement('button');
-    settingsBtn.style.cssText = `
-      background: none;
-      border: none;
-      cursor: pointer;
-      padding: 2px;
-      color: var(--text-400, #9ca3af);
-      font-size: 12px;
-    `;
-    settingsBtn.textContent = '⚙️';
-    settingsBtn.title = 'Open Usage Dashboard';
-    settingsBtn.addEventListener('click', () => {
-      // Open popup by clicking extension icon (can't do programmatically)
-      window.CUP.log('Settings clicked - open extension popup');
-    });
-    
-    header.appendChild(title);
-    header.appendChild(settingsBtn);
-    
-    // Stats row
-    const statsRow = document.createElement('div');
-    statsRow.style.cssText = `
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 6px;
-      font-size: 12px;
-    `;
-    
-    // Left: percentage
-    this.percentageDisplay = document.createElement('span');
-    this.percentageDisplay.id = 'cup-percentage';
-    this.percentageDisplay.style.cssText = `
-      font-weight: 600;
-      color: #2c84db;
-    `;
-    this.percentageDisplay.textContent = '0%';
-    
-    // Right: reset time
-    this.resetTimeDisplay = document.createElement('span');
-    this.resetTimeDisplay.id = 'cup-reset-time';
-    this.resetTimeDisplay.style.cssText = `
-      color: var(--text-400, #9ca3af);
-      font-size: 11px;
-    `;
-    this.resetTimeDisplay.textContent = 'Reset: --';
-    
-    statsRow.appendChild(this.percentageDisplay);
-    statsRow.appendChild(this.resetTimeDisplay);
-    
-    // Progress bar container
-    const progressContainer = document.createElement('div');
-    progressContainer.style.cssText = `
-      height: 6px;
-      background: var(--bg-300, rgba(0,0,0,0.1));
-      border-radius: 3px;
-      overflow: hidden;
-      cursor: help;
-    `;
-    
-    this.progressBar = document.createElement('div');
-    this.progressBar.id = 'cup-progress-bar';
-    this.progressBar.style.cssText = `
-      height: 100%;
-      width: 0%;
-      background: #2c84db;
-      border-radius: 3px;
-      transition: width 0.3s ease, background-color 0.3s ease;
-    `;
-    
-    progressContainer.appendChild(this.progressBar);
-    
-    // Tooltip
-    this.tooltip = document.createElement('div');
-    this.tooltip.style.cssText = `
-      position: fixed;
-      background: var(--bg-500, #374151);
-      color: var(--text-100, #f3f4f6);
-      padding: 6px 10px;
-      border-radius: 6px;
-      font-size: 11px;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.15s ease;
-      z-index: 99999;
-      white-space: nowrap;
-    `;
-    this.tooltip.textContent = '0 / 0 tokens (0%)';
-    document.body.appendChild(this.tooltip);
-    
-    window.CUP.setupTooltip(progressContainer, this.tooltip);
-    
-    // Assemble
-    this.container.appendChild(header);
-    this.container.appendChild(statsRow);
-    this.container.appendChild(progressContainer);
+    // Add toggle listener
+    setTimeout(() => {
+      const toggle = document.getElementById('cup-widget-toggle');
+      if (toggle) {
+        toggle.addEventListener('click', () => this.toggleExpand());
+      }
+    }, 100);
     
     window.CUP.log('SidebarUI: Built UI elements');
   }
   
-  /**
-   * Find sidebar and inject our UI
-   */
-  async inject() {
-    window.CUP.log('SidebarUI: Looking for sidebar...');
+  async findSidebar() {
+    const selectors = [
+      'nav.flex-col',
+      'nav[aria-label*="Sidebar"]',
+      '[class*="sidebar"]',
+      'aside',
+      '[class*="side-nav"]'
+    ];
     
-    // Wait a bit for the page to fully render
-    await window.CUP.sleep(1000);
-    
-    // Try to find sidebar
-    const sidebar = window.CUP.findSidebar();
-    
-    if (!sidebar) {
-      window.CUP.logWarn('SidebarUI: Sidebar not found');
-      return false;
+    for (const sel of selectors) {
+      const sidebar = document.querySelector(sel);
+      if (sidebar) {
+        window.CUP.log('Found sidebar with selector:', sel);
+        return sidebar;
+      }
     }
-    
-    window.CUP.log('SidebarUI: Found sidebar:', sidebar);
-    
+    return null;
+  }
+  
+  injectIntoSidebar(sidebar) {
     // Look for a good injection point
-    // Try to find the scrollable container
-    const scrollContainer = sidebar.querySelector('.overflow-y-auto') || 
-                           sidebar.querySelector('[class*="overflow"]') ||
-                           sidebar;
+    const targets = [
+      '[class*="starred"]',
+      '[class*="recent"]',
+      '[class*="history"]',
+      'ul',
+      'div'
+    ];
     
-    // Look for "Starred" or "Recents" section headers
-    const sections = scrollContainer.querySelectorAll('h3, [class*="text-xs"], [class*="uppercase"]');
     let injectionPoint = null;
-    
-    for (const section of sections) {
-      const text = section.textContent.toLowerCase();
-      if (text.includes('starred') || text.includes('recent') || text.includes('today')) {
-        injectionPoint = section.closest('div') || section.parentElement;
-        window.CUP.log('SidebarUI: Found injection point near:', text);
+    for (const sel of targets) {
+      const el = sidebar.querySelector(sel);
+      if (el) {
+        injectionPoint = el;
+        window.CUP.log('SidebarUI: Found injection point near:', sel);
         break;
       }
     }
     
-    // If no section found, try to inject at the top of the scrollable area
-    if (!injectionPoint) {
-      const innerContainer = scrollContainer.querySelector('.flex.flex-col') || 
-                            scrollContainer.querySelector('[class*="flex-col"]') ||
-                            scrollContainer;
-      
-      if (innerContainer && innerContainer.firstChild) {
-        injectionPoint = innerContainer.firstChild;
-        window.CUP.log('SidebarUI: Using first child as injection point');
-      }
-    }
-    
-    // Inject our container
     if (injectionPoint) {
       injectionPoint.parentNode.insertBefore(this.container, injectionPoint);
-      this.isInjected = true;
-      window.CUP.log('SidebarUI: Injected successfully');
-      return true;
     } else {
-      // Fallback: append to scrollContainer
-      scrollContainer.prepend(this.container);
-      this.isInjected = true;
-      window.CUP.log('SidebarUI: Injected at top of sidebar');
-      return true;
+      sidebar.insertBefore(this.container, sidebar.firstChild);
+    }
+    
+    this.container.classList.add('cup-in-sidebar');
+    window.CUP.log('SidebarUI: Injected successfully');
+  }
+  
+  createFloatingWidget() {
+    this.container.classList.add('cup-floating');
+    document.body.appendChild(this.container);
+    window.CUP.log('SidebarUI: Created floating widget');
+  }
+  
+  toggleExpand() {
+    this.isExpanded = !this.isExpanded;
+    const details = document.getElementById('cup-widget-details');
+    const expand = this.container.querySelector('.cup-widget-expand');
+    
+    if (details) {
+      details.style.display = this.isExpanded ? 'block' : 'none';
+    }
+    if (expand) {
+      expand.textContent = this.isExpanded ? '▲' : '▼';
     }
   }
   
-  /**
-   * Check if UI is still in DOM and reinject if needed
-   */
-  async checkAndReinject() {
-    if (!document.contains(this.container)) {
-      window.CUP.log('SidebarUI: Container removed, reinjecting...');
-      this.isInjected = false;
-      await this.inject();
-    }
-  }
-  
-  /**
-   * Update the display with usage data
-   */
   update(usageData) {
+    if (!usageData) return;
+    
     window.CUP.log('SidebarUI.update() called');
     
-    if (!usageData) {
-      window.CUP.logWarn('SidebarUI.update: usageData is null/undefined');
-      return;
+    const modelUsage = usageData.modelUsage || {};
+    const multipliers = {
+      'claude-sonnet-4': 1.0,
+      'claude-haiku-4': 0.2,
+      'claude-opus-4': 5.0
+    };
+    
+    // Calculate weighted total
+    let weightedTotal = 0;
+    for (const [model, tokens] of Object.entries(modelUsage)) {
+      weightedTotal += tokens * (multipliers[model] || 1.0);
     }
     
-    try {
-      const percentage = usageData.getUsagePercentage();
-      const weighted = usageData.getWeightedTotal();
-      const cap = usageData.usageCap;
-      const resetInfo = usageData.getResetTimeInfo();
+    const cap = usageData.usageCap || 45000000;
+    const percentage = (weightedTotal / cap) * 100;
+    const remaining = Math.max(0, cap - weightedTotal);
+    
+    window.CUP.log(`SidebarUI.update: percentage=${percentage.toFixed(2)}%, weighted=${weightedTotal}, cap=${cap}`);
+    
+    // Update percentage display
+    const percentEl = document.getElementById('cup-sidebar-percent');
+    if (percentEl) {
+      percentEl.textContent = percentage.toFixed(1) + '%';
       
-      window.CUP.log('SidebarUI.update: percentage=' + percentage.toFixed(2) + '%, weighted=' + weighted + ', cap=' + cap);
-      
-      // Get color based on percentage
-      let color = '#2c84db'; // Blue
-      if (percentage >= 95) color = '#de2929'; // Red
-      else if (percentage >= 80) color = '#f59e0b'; // Yellow
-      
-      // Update percentage display
-      if (this.percentageDisplay) {
-        this.percentageDisplay.textContent = percentage.toFixed(1) + '%';
-        this.percentageDisplay.style.color = color;
-        window.CUP.log('SidebarUI.update: Updated percentage to ' + this.percentageDisplay.textContent);
+      // Color based on usage
+      if (percentage >= 90) {
+        percentEl.style.color = '#ef4444';
+      } else if (percentage >= 70) {
+        percentEl.style.color = '#f59e0b';
       } else {
-        window.CUP.logError('percentageDisplay element is null!');
+        percentEl.style.color = '#22c55e';
       }
-      
-      // Update progress bar
-      if (this.progressBar) {
-        this.progressBar.style.width = Math.min(percentage, 100) + '%';
-        this.progressBar.style.backgroundColor = color;
-        window.CUP.log('SidebarUI.update: Updated progress bar to ' + this.progressBar.style.width);
-      } else {
-        window.CUP.logError('progressBar element is null!');
-      }
-      
-      // Update reset time
-      if (this.resetTimeDisplay) {
-        if (resetInfo.expired) {
-          this.resetTimeDisplay.innerHTML = '<span style="color: #22c55e">Reset: Now!</span>';
-        } else {
-          this.resetTimeDisplay.textContent = 'Reset: ' + resetInfo.formatted;
-        }
-        window.CUP.log('SidebarUI.update: Updated reset time to ' + this.resetTimeDisplay.textContent);
-      } else {
-        window.CUP.logError('resetTimeDisplay element is null!');
-      }
-      
-      // Update tooltip
-      if (this.tooltip) {
-        const formatted = this.formatNumber(weighted) + ' / ' + this.formatNumber(cap) + ' tokens (' + percentage.toFixed(1) + '%)';
-        this.tooltip.textContent = formatted;
-      }
-      
-      window.CUP.log('SidebarUI.update: Complete');
-      
-    } catch (error) {
-      window.CUP.logError('SidebarUI.update error:', error);
+      window.CUP.log(`SidebarUI.update: Updated percentage to ${percentage.toFixed(1)}%`);
     }
+    
+    // Update progress bar
+    const progressEl = document.getElementById('cup-sidebar-progress');
+    if (progressEl) {
+      progressEl.style.width = Math.min(percentage, 100) + '%';
+      
+      if (percentage >= 90) {
+        progressEl.style.background = 'linear-gradient(90deg, #ef4444, #dc2626)';
+      } else if (percentage >= 70) {
+        progressEl.style.background = 'linear-gradient(90deg, #f59e0b, #d97706)';
+      } else {
+        progressEl.style.background = 'linear-gradient(90deg, #2563eb, #8b5cf6)';
+      }
+      window.CUP.log(`SidebarUI.update: Updated progress bar to ${percentage}%`);
+    }
+    
+    // Update totals
+    this.updateElement('cup-sidebar-used', this.formatNumber(weightedTotal));
+    this.updateElement('cup-sidebar-remaining', this.formatNumber(remaining));
+    
+    // Update model breakdown
+    this.updateElement('cup-sidebar-sonnet', this.formatNumber(modelUsage['claude-sonnet-4'] || 0));
+    this.updateElement('cup-sidebar-opus', this.formatNumber(modelUsage['claude-opus-4'] || 0));
+    this.updateElement('cup-sidebar-haiku', this.formatNumber(modelUsage['claude-haiku-4'] || 0));
+    
+    // Update messages count
+    this.updateElement('cup-sidebar-messages', (usageData.messagesCount || 0).toLocaleString());
+    
+    // Update reset time
+    if (usageData.resetTimestamp) {
+      const msRemaining = usageData.resetTimestamp - Date.now();
+      if (msRemaining > 0) {
+        const hours = Math.floor(msRemaining / (1000 * 60 * 60));
+        const mins = Math.floor((msRemaining % (1000 * 60 * 60)) / (1000 * 60));
+        this.updateElement('cup-sidebar-reset', `${hours}h ${mins}m`);
+      } else {
+        this.updateElement('cup-sidebar-reset', 'Now!');
+      }
+      window.CUP.log(`SidebarUI.update: Updated reset time`);
+    }
+    
+    // Update sync time
+    if (usageData.lastSynced) {
+      const ago = Math.round((Date.now() - usageData.lastSynced) / 60000);
+      this.updateElement('cup-sidebar-sync', ago < 1 ? 'Just now' : `${ago}m ago`);
+    }
+    
+    window.CUP.log('SidebarUI.update: Complete');
   }
   
-  /**
-   * Format large numbers
-   */
+  updateElement(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
+  }
+  
   formatNumber(num) {
     if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
     if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
     return num.toLocaleString();
   }
+  
+  checkAndReinject() {
+    if (!document.getElementById('cup-sidebar-widget')) {
+      this.initialize();
+    }
+  }
 }
 
-// Expose globally
 window.SidebarUI = SidebarUI;
-
 window.CUP.log('SidebarUI class loaded');

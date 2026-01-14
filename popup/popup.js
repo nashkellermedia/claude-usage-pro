@@ -1,49 +1,59 @@
 /**
- * Claude Usage Pro - Popup Script
+ * Claude Usage Pro - Popup Dashboard
  */
 
-const elements = {
-  // Sync
+const TIPS = [
+  "Use Haiku for simple tasks to save 80% on tokens!",
+  "Long conversations use more context. Start fresh for complex tasks.",
+  "Opus costs 5x more than Sonnet - use wisely!",
+  "Your usage resets daily at midnight UTC.",
+  "Cached prompts can reduce token usage significantly.",
+  "Keep system prompts concise to save on every message.",
+  "Breaking tasks into smaller prompts can be more efficient.",
+];
+
+let currentTipIndex = 0;
+
+// DOM Elements
+const els = {
   syncBtn: document.getElementById('syncBtn'),
   syncStatus: document.getElementById('syncStatus'),
   syncIndicator: document.getElementById('syncIndicator'),
-  
-  // Main usage
   progressCircle: document.getElementById('progressCircle'),
   usagePercent: document.getElementById('usagePercent'),
   usedTokens: document.getElementById('usedTokens'),
-  remaining: document.getElementById('remaining'),
-  totalTokens: document.getElementById('totalTokens'),
+  remainingTokens: document.getElementById('remainingTokens'),
   resetTime: document.getElementById('resetTime'),
-  
-  // Stats
   messagesCount: document.getElementById('messagesCount'),
-  avgTokens: document.getElementById('avgTokens'),
-  timeToReset: document.getElementById('timeToReset'),
-  
-  // Model bars
+  avgPerMsg: document.getElementById('avgPerMsg'),
+  msgsRemaining: document.getElementById('msgsRemaining'),
   sonnetBar: document.getElementById('sonnetBar'),
   sonnetTokens: document.getElementById('sonnetTokens'),
+  sonnetWeighted: document.getElementById('sonnetWeighted'),
   opusBar: document.getElementById('opusBar'),
   opusTokens: document.getElementById('opusTokens'),
+  opusWeighted: document.getElementById('opusWeighted'),
   haikuBar: document.getElementById('haikuBar'),
   haikuTokens: document.getElementById('haikuTokens'),
-  
-  // Settings
+  haikuWeighted: document.getElementById('haikuWeighted'),
   settingsBtn: document.getElementById('settingsBtn'),
   settingsPanel: document.getElementById('settingsPanel'),
   closeSettings: document.getElementById('closeSettings'),
   quotaSelect: document.getElementById('quotaSelect'),
   customQuota: document.getElementById('customQuota'),
   syncInterval: document.getElementById('syncInterval'),
-  notificationsToggle: document.getElementById('notificationsToggle'),
-  firebaseToggle: document.getElementById('firebaseToggle'),
-  firebaseConfig: document.getElementById('firebaseConfig'),
+  showBadge: document.getElementById('showBadge'),
+  notifications: document.getElementById('notifications'),
+  showTips: document.getElementById('showTips'),
   saveSettings: document.getElementById('saveSettings'),
-  resetUsage: document.getElementById('resetUsage')
+  resetData: document.getElementById('resetData'),
+  tipsCard: document.getElementById('tipsCard'),
+  tipText: document.getElementById('tipText'),
+  closeTips: document.getElementById('closeTips'),
+  planBadge: document.getElementById('planBadge')
 };
 
-const MODEL_MULTIPLIERS = {
+const MULTIPLIERS = {
   'claude-sonnet-4': 1.0,
   'claude-haiku-4': 0.2,
   'claude-opus-4': 5.0
@@ -55,77 +65,58 @@ function formatNumber(num) {
   return num.toLocaleString();
 }
 
-function formatTimeRemaining(ms) {
+function formatTime(ms) {
   if (ms <= 0) return 'Now!';
-  
   const hours = Math.floor(ms / (1000 * 60 * 60));
-  const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
-  
-  if (hours > 24) {
-    const days = Math.floor(hours / 24);
-    return `${days}d ${hours % 24}h`;
-  }
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  return `${minutes}m`;
-}
-
-function getWeightedTotal(modelUsage) {
-  let total = 0;
-  for (const [model, tokens] of Object.entries(modelUsage || {})) {
-    total += tokens * (MODEL_MULTIPLIERS[model] || 1.0);
-  }
-  return Math.round(total);
+  const mins = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+  if (hours > 0) return `${hours}h ${mins}m`;
+  return `${mins}m`;
 }
 
 function updateUI(usageData) {
   if (!usageData) return;
   
   const modelUsage = usageData.modelUsage || {};
-  const weightedTotal = getWeightedTotal(modelUsage);
-  const cap = usageData.usageCap || 45000000;
+  let weightedTotal = 0;
   
-  // Use synced percentage if available
-  let percentage;
-  if (usageData.syncedUsagePercent !== null && usageData.lastSynced) {
-    percentage = usageData.syncedUsagePercent;
-  } else {
-    percentage = (weightedTotal / cap) * 100;
+  for (const [model, tokens] of Object.entries(modelUsage)) {
+    weightedTotal += tokens * (MULTIPLIERS[model] || 1.0);
   }
   
+  const cap = usageData.usageCap || 45000000;
+  const percentage = (weightedTotal / cap) * 100;
   const remaining = Math.max(0, cap - weightedTotal);
-  const timeUntilReset = usageData.resetTimestamp ? usageData.resetTimestamp - Date.now() : 0;
+  const msToReset = usageData.resetTimestamp ? usageData.resetTimestamp - Date.now() : 0;
   
   // Update circular progress
-  const circumference = 2 * Math.PI * 45;
+  const circumference = 2 * Math.PI * 42;
   const offset = circumference - (Math.min(percentage, 100) / 100) * circumference;
-  elements.progressCircle.style.strokeDashoffset = offset;
+  els.progressCircle.style.strokeDashoffset = offset;
   
-  // Color based on percentage
-  let color = '#2c84db';
-  if (percentage >= 95) color = '#ef4444';
-  else if (percentage >= 80) color = '#f59e0b';
-  elements.progressCircle.style.stroke = color;
-  
-  // Update text
-  elements.usagePercent.textContent = percentage.toFixed(1) + '%';
-  elements.usedTokens.textContent = formatNumber(weightedTotal);
-  elements.remaining.textContent = formatNumber(remaining);
-  elements.totalTokens.textContent = formatNumber(cap);
-  
-  // Reset time
-  elements.resetTime.textContent = 'Reset: ' + formatTimeRemaining(timeUntilReset);
-  elements.timeToReset.textContent = formatTimeRemaining(timeUntilReset);
-  
-  // Stats
-  elements.messagesCount.textContent = usageData.messagesCount || 0;
-  if (usageData.messagesCount > 0) {
-    elements.avgTokens.textContent = formatNumber(Math.round(usageData.tokensUsed / usageData.messagesCount));
+  // Update color based on usage
+  if (percentage >= 90) {
+    els.progressCircle.style.stroke = '#ef4444';
+  } else if (percentage >= 70) {
+    els.progressCircle.style.stroke = '#f59e0b';
+  } else {
+    els.progressCircle.style.stroke = 'url(#progressGradient)';
   }
   
-  // Sync status
-  if (usageData.lastSynced) {
-    const ago = Math.round((Date.now() - usageData.lastSynced) / 60000);
-    elements.syncStatus.textContent = ago < 1 ? 'Just synced' : `Synced ${ago}m ago`;
+  // Update text values
+  els.usagePercent.textContent = percentage.toFixed(1) + '%';
+  els.usedTokens.textContent = formatNumber(weightedTotal);
+  els.remainingTokens.textContent = formatNumber(remaining);
+  els.resetTime.textContent = formatTime(msToReset);
+  
+  // Stats
+  els.messagesCount.textContent = usageData.messagesCount || 0;
+  
+  if (usageData.messagesCount > 0) {
+    const avg = Math.round(weightedTotal / usageData.messagesCount);
+    els.avgPerMsg.textContent = formatNumber(avg);
+    
+    const msgsLeft = Math.floor(remaining / avg);
+    els.msgsRemaining.textContent = '~' + msgsLeft;
   }
   
   // Model breakdown
@@ -133,16 +124,38 @@ function updateUI(usageData) {
   const opus = modelUsage['claude-opus-4'] || 0;
   const haiku = modelUsage['claude-haiku-4'] || 0;
   
-  const maxModel = Math.max(sonnet, opus * 5, haiku * 0.2, 1);
+  const sonnetW = sonnet * 1.0;
+  const opusW = opus * 5.0;
+  const haikuW = haiku * 0.2;
   
-  elements.sonnetBar.style.width = ((sonnet / cap) * 100) + '%';
-  elements.sonnetTokens.textContent = formatNumber(sonnet) + ' tokens';
+  // Calculate bar widths relative to cap
+  els.sonnetBar.style.width = Math.min((sonnetW / cap) * 100, 100) + '%';
+  els.opusBar.style.width = Math.min((opusW / cap) * 100, 100) + '%';
+  els.haikuBar.style.width = Math.min((haikuW / cap) * 100, 100) + '%';
   
-  elements.opusBar.style.width = ((opus * 5 / cap) * 100) + '%';
-  elements.opusTokens.textContent = `${formatNumber(opus)} (${formatNumber(opus * 5)} weighted)`;
+  els.sonnetTokens.textContent = formatNumber(sonnet) + ' tokens';
+  els.sonnetWeighted.textContent = formatNumber(sonnetW) + ' weighted';
   
-  elements.haikuBar.style.width = ((haiku * 0.2 / cap) * 100) + '%';
-  elements.haikuTokens.textContent = `${formatNumber(haiku)} (${formatNumber(haiku * 0.2)} weighted)`;
+  els.opusTokens.textContent = formatNumber(opus) + ' tokens';
+  els.opusWeighted.textContent = formatNumber(opusW) + ' weighted';
+  
+  els.haikuTokens.textContent = formatNumber(haiku) + ' tokens';
+  els.haikuWeighted.textContent = formatNumber(haikuW) + ' weighted';
+  
+  // Sync status
+  if (usageData.lastSynced) {
+    const ago = Math.round((Date.now() - usageData.lastSynced) / 60000);
+    els.syncStatus.textContent = ago < 1 ? 'Synced just now' : `Synced ${ago}m ago`;
+  }
+  
+  // Plan badge based on quota
+  if (cap >= 135000000) {
+    els.planBadge.textContent = 'MAX 5X';
+  } else if (cap >= 90000000) {
+    els.planBadge.textContent = 'MAX';
+  } else {
+    els.planBadge.textContent = 'PRO';
+  }
 }
 
 async function loadData() {
@@ -151,8 +164,8 @@ async function loadData() {
     if (response?.usageData) {
       updateUI(response.usageData);
     }
-  } catch (error) {
-    console.error('Error loading data:', error);
+  } catch (e) {
+    console.error('Error loading data:', e);
   }
 }
 
@@ -162,114 +175,121 @@ async function loadSettings() {
     if (response?.settings) {
       const s = response.settings;
       
-      // Quota
       const quotaVal = s.quota || 45000000;
-      const quotaOptions = ['45000000', '90000000', '135000000'];
-      if (quotaOptions.includes(quotaVal.toString())) {
-        elements.quotaSelect.value = quotaVal;
+      if (['45000000', '90000000', '135000000'].includes(quotaVal.toString())) {
+        els.quotaSelect.value = quotaVal;
       } else {
-        elements.quotaSelect.value = 'custom';
-        elements.customQuota.classList.remove('hidden');
-        elements.customQuota.value = quotaVal;
+        els.quotaSelect.value = 'custom';
+        els.customQuota.classList.remove('hidden');
+        els.customQuota.value = quotaVal;
       }
       
-      elements.syncInterval.value = s.syncInterval || 5;
-      elements.notificationsToggle.checked = s.notifications !== false;
-      elements.firebaseToggle.checked = s.firebaseEnabled || false;
+      els.syncInterval.value = s.syncInterval || 5;
+      els.showBadge.checked = s.showBadge !== false;
+      els.notifications.checked = s.notifications !== false;
+      els.showTips.checked = s.showTips !== false;
       
-      if (s.firebaseEnabled) {
-        elements.firebaseConfig.classList.remove('hidden');
+      if (!s.showTips) {
+        els.tipsCard.classList.add('hidden');
       }
     }
-  } catch (error) {
-    console.error('Error loading settings:', error);
+  } catch (e) {
+    console.error('Error loading settings:', e);
   }
 }
 
 async function saveSettings() {
   let quota;
-  if (elements.quotaSelect.value === 'custom') {
-    quota = parseInt(elements.customQuota.value, 10);
+  if (els.quotaSelect.value === 'custom') {
+    quota = parseInt(els.customQuota.value, 10);
   } else {
-    quota = parseInt(elements.quotaSelect.value, 10);
+    quota = parseInt(els.quotaSelect.value, 10);
   }
   
   const settings = {
     quota,
-    syncInterval: parseInt(elements.syncInterval.value, 10),
-    notifications: elements.notificationsToggle.checked,
-    firebaseEnabled: elements.firebaseToggle.checked
+    syncInterval: parseInt(els.syncInterval.value, 10),
+    showBadge: els.showBadge.checked,
+    notifications: els.notifications.checked,
+    showTips: els.showTips.checked
   };
   
   try {
     await chrome.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings });
-    elements.settingsPanel.classList.add('hidden');
+    els.settingsPanel.classList.add('hidden');
     await loadData();
-  } catch (error) {
-    console.error('Error saving settings:', error);
+  } catch (e) {
+    console.error('Error saving settings:', e);
   }
 }
 
 async function triggerSync() {
-  elements.syncIndicator.classList.add('syncing');
-  elements.syncStatus.textContent = 'Syncing...';
+  els.syncIndicator.classList.add('syncing');
+  els.syncStatus.textContent = 'Syncing...';
   
   try {
     await chrome.runtime.sendMessage({ type: 'TRIGGER_SYNC' });
     setTimeout(loadData, 1500);
-  } catch (error) {
-    console.error('Sync error:', error);
+  } catch (e) {
+    els.syncIndicator.classList.add('error');
   }
   
   setTimeout(() => {
-    elements.syncIndicator.classList.remove('syncing');
+    els.syncIndicator.classList.remove('syncing');
   }, 2000);
 }
 
-async function resetUsage() {
+async function resetData() {
   if (!confirm('Reset all usage data? This cannot be undone.')) return;
   
   try {
     await chrome.runtime.sendMessage({ type: 'RESET_USAGE' });
     await loadData();
-    elements.settingsPanel.classList.add('hidden');
-  } catch (error) {
-    console.error('Error resetting:', error);
+    els.settingsPanel.classList.add('hidden');
+  } catch (e) {
+    console.error('Error resetting:', e);
   }
 }
 
-// Event listeners
-elements.settingsBtn.addEventListener('click', () => {
-  elements.settingsPanel.classList.toggle('hidden');
-  if (!elements.settingsPanel.classList.contains('hidden')) {
+function rotateTip() {
+  currentTipIndex = (currentTipIndex + 1) % TIPS.length;
+  els.tipText.textContent = TIPS[currentTipIndex];
+}
+
+// Event Listeners
+els.settingsBtn.addEventListener('click', () => {
+  els.settingsPanel.classList.toggle('hidden');
+  if (!els.settingsPanel.classList.contains('hidden')) {
     loadSettings();
   }
 });
 
-elements.closeSettings.addEventListener('click', () => {
-  elements.settingsPanel.classList.add('hidden');
+els.closeSettings.addEventListener('click', () => {
+  els.settingsPanel.classList.add('hidden');
 });
 
-elements.syncBtn.addEventListener('click', triggerSync);
-elements.saveSettings.addEventListener('click', saveSettings);
-elements.resetUsage.addEventListener('click', resetUsage);
+els.syncBtn.addEventListener('click', triggerSync);
+els.saveSettings.addEventListener('click', saveSettings);
+els.resetData.addEventListener('click', resetData);
 
-elements.quotaSelect.addEventListener('change', () => {
-  if (elements.quotaSelect.value === 'custom') {
-    elements.customQuota.classList.remove('hidden');
+els.quotaSelect.addEventListener('change', () => {
+  if (els.quotaSelect.value === 'custom') {
+    els.customQuota.classList.remove('hidden');
   } else {
-    elements.customQuota.classList.add('hidden');
+    els.customQuota.classList.add('hidden');
   }
 });
 
-elements.firebaseToggle.addEventListener('change', () => {
-  if (elements.firebaseToggle.checked) {
-    elements.firebaseConfig.classList.remove('hidden');
-  } else {
-    elements.firebaseConfig.classList.add('hidden');
-  }
+els.closeTips.addEventListener('click', () => {
+  els.tipsCard.classList.add('hidden');
 });
 
 // Initialize
 loadData();
+loadSettings();
+
+// Refresh every 5 seconds
 setInterval(loadData, 5000);
+
+// Rotate tips every 10 seconds
+setInterval(rotateTip, 10000);

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Claude Usage Pro",
-  "version": "1.1.0",
-  "description": "Track your Claude.ai token usage with real-time sync, cross-device support, and detailed analytics",
+  "version": "1.2.0",
+  "description": "Track Claude.ai token usage with real-time stats, model breakdown, live draft counter, and cost estimates",
   "author": "Nash Keller Media",
   "homepage_url": "https://github.com/nashkellermedia/claude-usage-pro",
   

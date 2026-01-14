@@ -7,6 +7,7 @@
 </head>
 <body>
   <div class="popup-container">
+    <!-- Header -->
     <header>
       <div class="logo">
         <span class="logo-icon">📊</span>
@@ -18,47 +19,56 @@
       </div>
     </header>
     
-    <!-- Sync Status -->
+    <!-- Sync Status Bar -->
     <div class="sync-status">
       <span id="syncStatus">Last sync: Never</span>
       <span id="syncIndicator" class="sync-indicator"></span>
     </div>
     
-    <!-- Main Usage Card -->
+    <!-- Main Usage Circle -->
     <section class="usage-card main-card">
       <div class="card-header">
-        <span class="label">OVERALL USAGE</span>
-        <span id="resetTime" class="reset-badge">Reset: --</span>
+        <span class="label">DAILY USAGE</span>
+        <span id="planBadge" class="plan-badge">PRO</span>
       </div>
       
       <div class="usage-circle-container">
         <svg class="usage-circle" viewBox="0 0 100 100">
-          <circle class="bg" cx="50" cy="50" r="45"/>
-          <circle id="progressCircle" class="progress" cx="50" cy="50" r="45"/>
+          <defs>
+            <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" style="stop-color:#2563eb"/>
+              <stop offset="100%" style="stop-color:#8b5cf6"/>
+            </linearGradient>
+          </defs>
+          <circle class="bg" cx="50" cy="50" r="42"/>
+          <circle id="progressCircle" class="progress" cx="50" cy="50" r="42" 
+                  stroke="url(#progressGradient)"/>
         </svg>
         <div class="usage-circle-text">
           <span id="usagePercent" class="percent">0%</span>
-          <span class="subtext">used</span>
+          <span class="subtext">used today</span>
         </div>
       </div>
       
-      <div class="usage-details">
-        <div class="detail">
-          <span class="value" id="usedTokens">0</span>
-          <span class="label">Used</span>
+      <div class="usage-quick-stats">
+        <div class="quick-stat">
+          <span class="quick-value" id="usedTokens">0</span>
+          <span class="quick-label">Used</span>
         </div>
-        <div class="detail">
-          <span class="value" id="remaining">45M</span>
-          <span class="label">Remaining</span>
+        <div class="quick-divider"></div>
+        <div class="quick-stat">
+          <span class="quick-value" id="remainingTokens">45M</span>
+          <span class="quick-label">Remaining</span>
         </div>
-        <div class="detail">
-          <span class="value" id="totalTokens">45M</span>
-          <span class="label">Total</span>
+        <div class="quick-divider"></div>
+        <div class="quick-stat">
+          <span class="quick-value" id="resetTime">--</span>
+          <span class="quick-label">Reset</span>
         </div>
       </div>
     </section>
     
-    <!-- Quick Stats -->
+    <!-- Stats Cards Row -->
     <section class="stats-row">
       <div class="stat-card">
         <span class="stat-icon">💬</span>
@@ -67,111 +77,142 @@
       </div>
       <div class="stat-card">
         <span class="stat-icon">📊</span>
-        <span id="avgTokens" class="stat-value">--</span>
+        <span id="avgPerMsg" class="stat-value">--</span>
         <span class="stat-label">Avg/Msg</span>
       </div>
       <div class="stat-card">
-        <span class="stat-icon">⏱️</span>
-        <span id="timeToReset" class="stat-value">--</span>
-        <span class="stat-label">Until Reset</span>
+        <span class="stat-icon">🎯</span>
+        <span id="msgsRemaining" class="stat-value">~450</span>
+        <span class="stat-label">Msgs Left</span>
       </div>
     </section>
     
     <!-- Model Breakdown -->
-    <section class="usage-card">
+    <section class="usage-card model-card">
       <div class="card-header">
-        <span class="label">BY MODEL</span>
+        <span class="label">MODEL BREAKDOWN</span>
+        <span class="hint">weighted cost</span>
       </div>
       
       <div class="model-item">
         <div class="model-header">
-          <span class="model-badge sonnet">Sonnet</span>
-          <span class="model-multiplier">1x cost</span>
+          <div class="model-info">
+            <span class="model-dot sonnet"></span>
+            <span class="model-name">Claude Sonnet</span>
+          </div>
+          <span class="model-multiplier">1x</span>
         </div>
-        <div class="model-bar-bg">
+        <div class="model-bar-container">
           <div id="sonnetBar" class="model-bar sonnet"></div>
         </div>
-        <span id="sonnetTokens" class="model-count">0 tokens</span>
+        <div class="model-stats">
+          <span id="sonnetTokens" class="model-tokens">0 tokens</span>
+          <span id="sonnetWeighted" class="model-weighted">0 weighted</span>
+        </div>
       </div>
       
       <div class="model-item">
         <div class="model-header">
-          <span class="model-badge opus">Opus</span>
-          <span class="model-multiplier">5x cost</span>
+          <div class="model-info">
+            <span class="model-dot opus"></span>
+            <span class="model-name">Claude Opus</span>
+          </div>
+          <span class="model-multiplier opus">5x</span>
         </div>
-        <div class="model-bar-bg">
+        <div class="model-bar-container">
           <div id="opusBar" class="model-bar opus"></div>
         </div>
-        <span id="opusTokens" class="model-count">0 tokens (0 weighted)</span>
+        <div class="model-stats">
+          <span id="opusTokens" class="model-tokens">0 tokens</span>
+          <span id="opusWeighted" class="model-weighted">0 weighted</span>
+        </div>
       </div>
       
       <div class="model-item">
         <div class="model-header">
-          <span class="model-badge haiku">Haiku</span>
-          <span class="model-multiplier">0.2x cost</span>
+          <div class="model-info">
+            <span class="model-dot haiku"></span>
+            <span class="model-name">Claude Haiku</span>
+          </div>
+          <span class="model-multiplier haiku">0.2x</span>
         </div>
-        <div class="model-bar-bg">
+        <div class="model-bar-container">
           <div id="haikuBar" class="model-bar haiku"></div>
         </div>
-        <span id="haikuTokens" class="model-count">0 tokens (0 weighted)</span>
+        <div class="model-stats">
+          <span id="haikuTokens" class="model-tokens">0 tokens</span>
+          <span id="haikuWeighted" class="model-weighted">0 weighted</span>
+        </div>
       </div>
     </section>
     
-    <!-- Settings Panel -->
+    <!-- Token Saving Tips -->
+    <section class="usage-card tips-card" id="tipsCard">
+      <div class="card-header">
+        <span class="label">💡 TIPS</span>
+        <button id="closeTips" class="close-tips">×</button>
+      </div>
+      <div class="tips-content">
+        <p id="tipText">Use Haiku for simple tasks to save 80% on tokens!</p>
+      </div>
+    </section>
+    
+    <!-- Settings Panel (hidden by default) -->
     <section id="settingsPanel" class="settings-panel hidden">
       <div class="settings-header">
-        <span>Settings</span>
+        <span>⚙️ Settings</span>
         <button id="closeSettings" class="close-btn">×</button>
       </div>
       
       <div class="setting-group">
-        <label>Daily Quota (tokens)</label>
+        <label>Plan / Quota</label>
         <select id="quotaSelect">
-          <option value="45000000">Pro - 45M tokens</option>
-          <option value="90000000">Max - 90M tokens</option>
-          <option value="135000000">Max (5x) - 135M tokens</option>
+          <option value="45000000">Pro - 45M tokens/day</option>
+          <option value="90000000">Max - 90M tokens/day</option>
+          <option value="135000000">Max 5x - 135M tokens/day</option>
           <option value="custom">Custom...</option>
         </select>
         <input type="number" id="customQuota" class="hidden" placeholder="Enter token limit">
       </div>
       
       <div class="setting-group">
-        <label>Sync Interval</label>
+        <label>Sync Frequency</label>
         <select id="syncInterval">
-          <option value="1">Every minute</option>
+          <option value="1">Every 1 minute</option>
           <option value="5" selected>Every 5 minutes</option>
           <option value="15">Every 15 minutes</option>
           <option value="30">Every 30 minutes</option>
         </select>
       </div>
       
-      <div class="setting-group toggle-group">
-        <label>Show notifications</label>
-        <input type="checkbox" id="notificationsToggle" checked>
+      <div class="setting-group toggle-row">
+        <label>Show badge on icon</label>
+        <input type="checkbox" id="showBadge" checked>
       </div>
       
-      <div class="setting-group toggle-group">
-        <label>Enable Firebase sync</label>
-        <input type="checkbox" id="firebaseToggle">
+      <div class="setting-group toggle-row">
+        <label>Warning notifications</label>
+        <input type="checkbox" id="notifications" checked>
       </div>
       
-      <div id="firebaseConfig" class="firebase-config hidden">
-        <input type="text" id="firebaseApiKey" placeholder="Firebase API Key">
-        <input type="text" id="firebaseProjectId" placeholder="Project ID">
-        <input type="text" id="firebaseDatabaseUrl" placeholder="Database URL">
+      <div class="setting-group toggle-row">
+        <label>Show tips</label>
+        <input type="checkbox" id="showTips" checked>
       </div>
       
       <div class="settings-actions">
-        <button id="saveSettings" class="btn primary">Save Settings</button>
-        <button id="resetUsage" class="btn danger">Reset All Data</button>
+        <button id="saveSettings" class="btn primary">Save</button>
+        <button id="resetData" class="btn danger">Reset Data</button>
       </div>
     </section>
     
+    <!-- Footer -->
     <footer>
-      <span class="version">v1.1.0</span>
+      <span class="version">v1.2.0</span>
       <a href="https://github.com/nashkellermedia/claude-usage-pro" target="_blank">GitHub</a>
     </footer>
   </div>
+  
   <script src="popup.js"></script>
 </body>
 </html>
