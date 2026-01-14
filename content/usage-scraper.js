@@ -2,10 +2,8 @@
  * Claude Usage Pro - Usage Scraper
  * Scrapes usage from Claude.ai settings/usage page
  * 
- * Validated parsing logic:
- * - Current Session: 0% ✅
- * - All Models: 7% ✅
- * - Sonnet Only: 35% ✅
+ * IMPORTANT: Must scrape from main content area only,
+ * not from our own sidebar widget!
  */
 
 class UsageScraper {
@@ -33,9 +31,8 @@ class UsageScraper {
   async scrapeUsage() {
     window.CUP.log('UsageScraper: Starting scrape...');
     
-    // If on usage page, scrape directly
     if (window.location.pathname.includes('/settings/usage')) {
-      const data = this.scrapePageText(document.body.innerText);
+      const data = this.scrapeFromMainContent();
       if (data) {
         this.lastScrapedData = data;
         return data;
@@ -53,7 +50,10 @@ class UsageScraper {
         const html = await response.text();
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
-        const text = doc.body?.innerText || '';
+        
+        // Get text from main content only (not sidebar)
+        const main = doc.querySelector('main') || doc.querySelector('[class*="settings"]') || doc.body;
+        const text = main?.innerText || '';
         
         const data = this.scrapePageText(text);
         if (data) {
@@ -69,11 +69,33 @@ class UsageScraper {
   }
   
   /**
-   * Parse page text by splitting into sections first
-   * This prevents regex from crossing section boundaries
+   * Scrape from the MAIN content area only, excluding our sidebar widget
+   */
+  scrapeFromMainContent() {
+    // Find the main settings content area - NOT the sidebar
+    const mainContent = document.querySelector('main') || 
+                       document.querySelector('[class*="settings-content"]') ||
+                       document.querySelector('[class*="SettingsContent"]');
+    
+    if (!mainContent) {
+      // Fallback: get body text but exclude our widget
+      const clone = document.body.cloneNode(true);
+      const ourWidget = clone.querySelector('#cup-sidebar-widget');
+      if (ourWidget) ourWidget.remove();
+      return this.scrapePageText(clone.innerText);
+    }
+    
+    return this.scrapePageText(mainContent.innerText);
+  }
+  
+  /**
+   * Parse page text by splitting into sections
    */
   scrapePageText(text) {
     window.CUP.log('UsageScraper: Parsing text, length:', text.length);
+    
+    // Debug: log first 500 chars to see what we're parsing
+    window.CUP.log('UsageScraper: Text preview:', text.substring(0, 500));
     
     const data = {
       currentSession: null,
@@ -83,15 +105,24 @@ class UsageScraper {
       scrapedAt: Date.now()
     };
     
-    // Extract each section by finding text between headers
-    // Current session ends before "Weekly limits" or "All models"
-    const currentSessionSection = text.match(/Current\s+session([\s\S]*?)(?=Weekly\s+limits|All\s+models|$)/i);
+    // Look for "Plan usage limits" section to ensure we're in the right area
+    const usageLimitsStart = text.indexOf('Plan usage limits');
+    if (usageLimitsStart === -1) {
+      window.CUP.log('UsageScraper: "Plan usage limits" not found');
+      // Try to parse anyway
+    }
     
-    // All models section ends before "Sonnet only"
-    const allModelsSection = text.match(/All\s+models([\s\S]*?)(?=Sonnet\s+only|$)/i);
+    // Extract section starting from "Plan usage limits" if found
+    const relevantText = usageLimitsStart > -1 ? text.substring(usageLimitsStart) : text;
     
-    // Sonnet section ends before "Last updated" or "Extra usage"
-    const sonnetSection = text.match(/Sonnet\s+only([\s\S]*?)(?=Last\s+updated|Extra\s+usage|$)/i);
+    // Current session section - ends at "Weekly limits"
+    const currentSessionSection = relevantText.match(/Current\s+session([\s\S]*?)(?=Weekly\s+limits|All\s+models|$)/i);
+    
+    // All models section - ends at "Sonnet only"
+    const allModelsSection = relevantText.match(/All\s+models([\s\S]*?)(?=Sonnet\s+only|$)/i);
+    
+    // Sonnet section - ends at "Last updated" or "Extra usage"
+    const sonnetSection = relevantText.match(/Sonnet\s+only([\s\S]*?)(?=Last\s+updated|Extra\s+usage|$)/i);
     
     // Parse Current Session
     if (currentSessionSection) {
@@ -103,7 +134,7 @@ class UsageScraper {
         percent: percentMatch ? parseInt(percentMatch[1]) : 0,
         resetsIn: resetMatch ? resetMatch[1].trim() : '--'
       };
-      window.CUP.log('UsageScraper: Current Session:', data.currentSession.percent + '%');
+      window.CUP.log('UsageScraper: Current Session:', data.currentSession.percent + '%, resets in', data.currentSession.resetsIn);
     }
     
     // Parse All Models
@@ -136,12 +167,11 @@ class UsageScraper {
       }
     }
     
-    window.CUP.log('UsageScraper: Parse complete');
-    
     if (data.currentSession || data.weeklyAllModels || data.weeklySonnet) {
       return data;
     }
     
+    window.CUP.log('UsageScraper: No data found in text');
     return null;
   }
   
@@ -150,7 +180,7 @@ class UsageScraper {
     
     window.CUP.log('UsageScraper: Scraping current page...');
     
-    const data = this.scrapePageText(document.body.innerText);
+    const data = this.scrapeFromMainContent();
     
     if (data) {
       this.lastScrapedData = data;
