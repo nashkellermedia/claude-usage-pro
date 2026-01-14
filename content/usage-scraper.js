@@ -1,8 +1,8 @@
 /**
  * Claude Usage Pro - Usage Scraper
  * 
- * Scrapes actual usage data from Claude's settings/usage page
- * to sync with real values instead of just estimating
+ * Scrapes actual usage data from Claude's UI
+ * Since there's no public API, we scrape from the DOM
  */
 
 class UsageScraper {
@@ -12,196 +12,136 @@ class UsageScraper {
   }
   
   /**
-   * Scrape usage data from the current page or navigate to get it
+   * Scrape usage data
    */
   async scrapeUsage() {
     window.CUP.log('UsageScraper: Starting scrape...');
     
-    // Method 1: Try to find usage info in the current page's React state
-    let data = this.scrapeFromReactState();
-    if (data) {
-      window.CUP.log('UsageScraper: Got data from React state:', data);
-      return data;
-    }
-    
-    // Method 2: Try to scrape from DOM if on settings page
+    // Method 1: Check if we're on settings page and can read directly
     if (window.location.href.includes('/settings')) {
-      data = this.scrapeFromSettingsDOM();
-      if (data) {
-        window.CUP.log('UsageScraper: Got data from settings DOM:', data);
-        return data;
-      }
+      const data = this.scrapeFromSettingsPage();
+      if (data) return data;
     }
     
-    // Method 3: Fetch the settings API directly
-    data = await this.fetchFromAPI();
-    if (data) {
-      window.CUP.log('UsageScraper: Got data from API:', data);
-      return data;
-    }
+    // Method 2: Try to find usage in page's embedded data
+    const embeddedData = this.scrapeFromEmbeddedData();
+    if (embeddedData) return embeddedData;
     
-    window.CUP.logWarn('UsageScraper: Could not scrape usage data');
-    return null;
-  }
-  
-  /**
-   * Try to extract usage from React's internal state
-   */
-  scrapeFromReactState() {
-    try {
-      // Look for React fiber with usage data
-      const root = document.getElementById('__next');
-      if (!root) return null;
-      
-      // Try to find usage data in window state
-      if (window.__NEXT_DATA__?.props?.pageProps?.user) {
-        const user = window.__NEXT_DATA__.props.pageProps.user;
-        if (user.usage_percentage !== undefined) {
-          return {
-            usagePercent: user.usage_percentage,
-            planType: user.plan_type || 'pro',
-            resetTime: user.reset_at ? new Date(user.reset_at).getTime() : null
-          };
-        }
-      }
-      
-      // Look for usage in any script tags
-      const scripts = document.querySelectorAll('script[type="application/json"]');
-      for (const script of scripts) {
-        try {
-          const data = JSON.parse(script.textContent);
-          if (data.usage_percentage !== undefined) {
-            return {
-              usagePercent: data.usage_percentage,
-              planType: data.plan_type || 'pro'
-            };
-          }
-        } catch (e) {}
-      }
-    } catch (e) {
-      window.CUP.logError('Error scraping React state:', e);
-    }
+    // Method 3: Look for any visible usage indicators
+    const visibleData = this.scrapeFromVisibleUI();
+    if (visibleData) return visibleData;
+    
+    window.CUP.log('UsageScraper: No data found (this is normal on chat pages)');
     return null;
   }
   
   /**
    * Scrape from settings page DOM
    */
-  scrapeFromSettingsDOM() {
+  scrapeFromSettingsPage() {
     try {
-      // Look for usage percentage text
-      const allText = document.body.innerText;
-      
-      // Pattern: "X% of your daily limit" or "X% used"
-      const percentMatch = allText.match(/(\d+(?:\.\d+)?)\s*%\s*(?:of|used)/i);
-      if (percentMatch) {
-        return {
-          usagePercent: parseFloat(percentMatch[1])
-        };
-      }
-      
-      // Look for progress bars
-      const progressBars = document.querySelectorAll('[role="progressbar"], .progress-bar, [class*="progress"]');
+      // Look for progress bars or percentage text
+      const progressBars = document.querySelectorAll('[role="progressbar"]');
       for (const bar of progressBars) {
-        const width = bar.style.width;
-        if (width && width.includes('%')) {
-          const percent = parseFloat(width);
-          if (!isNaN(percent)) {
-            return { usagePercent: percent };
-          }
-        }
-        
-        const ariaValue = bar.getAttribute('aria-valuenow');
-        if (ariaValue) {
-          return { usagePercent: parseFloat(ariaValue) };
+        const value = bar.getAttribute('aria-valuenow');
+        if (value) {
+          return { usagePercent: parseFloat(value) };
         }
       }
       
-      // Look for specific text patterns in Claude's UI
-      const usageElements = document.querySelectorAll('[class*="usage"], [class*="quota"], [class*="limit"]');
-      for (const el of usageElements) {
-        const text = el.textContent;
-        const match = text.match(/(\d+(?:\.\d+)?)\s*%/);
+      // Look for percentage in text
+      const bodyText = document.body.innerText;
+      const patterns = [
+        /(\d+(?:\.\d+)?)\s*%\s*(?:of|used|remaining)/i,
+        /usage[:\s]+(\d+(?:\.\d+)?)\s*%/i,
+        /(\d+(?:\.\d+)?)\s*%\s*of\s*(?:your\s+)?(?:daily\s+)?(?:limit|quota)/i
+      ];
+      
+      for (const pattern of patterns) {
+        const match = bodyText.match(pattern);
         if (match) {
           return { usagePercent: parseFloat(match[1]) };
         }
       }
     } catch (e) {
-      window.CUP.logError('Error scraping settings DOM:', e);
+      window.CUP.logError('Settings scrape error:', e);
     }
     return null;
   }
   
   /**
-   * Fetch usage data directly from Claude's API
+   * Look for embedded JSON data in the page
    */
-  async fetchFromAPI() {
+  scrapeFromEmbeddedData() {
     try {
-      // Try to get user/account info which includes usage
-      const response = await fetch('https://claude.ai/api/auth/session', {
-        credentials: 'include'
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        if (data.user) {
+      // Check __NEXT_DATA__
+      const nextData = document.getElementById('__NEXT_DATA__');
+      if (nextData) {
+        const data = JSON.parse(nextData.textContent);
+        const user = data?.props?.pageProps?.user;
+        if (user?.usage_percentage !== undefined) {
           return {
-            usagePercent: data.user.usage_percentage,
-            planType: data.user.plan_type,
-            email: data.user.email
+            usagePercent: user.usage_percentage,
+            planType: user.plan_type
           };
         }
       }
-    } catch (e) {
-      // Session endpoint might not have usage
-    }
-    
-    try {
-      // Try account/usage endpoint
-      const response = await fetch('https://claude.ai/api/account', {
-        credentials: 'include'
-      });
       
-      if (response.ok) {
-        const data = await response.json();
-        if (data.usage_percentage !== undefined) {
-          return {
-            usagePercent: data.usage_percentage,
-            planType: data.plan_type,
-            messagesUsed: data.messages_used,
-            messagesLimit: data.messages_limit
-          };
-        }
+      // Check for any script tags with usage data
+      const scripts = document.querySelectorAll('script:not([src])');
+      for (const script of scripts) {
+        try {
+          if (script.textContent.includes('usage')) {
+            const content = script.textContent;
+            const usageMatch = content.match(/"usage_percentage"\s*:\s*(\d+(?:\.\d+)?)/);
+            if (usageMatch) {
+              return { usagePercent: parseFloat(usageMatch[1]) };
+            }
+          }
+        } catch (e) {}
       }
     } catch (e) {
-      window.CUP.logError('Error fetching from API:', e);
+      window.CUP.logError('Embedded data scrape error:', e);
     }
-    
     return null;
   }
   
   /**
-   * Schedule periodic scraping
+   * Look for visible usage UI elements
    */
-  startPeriodicScrape(callback) {
-    // Initial scrape
-    this.scrapeAndReport(callback);
-    
-    // Periodic scrapes
-    setInterval(() => {
-      this.scrapeAndReport(callback);
-    }, this.scrapeInterval);
-  }
-  
-  /**
-   * Scrape and report to callback
-   */
-  async scrapeAndReport(callback) {
-    const data = await this.scrapeUsage();
-    if (data && callback) {
-      callback(data);
+  scrapeFromVisibleUI() {
+    try {
+      // Look for any element that might contain usage info
+      const selectors = [
+        '[class*="usage"]',
+        '[class*="quota"]',
+        '[class*="limit"]',
+        '[class*="progress"]',
+        '[data-testid*="usage"]'
+      ];
+      
+      for (const selector of selectors) {
+        const elements = document.querySelectorAll(selector);
+        for (const el of elements) {
+          const text = el.textContent;
+          const match = text.match(/(\d+(?:\.\d+)?)\s*%/);
+          if (match) {
+            return { usagePercent: parseFloat(match[1]) };
+          }
+          
+          // Check for width-based progress bars
+          if (el.style.width && el.style.width.includes('%')) {
+            const percent = parseFloat(el.style.width);
+            if (!isNaN(percent) && percent > 0 && percent <= 100) {
+              return { usagePercent: percent };
+            }
+          }
+        }
+      }
+    } catch (e) {
+      window.CUP.logError('Visible UI scrape error:', e);
     }
-    this.lastScrape = Date.now();
+    return null;
   }
 }
 
