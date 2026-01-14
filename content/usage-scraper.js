@@ -34,12 +34,9 @@ class UsageScraper {
     window.CUP.log('UsageScraper: Starting background fetch...');
     
     try {
-      // Fetch the usage page HTML
       const response = await fetch('https://claude.ai/settings/usage', {
         credentials: 'include',
-        headers: {
-          'Accept': 'text/html'
-        }
+        headers: { 'Accept': 'text/html' }
       });
       
       if (!response.ok) {
@@ -52,7 +49,7 @@ class UsageScraper {
       
       if (data) {
         this.lastScrapedData = data;
-        window.CUP.log('UsageScraper: Got data:', data);
+        window.CUP.log('UsageScraper: Got data:', JSON.stringify(data));
         return data;
       }
       
@@ -68,67 +65,79 @@ class UsageScraper {
    */
   parseUsageHTML(html) {
     try {
-      // Create a DOM parser
       const parser = new DOMParser();
       const doc = parser.parseFromString(html, 'text/html');
       const text = doc.body?.innerText || html;
       
-      const data = {
-        currentSession: null,
-        weeklyAllModels: null,
-        weeklySonnet: null,
-        source: 'background-fetch',
-        scrapedAt: Date.now()
-      };
+      window.CUP.log('UsageScraper: Parsing HTML, text length:', text.length);
       
-      // Parse Current Session
-      const sessionMatch = text.match(/Current\s+session[\s\S]*?Resets\s+in\s+([\d]+\s*hr?\s*[\d]*\s*min?|[\d]+\s*min?)[\s\S]*?(\d+)%\s*used/i);
-      if (sessionMatch) {
-        data.currentSession = {
-          percent: parseInt(sessionMatch[2]),
-          resetsIn: sessionMatch[1].trim()
-        };
-      }
-      
-      // Parse Weekly All Models
-      const allMatch = text.match(/All\s+models[\s\S]*?Resets\s+([\w]+\s+[\d:]+\s*(?:AM|PM)?)[\s\S]*?(\d+)%\s*used/i);
-      if (allMatch) {
-        data.weeklyAllModels = {
-          percent: parseInt(allMatch[2]),
-          resetsAt: allMatch[1].trim()
-        };
-      }
-      
-      // Parse Weekly Sonnet
-      const sonnetMatch = text.match(/Sonnet\s+only[\s\S]*?Resets\s+in\s+([\d]+\s*hr?\s*[\d]*\s*min?|[\d]+\s*min?)[\s\S]*?(\d+)%\s*used/i);
-      if (sonnetMatch) {
-        data.weeklySonnet = {
-          percent: parseInt(sonnetMatch[2]),
-          resetsIn: sonnetMatch[1].trim()
-        };
-      }
-      
-      // Check if we got any data
-      if (data.currentSession || data.weeklyAllModels || data.weeklySonnet) {
-        return data;
-      }
-      
-      // Fallback: Try to find percentages in a different format
-      const percentages = text.match(/(\d+)%\s*used/gi);
-      if (percentages && percentages.length >= 1) {
-        const percents = percentages.map(p => parseInt(p));
-        data.currentSession = { percent: percents[0] || 0, resetsIn: '--' };
-        if (percents[1]) data.weeklyAllModels = { percent: percents[1], resetsAt: '--' };
-        if (percents[2]) data.weeklySonnet = { percent: percents[2], resetsIn: '--' };
-        return data;
-      }
-      
-      return null;
+      return this.parseText(text, 'background-fetch');
       
     } catch (e) {
       window.CUP.logError('UsageScraper: Parse error:', e);
       return null;
     }
+  }
+  
+  /**
+   * Parse text to extract usage percentages
+   * Uses section headers to find each percentage
+   */
+  parseText(text, source) {
+    const data = {
+      currentSession: null,
+      weeklyAllModels: null,
+      weeklySonnet: null,
+      source: source,
+      scrapedAt: Date.now()
+    };
+    
+    // Find Current session: look for "Current session" followed by "X% used"
+    const currentSessionMatch = text.match(/Current\s+session[\s\S]*?(\d+)%\s*used/i);
+    if (currentSessionMatch) {
+      data.currentSession = { percent: parseInt(currentSessionMatch[1]) };
+      
+      // Extract reset time
+      const resetMatch = text.match(/Current\s+session[\s\S]*?Resets\s+in\s+([\d]+\s*hr?\s*[\d]*\s*min?)/i);
+      if (resetMatch) {
+        data.currentSession.resetsIn = resetMatch[1].trim();
+      }
+      window.CUP.log('UsageScraper: Current session:', data.currentSession.percent + '%');
+    }
+    
+    // Find All models: look for "All models" followed by "X% used"
+    const allModelsMatch = text.match(/All\s+models[\s\S]*?(\d+)%\s*used/i);
+    if (allModelsMatch) {
+      data.weeklyAllModels = { percent: parseInt(allModelsMatch[1]) };
+      
+      // Extract reset time (format: "Resets Tue 9:00 PM")
+      const resetMatch = text.match(/All\s+models[\s\S]*?Resets\s+([\w]+\s+[\d:]+\s*(?:AM|PM)?)/i);
+      if (resetMatch) {
+        data.weeklyAllModels.resetsAt = resetMatch[1].trim();
+      }
+      window.CUP.log('UsageScraper: All models:', data.weeklyAllModels.percent + '%');
+    }
+    
+    // Find Sonnet only: look for "Sonnet only" followed by "X% used"
+    const sonnetMatch = text.match(/Sonnet\s+only[\s\S]*?(\d+)%\s*used/i);
+    if (sonnetMatch) {
+      data.weeklySonnet = { percent: parseInt(sonnetMatch[1]) };
+      
+      // Extract reset time
+      const resetMatch = text.match(/Sonnet\s+only[\s\S]*?Resets\s+in\s+([\d]+\s*hr?\s*[\d]*\s*min?)/i);
+      if (resetMatch) {
+        data.weeklySonnet.resetsIn = resetMatch[1].trim();
+      }
+      window.CUP.log('UsageScraper: Sonnet only:', data.weeklySonnet.percent + '%');
+    }
+    
+    // Return data if we found at least one section
+    if (data.currentSession || data.weeklyAllModels || data.weeklySonnet) {
+      return data;
+    }
+    
+    window.CUP.log('UsageScraper: No usage data found in text');
+    return null;
   }
   
   /**
@@ -140,36 +149,12 @@ class UsageScraper {
     window.CUP.log('UsageScraper: Scraping current page...');
     
     const text = document.body.innerText;
-    const data = {
-      currentSession: null,
-      weeklyAllModels: null,
-      weeklySonnet: null,
-      source: 'direct-page',
-      scrapedAt: Date.now()
-    };
+    const data = this.parseText(text, 'direct-page');
     
-    // Current Session
-    const sessionMatch = text.match(/Current\s+session[\s\S]*?Resets\s+in\s+([\d]+\s*hr?\s*[\d]*\s*min?|[\d]+\s*min?)[\s\S]*?(\d+)%\s*used/i);
-    if (sessionMatch) {
-      data.currentSession = { percent: parseInt(sessionMatch[2]), resetsIn: sessionMatch[1].trim() };
-    }
-    
-    // Weekly All Models  
-    const allMatch = text.match(/All\s+models[\s\S]*?Resets\s+([\w]+\s+[\d:]+\s*(?:AM|PM)?)[\s\S]*?(\d+)%\s*used/i);
-    if (allMatch) {
-      data.weeklyAllModels = { percent: parseInt(allMatch[2]), resetsAt: allMatch[1].trim() };
-    }
-    
-    // Weekly Sonnet
-    const sonnetMatch = text.match(/Sonnet\s+only[\s\S]*?Resets\s+in\s+([\d]+\s*hr?\s*[\d]*\s*min?|[\d]+\s*min?)[\s\S]*?(\d+)%\s*used/i);
-    if (sonnetMatch) {
-      data.weeklySonnet = { percent: parseInt(sonnetMatch[2]), resetsIn: sonnetMatch[1].trim() };
-    }
-    
-    if (data.currentSession || data.weeklyAllModels || data.weeklySonnet) {
+    if (data) {
       this.lastScrapedData = data;
       window.CUP.sendToBackground({ type: 'SYNC_SCRAPED_DATA', data });
-      window.CUP.log('UsageScraper: Scraped from page:', data);
+      window.CUP.log('UsageScraper: Saved scraped data:', JSON.stringify(data));
     }
   }
   
