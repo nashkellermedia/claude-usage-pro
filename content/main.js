@@ -27,9 +27,16 @@ class ClaudeUsagePro {
     window.CUP.log('=== Initializing Claude Usage Pro ===');
     
     try {
+      // Inject page-world fetch interceptor FIRST
+      window.CUP.log('Injecting fetch interceptor into page...');
+      this.injectPageScript();
+      
+      // Setup listener for events from page script
+      this.setupPageEventListener();
+      
       // Wait for page to be somewhat ready
       window.CUP.log('Waiting for page to load...');
-      await window.CUP.sleep(2000);
+      await window.CUP.sleep(1500);
       
       // Initialize UI components
       window.CUP.log('Creating UI components...');
@@ -38,9 +45,6 @@ class ClaudeUsagePro {
       
       // Initialize chat UI (creates elements)
       this.chatUI.initialize();
-      
-      // Setup API interceptor callbacks (with retry)
-      await this.setupInterceptorWithRetry();
       
       // Initialize sidebar UI
       window.CUP.log('Initializing sidebar UI...');
@@ -69,89 +73,159 @@ class ClaudeUsagePro {
   }
   
   /**
-   * Setup API interceptor with retry logic
+   * Inject fetch interceptor script into page's main world
    */
-  async setupInterceptorWithRetry() {
-    // Try up to 5 times with 200ms delay
-    for (let i = 0; i < 5; i++) {
-      if (window.APIInterceptor && typeof window.APIInterceptor.on === 'function') {
-        this.setupInterceptor();
-        
-        // Start the interceptor
-        if (typeof window.APIInterceptor.start === 'function') {
-          window.APIInterceptor.start();
-        }
-        return;
-      }
-      window.CUP.log(`Waiting for APIInterceptor... attempt ${i + 1}/5`);
-      await window.CUP.sleep(200);
+  injectPageScript() {
+    try {
+      const script = document.createElement('script');
+      script.src = chrome.runtime.getURL('injections/fetch-interceptor.js');
+      script.onload = function() {
+        this.remove();
+      };
+      (document.head || document.documentElement).appendChild(script);
+      window.CUP.log('Page script injection initiated');
+    } catch (error) {
+      window.CUP.logError('Failed to inject page script:', error);
     }
-    
-    window.CUP.logWarn('APIInterceptor not available after retries, will rely on DOM observation');
   }
   
   /**
-   * Setup API interceptor callbacks
+   * Listen for events from the page-world script
    */
-  setupInterceptor() {
-    window.CUP.log('Setting up APIInterceptor callbacks...');
-    
-    // When a message is sent
-    window.APIInterceptor.on('onMessageSent', (data) => {
-      window.CUP.log('Message sent:', data);
+  setupPageEventListener() {
+    window.addEventListener('CUP_API_EVENT', async (event) => {
+      const { type, data } = event.detail;
       
-      window.CUP.sendToBackground({
-        type: 'MESSAGE_SENT',
-        tokens: data.tokens,
-        model: data.model || this.currentModel
-      });
-    });
-    
-    // When a response is received
-    window.APIInterceptor.on('onMessageReceived', (data) => {
-      window.CUP.log('Message received:', data);
+      window.CUP.log('Received page event:', type, data);
       
-      if (this.conversationData) {
-        this.conversationData.length += data.totalTokens || 0;
-        this.conversationData.messageCount++;
-        this.chatUI.updateConversation(this.conversationData, this.currentModel);
+      try {
+        switch (type) {
+          case 'MESSAGE_SENT':
+            await this.handleMessageSent(data);
+            break;
+            
+          case 'MESSAGE_RECEIVED':
+            await this.handleMessageReceived(data);
+            break;
+            
+          case 'CONVERSATION_LOADED':
+            await this.handleConversationLoaded(data);
+            break;
+        }
+      } catch (error) {
+        window.CUP.logError('Error handling page event:', error);
       }
-      
-      window.CUP.sendToBackground({
-        type: 'MESSAGE_RECEIVED',
-        tokens: data.totalTokens,
-        model: this.currentModel
-      });
     });
     
-    // When a conversation is loaded
-    window.APIInterceptor.on('onConversationLoaded', (data) => {
-      window.CUP.log('Conversation loaded:', data);
-      
-      this.currentConversationId = data.conversationId;
-      this.currentModel = data.model || this.currentModel;
-      
-      this.conversationData = new window.ConversationData(
-        data.conversationId,
-        data.totalTokens,
-        data.messageCount,
-        data.model,
-        data.projectTokens,
-        data.fileTokens
-      );
-      
-      // Update chat UI
-      this.chatUI.updateConversation(this.conversationData, this.currentModel);
+    window.CUP.log('Page event listener setup complete');
+  }
+  
+  /**
+   * Handle message sent event
+   */
+  async handleMessageSent(data) {
+    window.CUP.log('Message sent:', data);
+    
+    // Update model if provided
+    if (data.model) {
+      this.currentModel = data.model;
+    }
+    
+    // Send to background
+    const response = await window.CUP.sendToBackground({
+      type: 'MESSAGE_SENT',
+      tokens: data.tokens,
+      model: this.currentModel
     });
     
-    window.CUP.log('API interceptor callbacks registered successfully');
+    if (response?.usageData) {
+      this.usageData = new window.UsageData(response.usageData);
+      this.updateUI();
+    }
+  }
+  
+  /**
+   * Handle message received event
+   */
+  async handleMessageReceived(data) {
+    window.CUP.log('Message received:', data);
+    
+    // Update model if provided
+    if (data.model) {
+      this.currentModel = data.model;
+    }
+    
+    // Send to background
+    const response = await window.CUP.sendToBackground({
+      type: 'MESSAGE_RECEIVED',
+      tokens: data.totalTokens,
+      model: this.currentModel
+    });
+    
+    if (response?.usageData) {
+      this.usageData = new window.UsageData(response.usageData);
+      this.updateUI();
+    }
+  }
+  
+  /**
+   * Handle conversation loaded event
+   */
+  async handleConversationLoaded(data) {
+    window.CUP.log('Conversation loaded:', data);
+    
+    this.currentConversationId = data.conversationId;
+    
+    if (data.model) {
+      this.currentModel = data.model;
+    }
+    
+    // Create conversation data object
+    this.conversationData = new window.ConversationData({
+      conversationId: data.conversationId,
+      totalTokens: data.totalTokens,
+      messageCount: data.messageCount,
+      projectTokens: data.projectTokens,
+      fileTokens: data.fileTokens
+    });
+    
+    // Update chat UI with conversation context
+    if (this.chatUI) {
+      this.chatUI.updateConversationContext(this.conversationData);
+    }
+  }
+  
+  /**
+   * Update all UI components
+   */
+  updateUI() {
+    if (this.usageData) {
+      if (this.sidebarUI) {
+        this.sidebarUI.updateUsage(this.usageData);
+      }
+      if (this.chatUI) {
+        this.chatUI.updateUsage(this.usageData);
+      }
+    }
+  }
+  
+  /**
+   * Setup message listener for background script
+   */
+  setupMessageListener() {
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+      if (message.type === 'USAGE_UPDATED' && message.usageData) {
+        this.usageData = new window.UsageData(message.usageData);
+        this.updateUI();
+      }
+      return true;
+    });
   }
   
   /**
    * Start the update loop
    */
   startUpdateLoop() {
-    if (this.isRunning) return;
     this.isRunning = true;
     
     const loop = async () => {
@@ -178,8 +252,8 @@ class ClaudeUsagePro {
           }
           
           // Ensure UI is still injected
-          this.sidebarUI.checkAndReinject();
-          this.chatUI.checkAndReinject();
+          if (this.sidebarUI) this.sidebarUI.checkAndReinject();
+          if (this.chatUI) this.chatUI.checkAndReinject();
         }
         
         // Low frequency updates (every 5s) - sync with background
@@ -206,84 +280,40 @@ class ClaudeUsagePro {
     try {
       const response = await window.CUP.sendToBackground({ type: 'GET_USAGE_DATA' });
       
-      if (response && response.success) {
-        this.usageData = new window.UsageData(
-          response.data.tokensUsed,
-          response.data.tokenQuota,
-          response.data.resetTime,
-          response.data.plan,
-          response.data.messageHistory
-        );
-        
-        // Update sidebar
-        this.sidebarUI.update(this.usageData);
-        
-        // Update chat UI quota area
-        this.chatUI.updateQuota(this.usageData, this.currentModel);
+      if (response && response.usageData) {
+        this.usageData = new window.UsageData(response.usageData);
+        this.updateUI();
       }
     } catch (error) {
       window.CUP.logError('Failed to request data:', error);
     }
   }
-  
-  /**
-   * Setup message listener for background script updates
-   */
-  setupMessageListener() {
-    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-      if (message.type === 'USAGE_UPDATE') {
-        this.usageData = new window.UsageData(
-          message.data.tokensUsed,
-          message.data.tokenQuota,
-          message.data.resetTime,
-          message.data.plan,
-          message.data.messageHistory
-        );
-        
-        // Update all UI
-        this.sidebarUI.update(this.usageData);
-        this.chatUI.updateQuota(this.usageData, this.currentModel);
-        
-        sendResponse({ received: true });
-      }
-      
-      return true;
-    });
-  }
-  
-  /**
-   * Stop the extension
-   */
-  stop() {
-    this.isRunning = false;
-    this.sidebarUI.remove();
-    this.chatUI.remove();
-  }
 }
 
-// Global instance
-let claudeUsagePro = null;
-
-// Start extension
-async function startExtension() {
-  // Wait for DOM
-  if (document.readyState !== 'complete') {
-    await new Promise(resolve => {
-      window.addEventListener('load', resolve, { once: true });
-    });
-  }
-  
-  // Additional wait for Claude's SPA to hydrate
-  await window.CUP.sleep(1000);
-  
-  window.CUP.log('Starting extension...');
-  claudeUsagePro = new ClaudeUsagePro();
-  await claudeUsagePro.initialize();
-}
-
-// Initialize
-startExtension().catch(error => {
-  window.CUP.logError('Failed to start extension:', error);
-});
+// Make class available globally
+window.ClaudeUsagePro = ClaudeUsagePro;
 
 window.CUP.log('Main script loaded, waiting for page...');
+
+/**
+ * Start the extension
+ */
+async function startExtension() {
+  // Wait for document to be ready
+  if (document.readyState === 'loading') {
+    await new Promise(resolve => {
+      document.addEventListener('DOMContentLoaded', resolve);
+    });
+  }
+  
+  window.CUP.log('Starting extension...');
+  
+  const app = new window.ClaudeUsagePro();
+  await app.initialize();
+  
+  // Store reference for debugging
+  window.__claudeUsagePro = app;
+}
+
+// Start when ready
+startExtension();
