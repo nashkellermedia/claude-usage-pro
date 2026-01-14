@@ -2,341 +2,274 @@
  * Claude Usage Pro - Chat UI
  * 
  * Embeds usage information into the chat area:
- * - Conversation length and cost near the title
- * - Quota, messages remaining, and reset time near the input
+ * - Conversation stats bar at top of chat
+ * - Live token counter as you type
+ * - Model cost indicators
  */
 
 class ChatUI {
   constructor() {
-    // Title area displays
-    this.titleContainer = null;
-    this.lengthDisplay = null;
-    this.costDisplay = null;
-    this.cachedDisplay = null;
+    // Top stats bar
+    this.topBar = null;
+    this.conversationLength = null;
+    this.messageCost = null;
+    this.cacheStatus = null;
+    this.modelIndicator = null;
     
-    // Input area displays  
-    this.inputStatsContainer = null;
-    this.quotaDisplay = null;
-    this.estimateDisplay = null;
-    this.resetDisplay = null;
-    this.inputProgressBar = null;
-    
-    // Tooltips
-    this.tooltips = {};
+    // Input area stats
+    this.inputStats = null;
+    this.draftCounter = null;
+    this.quotaBar = null;
+    this.messagesLeft = null;
+    this.resetTimer = null;
     
     // State
     this.isInjected = false;
-    this.lastCachedUntil = null;
+    this.draftTokens = 0;
+    this.lastInputLength = 0;
   }
   
-  /**
-   * Initialize the chat UI
-   */
   initialize() {
-    this.buildTitleUI();
-    this.buildInputUI();
-    this.createTooltips();
-    
-    window.CUP.log('Chat UI initialized');
+    this.buildTopBar();
+    this.buildInputStats();
+    this.setupDraftCounter();
+    window.CUP.log('ChatUI initialized');
   }
   
-  /**
-   * Build the title area UI (length, cost, cached)
-   */
-  buildTitleUI() {
-    this.titleContainer = document.createElement('div');
-    this.titleContainer.className = 'cup-title-stats text-text-500 text-xs px-1 select-none';
-    this.titleContainer.style.marginTop = '2px';
+  buildTopBar() {
+    this.topBar = document.createElement('div');
+    this.topBar.id = 'cup-top-bar';
+    this.topBar.style.cssText = `
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 16px;
+      background: linear-gradient(to right, rgba(44, 132, 219, 0.1), rgba(139, 92, 246, 0.1));
+      border-bottom: 1px solid rgba(44, 132, 219, 0.2);
+      font-size: 12px;
+      font-family: inherit;
+      gap: 16px;
+      flex-wrap: wrap;
+    `;
     
-    this.lengthDisplay = document.createElement('span');
-    this.costDisplay = document.createElement('span');
-    this.cachedDisplay = document.createElement('span');
+    // Left section - conversation info
+    const leftSection = document.createElement('div');
+    leftSection.style.cssText = 'display: flex; align-items: center; gap: 12px;';
+    
+    this.conversationLength = document.createElement('span');
+    this.conversationLength.innerHTML = '📝 <strong>0</strong> tokens';
+    
+    this.messageCost = document.createElement('span');
+    this.messageCost.innerHTML = '💰 Next: <strong>~0</strong>';
+    
+    this.cacheStatus = document.createElement('span');
+    this.cacheStatus.style.cssText = 'color: #22c55e; display: none;';
+    this.cacheStatus.innerHTML = '⚡ Cached';
+    
+    leftSection.appendChild(this.conversationLength);
+    leftSection.appendChild(this.messageCost);
+    leftSection.appendChild(this.cacheStatus);
+    
+    // Right section - model info
+    const rightSection = document.createElement('div');
+    rightSection.style.cssText = 'display: flex; align-items: center; gap: 8px;';
+    
+    this.modelIndicator = document.createElement('span');
+    this.modelIndicator.style.cssText = 'padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;';
+    this.modelIndicator.textContent = 'Sonnet (1x)';
+    this.setModelStyle('sonnet');
+    
+    rightSection.appendChild(this.modelIndicator);
+    
+    this.topBar.appendChild(leftSection);
+    this.topBar.appendChild(rightSection);
   }
   
-  /**
-   * Build the input area UI (quota, estimate, reset)
-   */
-  buildInputUI() {
-    this.inputStatsContainer = document.createElement('div');
-    this.inputStatsContainer.className = 'cup-input-stats flex items-center gap-2 text-xs py-1';
+  buildInputStats() {
+    this.inputStats = document.createElement('div');
+    this.inputStats.id = 'cup-input-stats';
+    this.inputStats.style.cssText = `
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 12px;
+      background: rgba(0,0,0,0.03);
+      border-radius: 8px;
+      margin: 8px 0;
+      font-size: 11px;
+      gap: 12px;
+    `;
     
-    // Quota display with mini progress bar
-    const quotaWrapper = document.createElement('div');
-    quotaWrapper.className = 'flex items-center gap-2';
+    // Draft counter
+    this.draftCounter = document.createElement('span');
+    this.draftCounter.style.cssText = 'color: #6b7280;';
+    this.draftCounter.innerHTML = '✏️ Draft: <strong>0</strong> tokens';
     
-    this.quotaDisplay = document.createElement('span');
-    this.quotaDisplay.className = 'text-text-400';
-    this.quotaDisplay.textContent = 'Quota: --';
+    // Mini quota bar
+    const quotaSection = document.createElement('div');
+    quotaSection.style.cssText = 'display: flex; align-items: center; gap: 8px; flex: 1; max-width: 200px;';
     
-    // Mini progress bar (desktop only)
-    if (!window.CUP.isMobileView()) {
-      const progressWrapper = document.createElement('div');
-      progressWrapper.className = 'w-16 h-1 bg-bg-300 rounded-full overflow-hidden';
-      
-      this.inputProgressBar = document.createElement('div');
-      this.inputProgressBar.className = 'h-full transition-all duration-300';
-      this.inputProgressBar.style.width = '0%';
-      this.inputProgressBar.style.backgroundColor = window.CUP.COLORS.BLUE;
-      
-      progressWrapper.appendChild(this.inputProgressBar);
-      quotaWrapper.appendChild(progressWrapper);
-    }
+    const quotaLabel = document.createElement('span');
+    quotaLabel.style.cssText = 'color: #6b7280; white-space: nowrap;';
+    quotaLabel.textContent = 'Quota:';
     
-    quotaWrapper.prepend(this.quotaDisplay);
+    const quotaBarContainer = document.createElement('div');
+    quotaBarContainer.style.cssText = 'flex: 1; height: 4px; background: rgba(0,0,0,0.1); border-radius: 2px; overflow: hidden;';
     
-    // Spacer
-    const spacer = document.createElement('div');
-    spacer.className = 'flex-1';
+    this.quotaBar = document.createElement('div');
+    this.quotaBar.style.cssText = 'height: 100%; width: 0%; background: #2c84db; transition: width 0.3s;';
     
-    // Messages remaining estimate
-    this.estimateDisplay = document.createElement('span');
-    this.estimateDisplay.className = 'text-text-400';
-    this.estimateDisplay.textContent = 'Messages left: --';
+    quotaBarContainer.appendChild(this.quotaBar);
+    quotaSection.appendChild(quotaLabel);
+    quotaSection.appendChild(quotaBarContainer);
     
-    // Reset time
-    this.resetDisplay = document.createElement('span');
-    this.resetDisplay.className = 'text-text-400';
-    this.resetDisplay.textContent = 'Reset: --';
+    // Messages left
+    this.messagesLeft = document.createElement('span');
+    this.messagesLeft.style.cssText = 'color: #6b7280; white-space: nowrap;';
+    this.messagesLeft.innerHTML = '💬 <strong>--</strong> msgs left';
     
-    // Assemble
-    this.inputStatsContainer.appendChild(quotaWrapper);
-    this.inputStatsContainer.appendChild(spacer);
+    // Reset timer
+    this.resetTimer = document.createElement('span');
+    this.resetTimer.style.cssText = 'color: #6b7280; white-space: nowrap;';
+    this.resetTimer.innerHTML = '🔄 <strong>--</strong>';
     
-    if (!window.CUP.isMobileView()) {
-      this.inputStatsContainer.appendChild(this.estimateDisplay);
-    }
-    this.inputStatsContainer.appendChild(this.resetDisplay);
+    this.inputStats.appendChild(this.draftCounter);
+    this.inputStats.appendChild(quotaSection);
+    this.inputStats.appendChild(this.messagesLeft);
+    this.inputStats.appendChild(this.resetTimer);
   }
   
-  /**
-   * Create tooltips
-   */
-  createTooltips() {
-    const createTooltip = (text) => {
-      const tooltip = document.createElement('div');
-      tooltip.className = 'cup-tooltip fixed bg-bg-500 text-text-100 text-xs px-2 py-1 rounded shadow-lg opacity-0 pointer-events-none transition-opacity z-50 max-w-xs';
-      tooltip.style.whiteSpace = 'pre-line';
-      tooltip.textContent = text;
-      document.body.appendChild(tooltip);
-      return tooltip;
+  setupDraftCounter() {
+    // Monitor input changes
+    setInterval(() => {
+      const input = document.querySelector('[contenteditable="true"], textarea[placeholder*="Reply"]');
+      if (input) {
+        const text = input.textContent || input.value || '';
+        if (text.length !== this.lastInputLength) {
+          this.lastInputLength = text.length;
+          this.draftTokens = Math.ceil(text.length / 4); // ~4 chars per token
+          if (this.draftCounter) {
+            this.draftCounter.innerHTML = `✏️ Draft: <strong>${this.draftTokens}</strong> tokens`;
+          }
+        }
+      }
+    }, 500);
+  }
+  
+  setModelStyle(model) {
+    const styles = {
+      sonnet: { bg: '#dbeafe', color: '#1e40af', text: 'Sonnet (1x)' },
+      opus: { bg: '#fef3c7', color: '#92400e', text: 'Opus (5x)' },
+      haiku: { bg: '#d1fae5', color: '#065f46', text: 'Haiku (0.2x)' }
     };
-    
-    this.tooltips = {
-      length: createTooltip('Total tokens in this conversation.\nLonger conversations use more of your quota.'),
-      cost: createTooltip('Estimated cost to send the next message.\nCost = length × model multiplier ÷ cache factor'),
-      cached: createTooltip('Conversation is cached!\nFollow-up messages cost ~90% less.'),
-      estimate: createTooltip('Estimated messages remaining\nbased on current conversation cost.'),
-      quota: createTooltip('How much of your daily quota you\'ve used.'),
-      reset: createTooltip('When your usage quota resets to full.')
-    };
+    const s = styles[model] || styles.sonnet;
+    this.modelIndicator.style.background = s.bg;
+    this.modelIndicator.style.color = s.color;
+    this.modelIndicator.textContent = s.text;
   }
   
-  /**
-   * Inject UI into the page
-   */
   async injectUI() {
-    await this.injectTitleUI();
-    await this.injectInputUI();
+    await this.injectTopBar();
+    await this.injectInputStats();
     this.isInjected = true;
   }
   
-  /**
-   * Inject title area UI
-   */
-  async injectTitleUI() {
-    // Find the chat menu button
-    const chatMenu = document.querySelector(window.CUP.SELECTORS.CHAT_MENU);
-    if (!chatMenu) return;
-    
-    // Find the title line container
-    const titleLine = chatMenu.closest('.flex.min-w-0.flex-1');
-    if (!titleLine) return;
-    
-    // Adjust layout to accommodate our stats
-    titleLine.classList.remove('md:flex-row');
-    titleLine.classList.add('md:flex-col');
-    titleLine.classList.remove('md:items-center');
-    titleLine.classList.add('md:items-start');
-    
-    // Insert our container after the chat menu's parent
-    const menuParent = chatMenu.parentElement;
-    if (menuParent && menuParent.nextElementSibling !== this.titleContainer) {
-      menuParent.after(this.titleContainer);
+  async injectTopBar() {
+    // Find the main chat container
+    const chatContainer = document.querySelector('main') || document.querySelector('[class*="conversation"]');
+    if (chatContainer && !document.getElementById('cup-top-bar')) {
+      chatContainer.insertBefore(this.topBar, chatContainer.firstChild);
+      window.CUP.log('ChatUI: Top bar injected');
     }
   }
   
-  /**
-   * Inject input area UI
-   */
-  async injectInputUI() {
-    // Find the model selector
-    const modelSelector = document.querySelector(window.CUP.SELECTORS.MODEL_SELECTOR);
-    if (!modelSelector) return;
-    
-    // Find the row containing the model selector
-    const selectorLine = modelSelector?.parentElement?.parentElement;
-    if (!selectorLine) return;
-    
-    // Insert our stats after the selector line
-    if (selectorLine.nextElementSibling !== this.inputStatsContainer) {
-      selectorLine.after(this.inputStatsContainer);
+  async injectInputStats() {
+    // Find the input area
+    const inputArea = document.querySelector('[class*="composer"], [class*="input-container"]');
+    if (inputArea && !document.getElementById('cup-input-stats')) {
+      inputArea.parentElement?.insertBefore(this.inputStats, inputArea);
+      window.CUP.log('ChatUI: Input stats injected');
     }
   }
   
-  /**
-   * Check and reinject if needed
-   */
   async checkAndReinject() {
-    const menuExists = document.querySelector(window.CUP.SELECTORS.CHAT_MENU);
-    const modelExists = document.querySelector(window.CUP.SELECTORS.MODEL_SELECTOR);
-    
-    if (menuExists && !document.contains(this.titleContainer)) {
-      await this.injectTitleUI();
-    }
-    
-    if (modelExists && !document.contains(this.inputStatsContainer)) {
-      await this.injectInputUI();
-    }
+    if (!document.getElementById('cup-top-bar')) await this.injectTopBar();
+    if (!document.getElementById('cup-input-stats')) await this.injectInputStats();
   }
   
-  /**
-   * Update title area with conversation data
-   */
   updateConversation(conversationData, currentModel) {
-    if (!conversationData) {
-      this.clearTitleDisplay();
-      return;
+    if (!conversationData) return;
+    
+    const length = conversationData.length || 0;
+    const cost = conversationData.getWeightedFutureCost ? conversationData.getWeightedFutureCost(currentModel) : length;
+    const isCached = conversationData.isCurrentlyCached ? conversationData.isCurrentlyCached() : false;
+    
+    // Update displays
+    if (this.conversationLength) {
+      const color = length > 50000 ? '#de2929' : length > 20000 ? '#f59e0b' : '#2c84db';
+      this.conversationLength.innerHTML = `📝 <strong style="color:${color}">${this.formatNumber(length)}</strong> tokens`;
     }
     
-    const length = conversationData.length;
-    const cost = conversationData.getWeightedFutureCost(currentModel);
-    const isCached = conversationData.isCurrentlyCached();
-    
-    // Length display
-    const lengthColor = conversationData.isLong() ? window.CUP.COLORS.RED : window.CUP.COLORS.BLUE;
-    this.lengthDisplay.innerHTML = `Length: <span style="color: ${lengthColor}">${window.CUP.formatNumber(length)}</span>`;
-    
-    // Cost display (desktop only)
-    if (!window.CUP.isMobileView()) {
-      const costColor = isCached ? window.CUP.COLORS.GREEN : (conversationData.isExpensive() ? window.CUP.COLORS.RED : window.CUP.COLORS.BLUE);
-      this.costDisplay.innerHTML = ` | Cost: <span style="color: ${costColor}">${window.CUP.formatNumber(cost)}</span>`;
-    } else {
-      this.costDisplay.innerHTML = '';
+    if (this.messageCost) {
+      this.messageCost.innerHTML = `💰 Next: <strong>~${this.formatNumber(cost)}</strong>`;
     }
     
-    // Cached display
-    if (isCached) {
-      this.lastCachedUntil = conversationData.cachedUntil;
-      const cacheTime = conversationData.getTimeUntilCacheExpires();
-      this.cachedDisplay.innerHTML = ` | <span style="color: ${window.CUP.COLORS.GREEN}">Cached: ${cacheTime.minutes}m</span>`;
-    } else {
-      this.lastCachedUntil = null;
-      this.cachedDisplay.innerHTML = '';
+    if (this.cacheStatus) {
+      this.cacheStatus.style.display = isCached ? 'inline' : 'none';
+      if (isCached && conversationData.getTimeUntilCacheExpires) {
+        const cache = conversationData.getTimeUntilCacheExpires();
+        this.cacheStatus.innerHTML = `⚡ Cached (${cache.minutes}m)`;
+      }
     }
     
-    // Update container
-    this.updateTitleContainer();
-    
-    // Setup tooltips
-    window.CUP.setupTooltip(this.lengthDisplay, this.tooltips.length);
-    window.CUP.setupTooltip(this.costDisplay, this.tooltips.cost);
-    if (isCached) {
-      window.CUP.setupTooltip(this.cachedDisplay, this.tooltips.cached);
+    // Update model indicator
+    if (currentModel && this.modelIndicator) {
+      if (currentModel.includes('opus')) this.setModelStyle('opus');
+      else if (currentModel.includes('haiku')) this.setModelStyle('haiku');
+      else this.setModelStyle('sonnet');
     }
   }
   
-  /**
-   * Update input area with usage data
-   */
   updateUsage(usageData, conversationData, currentModel) {
     if (!usageData) return;
     
     const percentage = usageData.getUsagePercentage();
-    const color = window.CUP.getUsageColor(percentage);
     const resetInfo = usageData.getResetTimeInfo();
     
-    // Quota display
-    this.quotaDisplay.innerHTML = `Quota: <span style="color: ${color}">${percentage.toFixed(1)}%</span>`;
-    
-    // Progress bar
-    if (this.inputProgressBar) {
-      this.inputProgressBar.style.width = `${Math.min(percentage, 100)}%`;
-      this.inputProgressBar.style.backgroundColor = color;
+    // Update quota bar
+    if (this.quotaBar) {
+      let color = '#2c84db';
+      if (percentage >= 95) color = '#de2929';
+      else if (percentage >= 80) color = '#f59e0b';
+      this.quotaBar.style.width = Math.min(percentage, 100) + '%';
+      this.quotaBar.style.backgroundColor = color;
     }
     
-    // Messages remaining estimate
-    if (conversationData && !window.CUP.isMobileView()) {
-      const estimate = conversationData.estimateMessagesRemaining(usageData, currentModel);
-      const estColor = estimate < 15 ? window.CUP.COLORS.RED : window.CUP.COLORS.BLUE;
-      
-      if (estimate === Infinity || isNaN(estimate)) {
-        this.estimateDisplay.textContent = 'Messages left: N/A';
+    // Update messages left estimate
+    if (this.messagesLeft && conversationData) {
+      const remaining = usageData.getRemainingTokens();
+      const costPerMsg = conversationData.getWeightedFutureCost ? conversationData.getWeightedFutureCost(currentModel) : 1000;
+      const msgsLeft = costPerMsg > 0 ? Math.floor(remaining / costPerMsg) : 999;
+      const color = msgsLeft < 10 ? '#de2929' : msgsLeft < 50 ? '#f59e0b' : '#22c55e';
+      this.messagesLeft.innerHTML = `💬 <strong style="color:${color}">${msgsLeft}</strong> msgs left`;
+    }
+    
+    // Update reset timer
+    if (this.resetTimer) {
+      if (resetInfo.expired) {
+        this.resetTimer.innerHTML = '🔄 <strong style="color:#22c55e">Reset now!</strong>';
       } else {
-        this.estimateDisplay.innerHTML = `Messages left: <span style="color: ${estColor}">${estimate.toFixed(0)}</span>`;
+        this.resetTimer.innerHTML = `🔄 <strong>${resetInfo.formatted}</strong>`;
       }
     }
-    
-    // Reset time
-    if (resetInfo.expired) {
-      this.resetDisplay.innerHTML = `<span style="color: ${window.CUP.COLORS.GREEN}">Reset: Now!</span>`;
-    } else {
-      this.resetDisplay.textContent = `Reset: ${resetInfo.formatted}`;
-    }
-    
-    // Setup tooltips
-    window.CUP.setupTooltip(this.quotaDisplay, this.tooltips.quota);
-    window.CUP.setupTooltip(this.estimateDisplay, this.tooltips.estimate);
-    window.CUP.setupTooltip(this.resetDisplay, this.tooltips.reset);
   }
   
-  /**
-   * Update cached time display (called frequently)
-   */
-  updateCachedTime() {
-    if (!this.lastCachedUntil) return false;
-    
-    const remaining = this.lastCachedUntil - Date.now();
-    
-    if (remaining <= 0) {
-      this.lastCachedUntil = null;
-      this.cachedDisplay.innerHTML = '';
-      this.updateTitleContainer();
-      return true; // Cache expired
-    }
-    
-    const minutes = Math.ceil(remaining / (1000 * 60));
-    this.cachedDisplay.innerHTML = ` | <span style="color: ${window.CUP.COLORS.GREEN}">Cached: ${minutes}m</span>`;
-    
-    return false;
-  }
-  
-  /**
-   * Clear title display
-   */
-  clearTitleDisplay() {
-    this.lengthDisplay.innerHTML = 'Length: <span>--</span>';
-    this.costDisplay.innerHTML = '';
-    this.cachedDisplay.innerHTML = '';
-    this.lastCachedUntil = null;
-    this.updateTitleContainer();
-  }
-  
-  /**
-   * Update title container content
-   */
-  updateTitleContainer() {
-    this.titleContainer.innerHTML = '';
-    this.titleContainer.appendChild(this.lengthDisplay);
-    
-    if (this.costDisplay.innerHTML) {
-      this.titleContainer.appendChild(this.costDisplay);
-    }
-    
-    if (this.cachedDisplay.innerHTML) {
-      this.titleContainer.appendChild(this.cachedDisplay);
-    }
+  formatNumber(num) {
+    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+    if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+    return num.toString();
   }
 }
 
-// Expose globally
 window.ChatUI = ChatUI;
+window.CUP.log('ChatUI class loaded');

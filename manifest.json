@@ -2,13 +2,14 @@
   "manifest_version": 3,
   "name": "Claude Usage Pro",
   "version": "1.0.0",
-  "description": "Track your Claude.ai token usage with embedded UI and detailed analytics",
+  "description": "Track your Claude.ai token usage with detailed analytics and in-page displays",
   "author": "Nash Keller Media",
+  "homepage_url": "https://github.com/nashkellermedia/claude-usage-pro",
   
   "permissions": [
     "storage",
     "alarms",
-    "tabs"
+    "notifications"
   ],
   
   "host_permissions": [
@@ -16,36 +17,46 @@
   ],
   
   "background": {
-    "service_worker": "background/service-worker.js",
-    "type": "module"
+    "service_worker": "background/service-worker.js"
   },
   
   "content_scripts": [
     {
       "matches": ["https://claude.ai/*"],
+      "css": ["styles/content.css"],
       "js": [
-        "lib/tokenizer.js",
         "content/utils.js",
         "content/data-classes.js",
-        "content/api-interceptor.js",
         "content/sidebar-ui.js",
         "content/chat-ui.js",
         "content/main.js"
       ],
-      "css": ["styles/content.css"],
       "run_at": "document_idle"
+    }
+  ],
+  
+  "web_accessible_resources": [
+    {
+      "resources": ["injections/fetch-interceptor.js"],
+      "matches": ["https://claude.ai/*"]
     }
   ],
   
   "action": {
     "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    },
     "default_title": "Claude Usage Pro"
   },
   
-  "web_accessible_resources": [
-    {
-      "resources": ["styles/*.css", "injections/*.js"],
-      "matches": ["https://claude.ai/*"]
-    }
-  ]
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
 }

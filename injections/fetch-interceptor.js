@@ -1,95 +1,37 @@
 /**
- * Claude Usage Pro - Page World Fetch Interceptor
- * 
- * This script runs in the page's main world to intercept actual fetch calls.
- * It communicates back to the content script via custom events.
+ * Claude Usage Pro - Fetch Interceptor (Page World)
+ * Intercepts Claude API calls to track token usage
  */
 
 (function() {
   'use strict';
   
-  // Avoid double-injection
-  if (window.__CUP_FETCH_INTERCEPTED__) return;
-  window.__CUP_FETCH_INTERCEPTED__ = true;
-  
   const originalFetch = window.fetch;
   
-  // Helper to estimate tokens (simple char/4 estimate)
-  function estimateTokens(text) {
-    if (!text || typeof text !== 'string') return 0;
-    return Math.ceil(text.length / 4);
-  }
-  
-  // Helper to check if URL is relevant
-  function isRelevantUrl(url) {
-    return url.includes('claude.ai/api') || 
-           url.includes('/api/organizations') ||
-           url.includes('/api/chat_conversations');
-  }
-  
-  function isCompletionUrl(url) {
-    return url.includes('/completion') || 
-           url.includes('/chat') ||
-           url.includes('/retry_completion');
-  }
-  
-  function isConversationUrl(url) {
-    return url.includes('/chat_conversations/') && !url.includes('/completion');
-  }
-  
   // Dispatch event to content script
-  function dispatchToContentScript(type, data) {
+  function dispatch(type, data) {
+    console.log('[Claude Usage Pro]', type, data);
     window.dispatchEvent(new CustomEvent('CUP_API_EVENT', {
       detail: { type, data }
     }));
   }
   
-  // Process outgoing request
-  function processOutgoingRequest(url, body) {
-    try {
-      if (!body) return;
-      
-      let data;
-      if (typeof body === 'string') {
-        data = JSON.parse(body);
-      } else {
-        return; // Can't process non-string body
-      }
-      
-      const prompt = data.prompt || data.content || '';
-      const attachments = data.attachments || [];
-      
-      let tokens = estimateTokens(prompt);
-      
-      for (const att of attachments) {
-        if (att.extracted_content) {
-          tokens += estimateTokens(att.extracted_content);
-        }
-      }
-      
-      if (tokens > 0) {
-        dispatchToContentScript('MESSAGE_SENT', {
-          tokens,
-          model: data.model,
-          hasAttachments: attachments.length > 0
-        });
-      }
-    } catch (e) {
-      // Silently fail
-    }
+  // Estimate tokens from text
+  function estimateTokens(text) {
+    if (!text) return 0;
+    // ~4 characters per token for English
+    return Math.ceil(text.length / 4);
   }
   
-  // Process streaming response
-  async function processStreamingResponse(response, url) {
+  // Parse streaming response
+  async function parseStreamingResponse(response, url) {
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let fullText = '';
+    let thinkingText = '';
+    let model = null;
+    
     try {
-      const reader = response.body?.getReader();
-      if (!reader) return;
-      
-      const decoder = new TextDecoder();
-      let totalText = '';
-      let thinkingText = '';
-      let model = null;
-      
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -98,138 +40,122 @@
         const lines = chunk.split('\n');
         
         for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const jsonStr = line.slice(6);
-            if (jsonStr === '[DONE]') continue;
+          if (!line.startsWith('data: ')) continue;
+          
+          try {
+            const data = JSON.parse(line.slice(6));
             
-            try {
-              const data = JSON.parse(jsonStr);
-              
-              // Capture model info
-              if (data.model && !model) {
-                model = data.model;
+            // Extract model
+            if (data.model) model = data.model;
+            
+            // Track completion text
+            if (data.type === 'content_block_delta') {
+              if (data.delta?.type === 'text_delta') {
+                fullText += data.delta.text || '';
+              } else if (data.delta?.type === 'thinking_delta') {
+                thinkingText += data.delta.thinking || '';
               }
-              
-              // Handle different response formats
-              if (data.completion) {
-                totalText += data.completion;
-              } else if (data.delta?.text) {
-                totalText += data.delta.text;
-              } else if (data.content?.[0]?.text) {
-                totalText += data.content[0].text;
-              }
-              
-              // Handle thinking/reasoning tokens
-              if (data.thinking) {
-                thinkingText += data.thinking;
-              }
-            } catch (e) {
-              // Not valid JSON
             }
-          }
+          } catch (e) {}
         }
-      }
-      
-      const textTokens = estimateTokens(totalText);
-      const thinkingTokens = estimateTokens(thinkingText);
-      
-      if (textTokens > 0 || thinkingTokens > 0) {
-        dispatchToContentScript('MESSAGE_RECEIVED', {
-          textTokens,
-          thinkingTokens,
-          totalTokens: textTokens + thinkingTokens,
-          model
-        });
       }
     } catch (e) {
-      // Silently fail
+      console.error('[CUP] Stream parse error:', e);
     }
-  }
-  
-  // Process conversation load
-  async function processConversationResponse(response, url) {
-    try {
-      const data = await response.json();
-      
-      const conversationId = url.match(/chat_conversations\/([a-f0-9-]+)/)?.[1];
-      const messages = data.chat_messages || [];
-      const model = data.model || 'claude-sonnet-4';
-      
-      let totalTokens = 0;
-      let projectTokens = 0;
-      let fileTokens = 0;
-      
-      for (const msg of messages) {
-        if (msg.text) {
-          totalTokens += estimateTokens(msg.text);
-        }
-        
-        if (msg.content) {
-          for (const block of msg.content) {
-            if (block.text) {
-              totalTokens += estimateTokens(block.text);
-            }
-          }
-        }
-        
-        if (msg.attachments) {
-          for (const att of msg.attachments) {
-            if (att.extracted_content) {
-              fileTokens += estimateTokens(att.extracted_content);
-            }
-          }
-        }
-      }
-      
-      if (data.project?.prompt_template) {
-        projectTokens = estimateTokens(data.project.prompt_template);
-      }
-      
-      totalTokens += fileTokens + projectTokens;
-      
-      dispatchToContentScript('CONVERSATION_LOADED', {
-        conversationId,
-        totalTokens,
-        model,
-        messageCount: messages.length,
-        projectTokens,
-        fileTokens
-      });
-    } catch (e) {
-      // Silently fail
-    }
+    
+    const textTokens = estimateTokens(fullText);
+    const thinkingTokens = estimateTokens(thinkingText);
+    
+    dispatch('MESSAGE_RECEIVED', {
+      textTokens,
+      thinkingTokens,
+      totalTokens: textTokens + thinkingTokens,
+      model
+    });
   }
   
   // Intercept fetch
   window.fetch = async function(...args) {
     const [url, options] = args;
-    const urlString = typeof url === 'string' ? url : url.toString();
+    const urlStr = typeof url === 'string' ? url : url?.url || '';
     
-    if (!isRelevantUrl(urlString)) {
+    // Only intercept Claude API calls
+    if (!urlStr.includes('claude.ai/api')) {
       return originalFetch.apply(this, args);
     }
     
-    // Process outgoing completion requests
-    if (isCompletionUrl(urlString) && options?.body) {
-      processOutgoingRequest(urlString, options.body);
+    try {
+      // Track outgoing messages
+      if (urlStr.includes('/chat_conversations') && urlStr.includes('/completion') && options?.method === 'POST') {
+        const body = options.body;
+        if (body) {
+          try {
+            const data = JSON.parse(body);
+            const prompt = data.prompt || '';
+            const tokens = estimateTokens(prompt);
+            const attachments = data.attachments || [];
+            
+            dispatch('MESSAGE_SENT', {
+              tokens,
+              model: data.model,
+              hasAttachments: attachments.length > 0
+            });
+          } catch (e) {}
+        }
+      }
+      
+      // Make the actual request
+      const response = await originalFetch.apply(this, args);
+      
+      // Track conversation loads
+      if (urlStr.match(/\/chat_conversations\/[a-f0-9-]+$/) && options?.method !== 'POST') {
+        try {
+          const clonedResponse = response.clone();
+          const data = await clonedResponse.json();
+          
+          if (data.chat_messages) {
+            let totalTokens = 0;
+            let messageCount = 0;
+            
+            for (const msg of data.chat_messages) {
+              messageCount++;
+              if (msg.text) totalTokens += estimateTokens(msg.text);
+              if (msg.content) {
+                for (const block of msg.content) {
+                  if (block.text) totalTokens += estimateTokens(block.text);
+                }
+              }
+            }
+            
+            dispatch('CONVERSATION_LOADED', {
+              conversationId: data.uuid,
+              totalTokens,
+              model: data.model || 'claude-sonnet-4',
+              messageCount,
+              projectTokens: 0,
+              fileTokens: 0
+            });
+          }
+        } catch (e) {}
+      }
+      
+      // Track streaming responses
+      if (urlStr.includes('/completion') && response.headers.get('content-type')?.includes('text/event-stream')) {
+        const [streamResponse, returnResponse] = response.body.tee();
+        parseStreamingResponse(new Response(streamResponse), urlStr);
+        return new Response(returnResponse, {
+          headers: response.headers,
+          status: response.status,
+          statusText: response.statusText
+        });
+      }
+      
+      return response;
+      
+    } catch (error) {
+      console.error('[CUP] Fetch intercept error:', error);
+      return originalFetch.apply(this, args);
     }
-    
-    // Execute fetch
-    const response = await originalFetch.apply(this, args);
-    
-    // Clone response for processing
-    const clonedResponse = response.clone();
-    const contentType = clonedResponse.headers.get('content-type') || '';
-    
-    // Process response asynchronously (don't block)
-    if (isConversationUrl(urlString) && contentType.includes('application/json')) {
-      processConversationResponse(clonedResponse, urlString);
-    } else if (isCompletionUrl(urlString)) {
-      // For streaming, we need to clone again because we're reading the body
-      processStreamingResponse(response.clone(), urlString);
-    }
-    
-    return response;
   };
   
   console.log('[Claude Usage Pro] Fetch interceptor injected into page');
