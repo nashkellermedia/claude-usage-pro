@@ -10,17 +10,13 @@ class ChatUI {
     this.initialized = false;
     this.lastDraftLength = 0;
     this.typingInterval = null;
-    this.currentModel = 'claude-sonnet-4';
+    this.currentModel = 'sonnet';
   }
   
   initialize() {
     window.CUP.log('ChatUI: Initializing...');
     this.initialized = true;
-    
-    // Detect initial model
     this.currentModel = this.detectModel();
-    
-    // Watch for model changes
     this.startModelWatcher();
   }
   
@@ -30,78 +26,45 @@ class ChatUI {
     this.startDraftMonitor();
   }
   
-  /**
-   * Detect current model from page
-   */
   detectModel() {
-    // Check the model selector/dropdown
     const modelButton = document.querySelector('[data-testid="model-selector"]') ||
-                       document.querySelector('button[class*="model"]') ||
-                       document.querySelector('[class*="ModelSelect"]');
+                       document.querySelector('button[class*="model"]');
     
     if (modelButton) {
       const text = modelButton.textContent?.toLowerCase() || '';
-      if (text.includes('opus')) return 'claude-opus-4';
-      if (text.includes('haiku')) return 'claude-haiku-4';
-      if (text.includes('sonnet')) return 'claude-sonnet-4';
+      if (text.includes('opus')) return 'opus';
+      if (text.includes('haiku')) return 'haiku';
     }
     
-    // Check for model name anywhere in bottom area (near submit button)
-    const bottomArea = document.querySelector('[class*="composer"]') ||
-                      document.querySelector('form');
-    if (bottomArea) {
-      const text = bottomArea.textContent?.toLowerCase() || '';
-      if (text.includes('opus')) return 'claude-opus-4';
-      if (text.includes('haiku')) return 'claude-haiku-4';
-    }
+    const pageText = document.body?.innerText?.toLowerCase() || '';
+    if (pageText.includes('opus 4.5')) return 'opus';
+    if (pageText.includes('haiku 4.5')) return 'haiku';
     
-    // Check full page for model references
-    const allText = document.body?.innerText?.toLowerCase() || '';
-    
-    // Look for specific model version strings
-    if (allText.includes('opus 4.5') || allText.includes('opus-4')) return 'claude-opus-4';
-    if (allText.includes('haiku 4.5') || allText.includes('haiku-4')) return 'claude-haiku-4';
-    
-    return 'claude-sonnet-4';
+    return 'sonnet';
   }
   
-  /**
-   * Watch for model selector changes
-   */
   startModelWatcher() {
     setInterval(() => {
       const newModel = this.detectModel();
       if (newModel !== this.currentModel) {
         this.currentModel = newModel;
         this.updateModelBadge(newModel);
-        window.CUP.log('ChatUI: Model changed to', newModel);
       }
     }, 2000);
   }
   
   async injectTopBar() {
-    // Wait for main content area
     await new Promise(r => setTimeout(r, 500));
     
-    const mainSelectors = [
-      'main',
-      '[class*="conversation"]',
-      '[class*="ConversationView"]',
-      '.relative.flex.h-full.flex-col'
-    ];
-    
+    const mainSelectors = ['main', '[class*="conversation"]', '.relative.flex.h-full.flex-col'];
     let mainContent = null;
+    
     for (const sel of mainSelectors) {
       mainContent = document.querySelector(sel);
       if (mainContent) break;
     }
     
-    if (!mainContent) {
-      window.CUP.log('ChatUI: Main content not found for top bar');
-      return;
-    }
-    
-    if (document.getElementById('cup-top-bar')) return;
+    if (!mainContent || document.getElementById('cup-top-bar')) return;
     
     this.topBar = document.createElement('div');
     this.topBar.id = 'cup-top-bar';
@@ -132,33 +95,17 @@ class ChatUI {
     `;
     
     mainContent.insertBefore(this.topBar, mainContent.firstChild);
-    
-    // Set initial model
     this.updateModelBadge(this.currentModel);
-    
     window.CUP.log('ChatUI: Top bar injected');
   }
   
   async injectInputStats() {
     await new Promise(r => setTimeout(r, 500));
     
-    // Find composer area
-    const composerSelectors = [
-      '[class*="composer"]',
-      '[class*="Composer"]',
-      'form:has([contenteditable])',
-      'form:has(textarea)'
-    ];
+    // Find composer
+    let composer = document.querySelector('[class*="composer"]') ||
+                  document.querySelector('form:has([contenteditable])');
     
-    let composer = null;
-    for (const sel of composerSelectors) {
-      try {
-        composer = document.querySelector(sel);
-        if (composer) break;
-      } catch (e) {}
-    }
-    
-    // Fallback: find by contenteditable
     if (!composer) {
       const editable = document.querySelector('[contenteditable="true"]');
       if (editable) {
@@ -166,12 +113,10 @@ class ChatUI {
       }
     }
     
-    if (!composer) {
-      window.CUP.log('ChatUI: Composer not found for input stats');
+    if (!composer || document.getElementById('cup-input-stats')) {
+      window.CUP.log('ChatUI: Composer not found or input stats already exists');
       return;
     }
-    
-    if (document.getElementById('cup-input-stats')) return;
     
     this.inputStats = document.createElement('div');
     this.inputStats.id = 'cup-input-stats';
@@ -190,18 +135,12 @@ class ChatUI {
           <span class="cup-input-percent" id="cup-quota-percent">0%</span>
         </div>
         <div class="cup-input-stat">
-          <span class="cup-input-icon">📊</span>
-          <span class="cup-input-value" id="cup-msgs-remaining">~450</span>
-          <span class="cup-input-label">left</span>
-        </div>
-        <div class="cup-input-stat">
           <span class="cup-input-icon">⏱️</span>
-          <span class="cup-input-value" id="cup-reset-timer">—</span>
+          <span class="cup-input-value" id="cup-reset-timer">--</span>
         </div>
       </div>
     `;
     
-    // Insert after composer
     if (composer.parentElement) {
       composer.parentElement.appendChild(this.inputStats);
     } else {
@@ -227,11 +166,9 @@ class ChatUI {
           const el = document.getElementById('cup-draft-tokens');
           if (el) {
             el.textContent = tokens.toLocaleString();
-            
-            // Color based on length
-            if (tokens > 10000) el.style.color = 'var(--cup-danger)';
-            else if (tokens > 5000) el.style.color = 'var(--cup-warning)';
-            else el.style.color = 'var(--cup-success)';
+            el.style.color = tokens > 10000 ? 'var(--cup-danger)' : 
+                            tokens > 5000 ? 'var(--cup-warning)' : 
+                            'var(--cup-success)';
           }
         }
       }
@@ -244,13 +181,13 @@ class ChatUI {
     
     if (!badgeEl || !multEl) return;
     
-    const modelLower = (model || '').toLowerCase();
+    const m = (model || 'sonnet').toLowerCase();
     
-    if (modelLower.includes('opus')) {
+    if (m.includes('opus')) {
       badgeEl.textContent = 'OPUS';
       badgeEl.className = 'cup-badge cup-badge-opus';
       multEl.textContent = '5x';
-    } else if (modelLower.includes('haiku')) {
+    } else if (m.includes('haiku')) {
       badgeEl.textContent = 'HAIKU';
       badgeEl.className = 'cup-badge cup-badge-haiku';
       multEl.textContent = '0.2x';
@@ -261,78 +198,43 @@ class ChatUI {
     }
   }
   
-  updateConversation(conversationData, model) {
-    if (conversationData) {
-      const tokens = conversationData.length || 0;
-      this.updateElement('cup-conv-tokens', this.formatNumber(tokens));
-      this.updateElement('cup-next-cost', '~' + this.formatNumber(tokens + 1000));
-    }
-    
-    if (model) {
-      this.updateModelBadge(model);
-    }
-  }
-  
+  /**
+   * Update with percentage-based usage data
+   */
   updateUsage(usageData, conversationData, model) {
     if (!usageData) return;
     
-    const modelUsage = usageData.modelUsage || {};
-    const multipliers = {
-      'claude-sonnet-4': 1.0,
-      'claude-haiku-4': 0.2,
-      'claude-opus-4': 5.0
-    };
+    // Update progress bar with current session percentage
+    const percent = usageData.currentSession?.percent || 0;
     
-    let weightedTotal = 0;
-    for (const [m, tokens] of Object.entries(modelUsage)) {
-      weightedTotal += tokens * (multipliers[m] || 1.0);
-    }
-    
-    const cap = usageData.usageCap || 45000000;
-    const percentage = (weightedTotal / cap) * 100;
-    const remaining = cap - weightedTotal;
-    
-    // Progress bar
     const progressEl = document.getElementById('cup-mini-progress');
     if (progressEl) {
-      progressEl.style.width = Math.min(percentage, 100) + '%';
+      progressEl.style.width = Math.min(percent, 100) + '%';
+      progressEl.style.background = percent >= 90 ? 'var(--cup-danger)' : 
+                                    percent >= 70 ? 'var(--cup-warning)' : 
+                                    'var(--cup-accent)';
     }
     
-    // Percentage
-    this.updateElement('cup-quota-percent', percentage.toFixed(1) + '%');
+    // Update percentage text
+    this.updateElement('cup-quota-percent', percent + '%');
     
-    // Messages remaining (estimate ~100K per message)
-    const avgPerMsg = usageData.messagesCount > 0 
-      ? Math.max(50000, weightedTotal / usageData.messagesCount)
-      : 100000;
-    const msgsLeft = Math.max(0, Math.floor(remaining / avgPerMsg));
-    this.updateElement('cup-msgs-remaining', '~' + msgsLeft);
-    
-    // Reset timer
-    if (usageData.resetTimestamp) {
-      const ms = usageData.resetTimestamp - Date.now();
-      if (ms > 0) {
-        const h = Math.floor(ms / 3600000);
-        const m = Math.floor((ms % 3600000) / 60000);
-        this.updateElement('cup-reset-timer', `${h}h ${m}m`);
-      } else {
-        this.updateElement('cup-reset-timer', 'Now!');
-      }
+    // Update reset timer
+    const resetTime = usageData.currentSession?.resetsIn;
+    if (resetTime && resetTime !== '--') {
+      this.updateElement('cup-reset-timer', resetTime);
     }
     
     // Update model badge
-    this.updateModelBadge(model || this.currentModel);
+    if (model) {
+      this.updateModelBadge(model);
+    } else if (usageData.currentModel) {
+      this.updateModelBadge(usageData.currentModel);
+    }
   }
   
   updateElement(id, value) {
     const el = document.getElementById(id);
     if (el) el.textContent = value;
-  }
-  
-  formatNumber(num) {
-    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
-    if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
-    return num.toLocaleString();
   }
   
   checkAndReinject() {
