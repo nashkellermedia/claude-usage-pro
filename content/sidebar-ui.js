@@ -128,32 +128,50 @@ class SidebarUI {
       return;
     }
     
-    // Find "Starred" section and insert BEFORE it
-    const starredSection = sidebar.querySelector('[class*="starred"]') ||
-                          sidebar.querySelector('[class*="Starred"]');
+    // Find the "Starred" text/heading element
+    // We want to insert right before the Starred section
+    const allElements = sidebar.querySelectorAll('*');
+    let starredElement = null;
     
-    if (starredSection) {
-      // Insert BEFORE Starred
-      starredSection.parentNode.insertBefore(this.container, starredSection);
-      window.CUP.log('SidebarUI: Injected BEFORE Starred');
-    } else {
-      // Fallback: find "New chat" button area and insert after it
-      const newChatArea = sidebar.querySelector('a[href*="new"]') || 
-                         sidebar.querySelector('button');
+    for (const el of allElements) {
+      const text = el.textContent?.trim();
+      // Find the element that contains just "Starred" text (not child elements with more text)
+      if (text === 'Starred' || (el.innerText?.trim() === 'Starred' && el.children.length === 0)) {
+        starredElement = el;
+        break;
+      }
+    }
+    
+    if (starredElement) {
+      // Find the parent container of Starred that's a direct child of a main section
+      let starredContainer = starredElement;
       
-      if (newChatArea && newChatArea.parentElement) {
-        // Insert after the new chat button's container
-        const container = newChatArea.closest('div') || newChatArea.parentElement;
-        if (container.nextSibling) {
-          container.parentNode.insertBefore(this.container, container.nextSibling);
-        } else {
-          container.parentNode.appendChild(this.container);
+      // Walk up to find a suitable container (usually a div that wraps the section)
+      while (starredContainer.parentElement && starredContainer.parentElement !== sidebar) {
+        // Check if this is a section-level container
+        if (starredContainer.parentElement.children.length > 1) {
+          break;
         }
-        window.CUP.log('SidebarUI: Injected after New Chat area');
+        starredContainer = starredContainer.parentElement;
+      }
+      
+      // Insert before the Starred container
+      starredContainer.parentElement.insertBefore(this.container, starredContainer);
+      window.CUP.log('SidebarUI: Injected before Starred section');
+    } else {
+      // Fallback: Insert after Code section or at end of nav items
+      const codeLink = sidebar.querySelector('a[href*="code"], [class*="code"]');
+      if (codeLink) {
+        const codeContainer = codeLink.closest('div') || codeLink.parentElement;
+        if (codeContainer && codeContainer.nextSibling) {
+          codeContainer.parentElement.insertBefore(this.container, codeContainer.nextSibling);
+          window.CUP.log('SidebarUI: Injected after Code section');
+        } else {
+          sidebar.appendChild(this.container);
+        }
       } else {
-        // Last fallback: prepend to sidebar
-        sidebar.insertBefore(this.container, sidebar.firstChild);
-        window.CUP.log('SidebarUI: Prepended to sidebar');
+        sidebar.appendChild(this.container);
+        window.CUP.log('SidebarUI: Appended to sidebar');
       }
     }
   }
