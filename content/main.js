@@ -191,7 +191,7 @@ class ClaudeUsagePro {
     
     // Update chat UI with conversation context
     if (this.chatUI) {
-      this.chatUI.updateConversationContext(this.conversationData);
+      this.chatUI.updateConversation(this.conversationData, this.currentModel);
     }
   }
   
