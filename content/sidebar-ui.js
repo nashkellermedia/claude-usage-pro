@@ -22,32 +22,53 @@ class SidebarUI {
   }
   
   async waitForSidebar() {
-    for (let i = 0; i < 20; i++) {
-      const sidebar = this.findSidebar();
-      if (sidebar) return sidebar;
-      await new Promise(r => setTimeout(r, 250));
+    for (let i = 0; i < 30; i++) {
+      // Wait for Starred section to appear as indicator sidebar is ready
+      const starred = this.findStarredSection();
+      if (starred) return true;
+      await new Promise(r => setTimeout(r, 200));
+    }
+    return false;
+  }
+  
+  findStarredSection() {
+    // Find element that contains "Starred" text
+    const walker = document.createTreeWalker(
+      document.body,
+      NodeFilter.SHOW_TEXT,
+      null,
+      false
+    );
+    
+    while (walker.nextNode()) {
+      if (walker.currentNode.textContent.trim() === 'Starred') {
+        return walker.currentNode.parentElement;
+      }
     }
     return null;
   }
   
-  findSidebar() {
-    const selectors = [
-      'nav[class*="flex-col"]',
-      'nav.flex.flex-col',
-      '[class*="Sidebar"]',
-      '[class*="sidebar"]',
-      'aside nav',
-      'nav'
-    ];
+  findCodeSection() {
+    // Find the Code link/section
+    const allLinks = document.querySelectorAll('a, button, div');
+    for (const el of allLinks) {
+      const text = el.textContent?.trim();
+      if (text === 'Code' && el.querySelector('svg, [class*="icon"]')) {
+        return el;
+      }
+    }
     
-    for (const sel of selectors) {
-      const elements = document.querySelectorAll(sel);
-      for (const el of elements) {
-        if (el.querySelector('a[href*="/chat"]') || 
-            el.querySelector('[class*="starred"]') ||
-            el.innerText?.includes('New chat')) {
-          return el;
-        }
+    // Fallback: find by text content
+    const walker = document.createTreeWalker(
+      document.body,
+      NodeFilter.SHOW_TEXT,
+      null,
+      false
+    );
+    
+    while (walker.nextNode()) {
+      if (walker.currentNode.textContent.trim() === 'Code') {
+        return walker.currentNode.parentElement;
       }
     }
     return null;
@@ -64,7 +85,6 @@ class SidebarUI {
       </div>
       
       <div class="cup-widget-details expanded" id="cup-widget-details">
-        <!-- Current Session -->
         <div class="cup-usage-section">
           <div class="cup-usage-header">
             <span class="cup-usage-label">Current Session</span>
@@ -76,7 +96,6 @@ class SidebarUI {
           <div class="cup-usage-meta" id="cup-session-meta">Resets in --</div>
         </div>
         
-        <!-- Weekly All Models -->
         <div class="cup-usage-section">
           <div class="cup-usage-header">
             <span class="cup-usage-label">Weekly (All Models)</span>
@@ -88,25 +107,22 @@ class SidebarUI {
           <div class="cup-usage-meta" id="cup-weekly-all-meta">Resets --</div>
         </div>
         
-        <!-- Weekly Sonnet -->
         <div class="cup-usage-section">
           <div class="cup-usage-header">
             <span class="cup-usage-label">Weekly (Sonnet)</span>
             <span class="cup-usage-percent" id="cup-weekly-sonnet-percent">--%</span>
           </div>
           <div class="cup-usage-bar-bg">
-            <div class="cup-usage-bar cup-bar-sonnet" id="cup-weekly-sonnet-bar"></div>
+            <div class="cup-usage-bar" id="cup-weekly-sonnet-bar"></div>
           </div>
           <div class="cup-usage-meta" id="cup-weekly-sonnet-meta">Resets in --</div>
         </div>
         
-        <!-- Current Model -->
         <div class="cup-model-indicator">
           <span class="cup-model-label">Current:</span>
           <span class="cup-model-badge" id="cup-current-model">Sonnet 4.5</span>
         </div>
         
-        <!-- Link to usage page -->
         <a href="https://claude.ai/settings/usage" class="cup-usage-link" target="_self">
           View full usage details →
         </a>
@@ -119,60 +135,51 @@ class SidebarUI {
   }
   
   async injectIntoSidebar() {
-    const sidebar = this.findSidebar();
+    // Strategy: Find "Starred" text element, then find its container, 
+    // and insert our widget right before that container
     
-    if (!sidebar) {
-      window.CUP.log('SidebarUI: No sidebar found, using floating widget');
+    const starredTextEl = this.findStarredSection();
+    
+    if (!starredTextEl) {
+      window.CUP.log('SidebarUI: Starred section not found, using floating');
       this.container.classList.add('cup-floating');
       document.body.appendChild(this.container);
       return;
     }
     
-    // Find the "Starred" text/heading element
-    // We want to insert right before the Starred section
-    const allElements = sidebar.querySelectorAll('*');
-    let starredElement = null;
+    // The "Starred" text is inside a heading/label element
+    // We need to find its parent container that represents the whole "Starred" section
+    // This is typically a few levels up
     
-    for (const el of allElements) {
-      const text = el.textContent?.trim();
-      // Find the element that contains just "Starred" text (not child elements with more text)
-      if (text === 'Starred' || (el.innerText?.trim() === 'Starred' && el.children.length === 0)) {
-        starredElement = el;
-        break;
+    let starredSection = starredTextEl;
+    
+    // Walk up to find the section container
+    // We're looking for a container that has siblings (other sections like Code, Artifacts, etc)
+    for (let i = 0; i < 5; i++) {
+      const parent = starredSection.parentElement;
+      if (!parent) break;
+      
+      // Check if parent has multiple children that look like nav sections
+      const siblings = Array.from(parent.children);
+      if (siblings.length > 1) {
+        // Found the level with multiple sections
+        // Insert before the Starred section at this level
+        parent.insertBefore(this.container, starredSection);
+        window.CUP.log('SidebarUI: Injected before Starred at level', i);
+        return;
       }
+      
+      starredSection = parent;
     }
     
-    if (starredElement) {
-      // Find the parent container of Starred that's a direct child of a main section
-      let starredContainer = starredElement;
-      
-      // Walk up to find a suitable container (usually a div that wraps the section)
-      while (starredContainer.parentElement && starredContainer.parentElement !== sidebar) {
-        // Check if this is a section-level container
-        if (starredContainer.parentElement.children.length > 1) {
-          break;
-        }
-        starredContainer = starredContainer.parentElement;
-      }
-      
-      // Insert before the Starred container
-      starredContainer.parentElement.insertBefore(this.container, starredContainer);
-      window.CUP.log('SidebarUI: Injected before Starred section');
+    // Fallback: just insert before whatever element we found
+    if (starredTextEl.parentElement) {
+      starredTextEl.parentElement.insertBefore(this.container, starredTextEl);
+      window.CUP.log('SidebarUI: Fallback - inserted before Starred text parent');
     } else {
-      // Fallback: Insert after Code section or at end of nav items
-      const codeLink = sidebar.querySelector('a[href*="code"], [class*="code"]');
-      if (codeLink) {
-        const codeContainer = codeLink.closest('div') || codeLink.parentElement;
-        if (codeContainer && codeContainer.nextSibling) {
-          codeContainer.parentElement.insertBefore(this.container, codeContainer.nextSibling);
-          window.CUP.log('SidebarUI: Injected after Code section');
-        } else {
-          sidebar.appendChild(this.container);
-        }
-      } else {
-        sidebar.appendChild(this.container);
-        window.CUP.log('SidebarUI: Appended to sidebar');
-      }
+      this.container.classList.add('cup-floating');
+      document.body.appendChild(this.container);
+      window.CUP.log('SidebarUI: Using floating widget');
     }
   }
   
@@ -185,30 +192,21 @@ class SidebarUI {
     if (icon) icon.textContent = this.isExpanded ? '▲' : '▼';
   }
   
-  /**
-   * Update UI with usage data
-   */
   update(usageData) {
     if (!usageData) return;
     
-    window.CUP.log('SidebarUI: Updating with data:', JSON.stringify(usageData));
-    
-    // Update Current Session
     if (usageData.currentSession) {
       this.updateSection('session', usageData.currentSession.percent, usageData.currentSession.resetsIn, 'in');
     }
     
-    // Update Weekly All Models
     if (usageData.weeklyAllModels) {
       this.updateSection('weekly-all', usageData.weeklyAllModels.percent, usageData.weeklyAllModels.resetsAt, 'at');
     }
     
-    // Update Weekly Sonnet
     if (usageData.weeklySonnet) {
       this.updateSection('weekly-sonnet', usageData.weeklySonnet.percent, usageData.weeklySonnet.resetsIn, 'in');
     }
     
-    // Update current model
     this.updateCurrentModel(usageData.currentModel);
   }
   
@@ -219,8 +217,6 @@ class SidebarUI {
     
     if (percentEl) {
       percentEl.textContent = percent + '%';
-      
-      // Color based on percentage
       percentEl.style.color = percent >= 90 ? 'var(--cup-danger)' : 
                               percent >= 70 ? 'var(--cup-warning)' : 
                               'var(--cup-success)';
@@ -243,7 +239,6 @@ class SidebarUI {
     if (!badge) return;
     
     const m = (model || 'sonnet').toLowerCase();
-    
     badge.className = 'cup-model-badge';
     
     if (m.includes('opus')) {
