@@ -1,44 +1,30 @@
 /**
  * Claude Usage Pro - Usage Scraper
- * Scrapes actual usage data from Claude.ai UI and API responses
+ * Scrapes actual usage data from Claude.ai settings/usage page
  */
 
 class UsageScraper {
   constructor() {
     this.lastScrapedData = null;
-    this.scrapedFromUI = false;
   }
   
   /**
-   * Main scrape function - tries multiple methods
+   * Main scrape function - navigates to usage page if needed
    */
   async scrapeUsage() {
     window.CUP.log('UsageScraper: Starting scrape...');
     
-    let data = null;
+    // If we're on the usage page, scrape directly
+    if (window.location.pathname.includes('/settings/usage')) {
+      return this.scrapeUsagePage();
+    }
     
-    // Method 1: Try to get from settings/account page API
-    data = await this.scrapeFromAPI();
-    if (data) {
+    // Try to fetch usage data via API
+    const apiData = await this.fetchUsageAPI();
+    if (apiData) {
       window.CUP.log('UsageScraper: Got data from API');
-      this.lastScrapedData = data;
-      return data;
-    }
-    
-    // Method 2: Scrape from UI elements
-    data = this.scrapeFromUI();
-    if (data) {
-      window.CUP.log('UsageScraper: Got data from UI');
-      this.lastScrapedData = data;
-      return data;
-    }
-    
-    // Method 3: Check for usage in page data/state
-    data = this.scrapeFromPageState();
-    if (data) {
-      window.CUP.log('UsageScraper: Got data from page state');
-      this.lastScrapedData = data;
-      return data;
+      this.lastScrapedData = apiData;
+      return apiData;
     }
     
     window.CUP.log('UsageScraper: No data found');
@@ -46,219 +32,182 @@ class UsageScraper {
   }
   
   /**
-   * Scrape from Claude API - intercept network requests
+   * Scrape directly from the usage settings page
    */
-  async scrapeFromAPI() {
+  scrapeUsagePage() {
     try {
-      // Try to fetch usage data from Claude's API
-      const response = await fetch('https://claude.ai/api/organizations', {
-        credentials: 'include',
-        headers: {
-          'Accept': 'application/json'
-        }
-      });
+      const data = {
+        currentSession: null,
+        weeklyAllModels: null,
+        weeklySonnet: null,
+        source: 'usage-page'
+      };
       
-      if (response.ok) {
-        const orgs = await response.json();
-        if (orgs && orgs.length > 0) {
-          const org = orgs[0];
-          
-          // Try to get usage from the org
-          const usageResponse = await fetch(`https://claude.ai/api/organizations/${org.uuid}/usage`, {
-            credentials: 'include',
-            headers: {
-              'Accept': 'application/json'
-            }
-          });
-          
-          if (usageResponse.ok) {
-            const usageData = await usageResponse.json();
-            return this.parseAPIUsage(usageData);
-          }
-        }
+      // Find all the usage sections
+      const pageText = document.body.innerText;
+      
+      // Current session
+      const sessionMatch = pageText.match(/Current session[\s\S]*?Resets in ([\d\s\w]+)[\s\S]*?(\d+)%\s*used/i);
+      if (sessionMatch) {
+        data.currentSession = {
+          percent: parseInt(sessionMatch[2]),
+          resetsIn: sessionMatch[1].trim()
+        };
       }
+      
+      // Weekly All models
+      const allModelsMatch = pageText.match(/All models[\s\S]*?Resets ([\w\s\d:]+(?:AM|PM))[\s\S]*?(\d+)%\s*used/i);
+      if (allModelsMatch) {
+        data.weeklyAllModels = {
+          percent: parseInt(allModelsMatch[2]),
+          resetsAt: allModelsMatch[1].trim()
+        };
+      }
+      
+      // Weekly Sonnet only
+      const sonnetMatch = pageText.match(/Sonnet only[\s\S]*?Resets in ([\d\s\w]+)[\s\S]*?(\d+)%\s*used/i);
+      if (sonnetMatch) {
+        data.weeklySonnet = {
+          percent: parseInt(sonnetMatch[2]),
+          resetsIn: sonnetMatch[1].trim()
+        };
+      }
+      
+      // Alternative: Parse from progress bars
+      const progressBars = document.querySelectorAll('[role="progressbar"], [class*="progress"]');
+      const percentElements = document.querySelectorAll('[class*="percent"], [class*="used"]');
+      
+      window.CUP.log('UsageScraper: Scraped from page:', data);
+      this.lastScrapedData = data;
+      return data;
+      
     } catch (e) {
-      window.CUP.log('UsageScraper: API scrape failed:', e.message);
+      window.CUP.logError('UsageScraper: Page scrape failed:', e);
+      return null;
     }
-    return null;
   }
   
   /**
-   * Parse usage data from API response
+   * Fetch usage via Claude API
    */
-  parseAPIUsage(data) {
+  async fetchUsageAPI() {
+    try {
+      // First get the organization ID
+      const orgsResponse = await fetch('https://claude.ai/api/organizations', {
+        credentials: 'include',
+        headers: { 'Accept': 'application/json' }
+      });
+      
+      if (!orgsResponse.ok) return null;
+      
+      const orgs = await orgsResponse.json();
+      if (!orgs || orgs.length === 0) return null;
+      
+      const orgId = orgs[0].uuid;
+      
+      // Try to get usage/limits data
+      const usageResponse = await fetch(`https://claude.ai/api/organizations/${orgId}/rate_limits`, {
+        credentials: 'include',
+        headers: { 'Accept': 'application/json' }
+      });
+      
+      if (usageResponse.ok) {
+        const usageData = await usageResponse.json();
+        return this.parseAPIResponse(usageData);
+      }
+      
+      // Alternative endpoint
+      const statsResponse = await fetch(`https://claude.ai/api/organizations/${orgId}/stats`, {
+        credentials: 'include',
+        headers: { 'Accept': 'application/json' }
+      });
+      
+      if (statsResponse.ok) {
+        const statsData = await statsResponse.json();
+        return this.parseAPIResponse(statsData);
+      }
+      
+      return null;
+      
+    } catch (e) {
+      window.CUP.log('UsageScraper: API fetch failed:', e.message);
+      return null;
+    }
+  }
+  
+  /**
+   * Parse API response into our format
+   */
+  parseAPIResponse(data) {
     if (!data) return null;
     
     try {
-      return {
-        totalTokens: data.total_tokens || data.tokens_used || 0,
-        messagesCount: data.message_count || data.messages || 0,
-        modelUsage: {
-          'claude-sonnet-4': data.sonnet_tokens || 0,
-          'claude-opus-4': data.opus_tokens || 0,
-          'claude-haiku-4': data.haiku_tokens || 0
-        },
-        resetTimestamp: data.reset_at ? new Date(data.reset_at).getTime() : this.getNextResetTime(),
-        usageCap: data.token_limit || data.cap || 45000000,
+      const result = {
         source: 'api'
       };
+      
+      // Handle different API response formats
+      if (data.rate_limits) {
+        for (const limit of data.rate_limits) {
+          if (limit.type === 'session') {
+            result.currentSession = {
+              percent: Math.round((limit.used / limit.limit) * 100),
+              used: limit.used,
+              limit: limit.limit,
+              resetsAt: limit.resets_at
+            };
+          } else if (limit.type === 'weekly' && limit.model === 'all') {
+            result.weeklyAllModels = {
+              percent: Math.round((limit.used / limit.limit) * 100),
+              used: limit.used,
+              limit: limit.limit,
+              resetsAt: limit.resets_at
+            };
+          } else if (limit.type === 'weekly' && limit.model === 'sonnet') {
+            result.weeklySonnet = {
+              percent: Math.round((limit.used / limit.limit) * 100),
+              used: limit.used,
+              limit: limit.limit,
+              resetsAt: limit.resets_at
+            };
+          }
+        }
+      }
+      
+      // Fallback to simple format
+      if (data.usage_percent !== undefined) {
+        result.currentSession = { percent: data.usage_percent };
+      }
+      
+      return result;
+      
     } catch (e) {
       return null;
     }
   }
   
   /**
-   * Scrape from UI elements on the page
-   */
-  scrapeFromUI() {
-    try {
-      // Look for usage indicators in the UI
-      const usageSelectors = [
-        '[class*="usage"]',
-        '[class*="quota"]',
-        '[class*="limit"]',
-        '[data-testid*="usage"]',
-        '[aria-label*="usage"]'
-      ];
-      
-      for (const sel of usageSelectors) {
-        const elements = document.querySelectorAll(sel);
-        for (const el of elements) {
-          const text = el.textContent || el.innerText || '';
-          const data = this.parseUsageText(text);
-          if (data) return data;
-        }
-      }
-      
-      // Look for percentage displays
-      const percentMatch = document.body.innerText.match(/(\d+(?:\.\d+)?)\s*%\s*(?:used|of|usage)/i);
-      if (percentMatch) {
-        const percent = parseFloat(percentMatch[1]);
-        const cap = 45000000; // Default Pro cap
-        return {
-          totalTokens: Math.round((percent / 100) * cap),
-          usageCap: cap,
-          source: 'ui-percent'
-        };
-      }
-      
-    } catch (e) {
-      window.CUP.log('UsageScraper: UI scrape error:', e.message);
-    }
-    return null;
-  }
-  
-  /**
-   * Parse usage from text content
-   */
-  parseUsageText(text) {
-    if (!text) return null;
-    
-    // Look for patterns like "1.2M / 45M tokens" or "Used 5,000 tokens"
-    const patterns = [
-      /(\d+(?:,\d+)*(?:\.\d+)?)\s*[MK]?\s*(?:\/|of)\s*(\d+(?:,\d+)*(?:\.\d+)?)\s*[MK]?\s*tokens?/i,
-      /used\s*(\d+(?:,\d+)*(?:\.\d+)?)\s*[MK]?\s*tokens?/i,
-      /(\d+(?:,\d+)*(?:\.\d+)?)\s*[MK]?\s*tokens?\s*used/i
-    ];
-    
-    for (const pattern of patterns) {
-      const match = text.match(pattern);
-      if (match) {
-        const used = this.parseTokenNumber(match[1]);
-        const cap = match[2] ? this.parseTokenNumber(match[2]) : 45000000;
-        if (used > 0) {
-          return {
-            totalTokens: used,
-            usageCap: cap,
-            source: 'ui-text'
-          };
-        }
-      }
-    }
-    return null;
-  }
-  
-  /**
-   * Parse token number (handles K, M suffixes and commas)
-   */
-  parseTokenNumber(str) {
-    if (!str) return 0;
-    str = str.replace(/,/g, '');
-    let num = parseFloat(str);
-    if (str.toUpperCase().includes('M')) num *= 1000000;
-    else if (str.toUpperCase().includes('K')) num *= 1000;
-    return Math.round(num);
-  }
-  
-  /**
-   * Try to get usage from page state (React/Next.js state)
-   */
-  scrapeFromPageState() {
-    try {
-      // Look for __NEXT_DATA__ or similar
-      const nextData = document.getElementById('__NEXT_DATA__');
-      if (nextData) {
-        const data = JSON.parse(nextData.textContent);
-        if (data?.props?.pageProps?.usage) {
-          return this.parseAPIUsage(data.props.pageProps.usage);
-        }
-      }
-      
-      // Look for window state
-      if (window.__CLAUDE_STATE__ && window.__CLAUDE_STATE__.usage) {
-        return this.parseAPIUsage(window.__CLAUDE_STATE__.usage);
-      }
-      
-    } catch (e) {
-      // Silent fail
-    }
-    return null;
-  }
-  
-  /**
-   * Get next reset time (midnight UTC)
-   */
-  getNextResetTime() {
-    const now = new Date();
-    const tomorrow = new Date(Date.UTC(
-      now.getUTCFullYear(),
-      now.getUTCMonth(),
-      now.getUTCDate() + 1,
-      0, 0, 0, 0
-    ));
-    return tomorrow.getTime();
-  }
-  
-  /**
    * Detect current model from page
    */
   detectCurrentModel() {
-    // Check model selector button
-    const modelSelectors = [
-      '[data-testid="model-selector"]',
-      'button[class*="model"]',
-      '[class*="ModelSelector"]'
-    ];
+    // Check model selector in bottom area
+    const modelText = document.body?.innerText?.toLowerCase() || '';
     
-    for (const sel of modelSelectors) {
-      const el = document.querySelector(sel);
-      if (el) {
-        const text = (el.textContent || '').toLowerCase();
-        if (text.includes('opus')) return 'claude-opus-4';
-        if (text.includes('haiku')) return 'claude-haiku-4';
-        if (text.includes('sonnet')) return 'claude-sonnet-4';
-      }
+    // Look for model name near the compose area
+    const composeArea = document.querySelector('[class*="composer"]') || 
+                       document.querySelector('form');
+    if (composeArea) {
+      const text = composeArea.innerText?.toLowerCase() || '';
+      if (text.includes('opus')) return 'opus';
+      if (text.includes('haiku')) return 'haiku';
+      if (text.includes('sonnet')) return 'sonnet';
     }
     
-    // Check page content
-    const pageText = document.body?.innerText?.toLowerCase() || '';
+    // Check for Opus 4.5 specifically
+    if (modelText.includes('opus 4.5') || modelText.includes('opus-4')) return 'opus';
+    if (modelText.includes('haiku 4.5') || modelText.includes('haiku-4')) return 'haiku';
     
-    // Look for model mentions in recent UI
-    if (pageText.includes('opus 4')) return 'claude-opus-4';
-    if (pageText.includes('haiku 4')) return 'claude-haiku-4';
-    
-    // Default to sonnet
-    return 'claude-sonnet-4';
+    return 'sonnet';
   }
 }
 
