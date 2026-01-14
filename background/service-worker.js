@@ -2,10 +2,10 @@
  * Claude Usage Pro - Background Service Worker
  * 
  * Handles:
- * - Storage of usage data
+ * - Storage of usage data (local + Firebase sync)
  * - Communication with content scripts
  * - Badge updates
- * - Alarms for reset checks
+ * - Periodic sync with Claude's actual usage page
  */
 
 // Default usage quota (45M tokens for Pro)
@@ -15,7 +15,9 @@ const DEFAULT_QUOTA = 45000000;
 const STORAGE_KEYS = {
   USAGE_DATA: 'usageData',
   SETTINGS: 'settings',
-  CONVERSATIONS: 'conversations'
+  CONVERSATIONS: 'conversations',
+  FIREBASE_CONFIG: 'firebaseConfig',
+  LAST_SYNC: 'lastSync'
 };
 
 /**
@@ -31,6 +33,8 @@ async function initializeUsageData() {
       resetTimestamp: getNextResetTimestamp(),
       messagesCount: 0,
       lastUpdated: Date.now(),
+      lastSynced: null,
+      syncedUsagePercent: null,
       modelUsage: {
         'claude-sonnet-4': 0,
         'claude-haiku-4': 0,
@@ -73,13 +77,34 @@ async function saveUsageData(usageData) {
 }
 
 /**
+ * Normalize model name - handles null/undefined safely
+ */
+function normalizeModel(model) {
+  if (!model || typeof model !== 'string') return 'claude-sonnet-4';
+  
+  const lower = model.toLowerCase();
+  if (lower.includes('opus')) return 'claude-opus-4';
+  if (lower.includes('haiku')) return 'claude-haiku-4';
+  return 'claude-sonnet-4';
+}
+
+/**
  * Add usage for a message
  */
 async function addUsage(tokens, model) {
   const usageData = await getUsageData();
   
-  // Normalize model name
+  // Normalize model name safely
   const normalizedModel = normalizeModel(model);
+  
+  // Initialize modelUsage if needed
+  if (!usageData.modelUsage) {
+    usageData.modelUsage = {
+      'claude-sonnet-4': 0,
+      'claude-haiku-4': 0,
+      'claude-opus-4': 0
+    };
+  }
   
   // Add to model-specific usage
   usageData.modelUsage[normalizedModel] = (usageData.modelUsage[normalizedModel] || 0) + tokens;
@@ -98,15 +123,36 @@ async function addUsage(tokens, model) {
 }
 
 /**
- * Normalize model name
+ * Sync with actual Claude usage data (scraped from settings page)
  */
-function normalizeModel(model) {
-  if (!model) return 'claude-sonnet-4';
+async function syncWithScrapedData(scrapedData) {
+  const usageData = await getUsageData();
   
-  const lower = model.toLowerCase();
-  if (lower.includes('opus')) return 'claude-opus-4';
-  if (lower.includes('haiku')) return 'claude-haiku-4';
-  return 'claude-sonnet-4';
+  if (scrapedData.usagePercent !== undefined) {
+    usageData.syncedUsagePercent = scrapedData.usagePercent;
+    usageData.lastSynced = Date.now();
+    
+    // Calculate actual tokens from percentage
+    if (scrapedData.usagePercent > 0) {
+      const actualTokens = Math.round((scrapedData.usagePercent / 100) * usageData.usageCap);
+      usageData.tokensUsed = actualTokens;
+    }
+  }
+  
+  if (scrapedData.resetTime) {
+    usageData.resetTimestamp = scrapedData.resetTime;
+  }
+  
+  if (scrapedData.planType) {
+    usageData.planType = scrapedData.planType;
+  }
+  
+  await saveUsageData(usageData);
+  await updateBadge(usageData);
+  await notifyAllTabs(usageData);
+  
+  console.log('[CUP] Synced with scraped data:', scrapedData);
+  return usageData;
 }
 
 /**
@@ -124,6 +170,8 @@ async function checkAndReset() {
       resetTimestamp: getNextResetTimestamp(),
       messagesCount: 0,
       lastUpdated: Date.now(),
+      lastSynced: usageData.lastSynced,
+      syncedUsagePercent: 0,
       modelUsage: {
         'claude-sonnet-4': 0,
         'claude-haiku-4': 0,
@@ -134,9 +182,6 @@ async function checkAndReset() {
     await saveUsageData(newData);
     await updateBadge(newData);
     await notifyAllTabs(newData);
-    
-    // Show notification
-    await showResetNotification();
     
     return newData;
   }
@@ -161,7 +206,15 @@ async function updateBadge(usageData) {
     weightedTotal += tokens * mult;
   }
   
-  const percentage = (weightedTotal / usageData.usageCap) * 100;
+  // Use synced percentage if available and recent (within 30 min)
+  let percentage;
+  if (usageData.syncedUsagePercent !== null && 
+      usageData.lastSynced && 
+      (Date.now() - usageData.lastSynced) < 30 * 60 * 1000) {
+    percentage = usageData.syncedUsagePercent;
+  } else {
+    percentage = (weightedTotal / usageData.usageCap) * 100;
+  }
   
   // Set badge text
   const badgeText = percentage >= 100 ? '!' : Math.round(percentage) + '%';
@@ -194,27 +247,6 @@ async function notifyAllTabs(usageData) {
 }
 
 /**
- * Show reset notification
- */
-async function showResetNotification() {
-  const settings = await getSettings();
-  
-  if (settings.notifications !== false) {
-    // Check if we have notification permission
-    const permission = await chrome.permissions.contains({ permissions: ['notifications'] });
-    
-    if (permission) {
-      chrome.notifications.create({
-        type: 'basic',
-        iconUrl: 'icons/icon128.png',
-        title: 'Claude Usage Reset',
-        message: 'Your usage quota has been reset! You\'re back to full capacity.'
-      });
-    }
-  }
-}
-
-/**
  * Get settings
  */
 async function getSettings() {
@@ -222,7 +254,9 @@ async function getSettings() {
   return data[STORAGE_KEYS.SETTINGS] || {
     notifications: true,
     showBadge: true,
-    quota: DEFAULT_QUOTA
+    quota: DEFAULT_QUOTA,
+    syncInterval: 5, // minutes
+    firebaseEnabled: false
   };
 }
 
@@ -237,6 +271,8 @@ async function saveSettings(settings) {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
     try {
+      console.log('[CUP] Received message:', message.type);
+      
       switch (message.type) {
         case 'GET_USAGE_DATA': {
           const usageData = await getUsageData();
@@ -246,7 +282,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         
         case 'MESSAGE_SENT':
         case 'MESSAGE_RECEIVED': {
-          const usageData = await addUsage(message.tokens, message.model);
+          const tokens = message.tokens || 0;
+          const model = message.model || 'claude-sonnet-4';
+          const usageData = await addUsage(tokens, model);
+          sendResponse({ usageData });
+          break;
+        }
+        
+        case 'SYNC_SCRAPED_DATA': {
+          const usageData = await syncWithScrapedData(message.data);
           sendResponse({ usageData });
           break;
         }
@@ -279,12 +323,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
         
         case 'RESET_USAGE': {
+          const settings = await getSettings();
           const newData = {
             tokensUsed: 0,
-            usageCap: (await getSettings()).quota || DEFAULT_QUOTA,
+            usageCap: settings.quota || DEFAULT_QUOTA,
             resetTimestamp: getNextResetTimestamp(),
             messagesCount: 0,
             lastUpdated: Date.now(),
+            lastSynced: null,
+            syncedUsagePercent: null,
             modelUsage: {
               'claude-sonnet-4': 0,
               'claude-haiku-4': 0,
@@ -299,9 +346,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           break;
         }
         
-        case 'OPEN_POPUP': {
-          // Can't programmatically open popup, but can open options page
-          chrome.runtime.openOptionsPage();
+        case 'TRIGGER_SYNC': {
+          // Tell content script to scrape usage page
+          const tabs = await chrome.tabs.query({ url: 'https://claude.ai/*', active: true });
+          if (tabs.length > 0) {
+            await chrome.tabs.sendMessage(tabs[0].id, { type: 'SCRAPE_USAGE' });
+          }
           sendResponse({ success: true });
           break;
         }
@@ -318,12 +368,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true; // Keep channel open for async response
 });
 
-// Setup alarm for periodic reset check
+// Setup alarm for periodic sync
+chrome.alarms.create('syncUsage', { periodInMinutes: 5 });
 chrome.alarms.create('checkReset', { periodInMinutes: 5 });
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === 'checkReset') {
     await checkAndReset();
+  }
+  if (alarm.name === 'syncUsage') {
+    // Trigger sync on active Claude tab
+    const tabs = await chrome.tabs.query({ url: 'https://claude.ai/*', active: true });
+    if (tabs.length > 0) {
+      try {
+        await chrome.tabs.sendMessage(tabs[0].id, { type: 'SCRAPE_USAGE' });
+      } catch (e) {
+        // Tab might not have content script
+      }
+    }
   }
 });
 

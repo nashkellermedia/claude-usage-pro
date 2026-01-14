@@ -12,94 +12,163 @@
         <span class="logo-icon">📊</span>
         <h1>Claude Usage Pro</h1>
       </div>
-      <button id="settingsBtn" class="icon-btn" title="Settings">⚙️</button>
+      <div class="header-actions">
+        <button id="syncBtn" class="icon-btn" title="Sync Now">🔄</button>
+        <button id="settingsBtn" class="icon-btn" title="Settings">⚙️</button>
+      </div>
     </header>
     
-    <section class="usage-overview">
-      <div class="usage-header">
+    <!-- Sync Status -->
+    <div class="sync-status">
+      <span id="syncStatus">Last sync: Never</span>
+      <span id="syncIndicator" class="sync-indicator"></span>
+    </div>
+    
+    <!-- Main Usage Card -->
+    <section class="usage-card main-card">
+      <div class="card-header">
         <span class="label">OVERALL USAGE</span>
-        <span id="resetTime" class="reset-time">Reset: --</span>
+        <span id="resetTime" class="reset-badge">Reset: --</span>
       </div>
-      <div class="progress-container">
-        <div id="mainProgress" class="progress-bar"></div>
-      </div>
-      <div class="usage-stats">
-        <div class="stat">
-          <span id="usedTokens" class="value">0</span>
-          <span id="usagePercent" class="percent">0.0%</span>
-          <span id="totalTokens" class="cap">45.0M</span>
+      
+      <div class="usage-circle-container">
+        <svg class="usage-circle" viewBox="0 0 100 100">
+          <circle class="bg" cx="50" cy="50" r="45"/>
+          <circle id="progressCircle" class="progress" cx="50" cy="50" r="45"/>
+        </svg>
+        <div class="usage-circle-text">
+          <span id="usagePercent" class="percent">0%</span>
+          <span class="subtext">used</span>
         </div>
       </div>
-      <div class="quick-stats">
-        <div class="quick-stat">
-          <span id="messagesCount" class="big-number">0</span>
-          <span class="label">MESSAGES</span>
+      
+      <div class="usage-details">
+        <div class="detail">
+          <span class="value" id="usedTokens">0</span>
+          <span class="label">Used</span>
         </div>
-        <div class="quick-stat">
-          <span id="avgTokens" class="big-number">--</span>
-          <span class="label">AVG/MSG</span>
+        <div class="detail">
+          <span class="value" id="remaining">45M</span>
+          <span class="label">Remaining</span>
         </div>
-        <div class="quick-stat">
-          <span id="remaining" class="big-number">45.0M</span>
-          <span class="label">REMAINING</span>
+        <div class="detail">
+          <span class="value" id="totalTokens">45M</span>
+          <span class="label">Total</span>
         </div>
       </div>
     </section>
     
-    <section class="model-breakdown">
-      <div class="section-header">BY MODEL</div>
-      
-      <div class="model-row">
-        <div class="model-info">
-          <span class="model-dot sonnet"></span>
-          <span class="model-name">Sonnet</span>
-        </div>
-        <div class="model-bar-container">
-          <div id="sonnetProgress" class="model-bar sonnet"></div>
-        </div>
-        <span id="sonnetTokens" class="model-tokens">0</span>
+    <!-- Quick Stats -->
+    <section class="stats-row">
+      <div class="stat-card">
+        <span class="stat-icon">💬</span>
+        <span id="messagesCount" class="stat-value">0</span>
+        <span class="stat-label">Messages</span>
       </div>
-      
-      <div class="model-row">
-        <div class="model-info">
-          <span class="model-dot opus"></span>
-          <span class="model-name">Opus (5x)</span>
-        </div>
-        <div class="model-bar-container">
-          <div id="opusProgress" class="model-bar opus"></div>
-        </div>
-        <span id="opusTokens" class="model-tokens">0 (0 weighted)</span>
+      <div class="stat-card">
+        <span class="stat-icon">📊</span>
+        <span id="avgTokens" class="stat-value">--</span>
+        <span class="stat-label">Avg/Msg</span>
       </div>
-      
-      <div class="model-row">
-        <div class="model-info">
-          <span class="model-dot haiku"></span>
-          <span class="model-name">Haiku (0.2x)</span>
-        </div>
-        <div class="model-bar-container">
-          <div id="haikuProgress" class="model-bar haiku"></div>
-        </div>
-        <span id="haikuTokens" class="model-tokens">0 (0 weighted)</span>
+      <div class="stat-card">
+        <span class="stat-icon">⏱️</span>
+        <span id="timeToReset" class="stat-value">--</span>
+        <span class="stat-label">Until Reset</span>
       </div>
     </section>
     
+    <!-- Model Breakdown -->
+    <section class="usage-card">
+      <div class="card-header">
+        <span class="label">BY MODEL</span>
+      </div>
+      
+      <div class="model-item">
+        <div class="model-header">
+          <span class="model-badge sonnet">Sonnet</span>
+          <span class="model-multiplier">1x cost</span>
+        </div>
+        <div class="model-bar-bg">
+          <div id="sonnetBar" class="model-bar sonnet"></div>
+        </div>
+        <span id="sonnetTokens" class="model-count">0 tokens</span>
+      </div>
+      
+      <div class="model-item">
+        <div class="model-header">
+          <span class="model-badge opus">Opus</span>
+          <span class="model-multiplier">5x cost</span>
+        </div>
+        <div class="model-bar-bg">
+          <div id="opusBar" class="model-bar opus"></div>
+        </div>
+        <span id="opusTokens" class="model-count">0 tokens (0 weighted)</span>
+      </div>
+      
+      <div class="model-item">
+        <div class="model-header">
+          <span class="model-badge haiku">Haiku</span>
+          <span class="model-multiplier">0.2x cost</span>
+        </div>
+        <div class="model-bar-bg">
+          <div id="haikuBar" class="model-bar haiku"></div>
+        </div>
+        <span id="haikuTokens" class="model-count">0 tokens (0 weighted)</span>
+      </div>
+    </section>
+    
+    <!-- Settings Panel -->
     <section id="settingsPanel" class="settings-panel hidden">
-      <div class="setting-row">
-        <label>Quota (tokens):</label>
-        <input type="number" id="quotaInput" value="45000000">
+      <div class="settings-header">
+        <span>Settings</span>
+        <button id="closeSettings" class="close-btn">×</button>
       </div>
-      <div class="setting-row">
-        <label>Notifications:</label>
+      
+      <div class="setting-group">
+        <label>Daily Quota (tokens)</label>
+        <select id="quotaSelect">
+          <option value="45000000">Pro - 45M tokens</option>
+          <option value="90000000">Max - 90M tokens</option>
+          <option value="135000000">Max (5x) - 135M tokens</option>
+          <option value="custom">Custom...</option>
+        </select>
+        <input type="number" id="customQuota" class="hidden" placeholder="Enter token limit">
+      </div>
+      
+      <div class="setting-group">
+        <label>Sync Interval</label>
+        <select id="syncInterval">
+          <option value="1">Every minute</option>
+          <option value="5" selected>Every 5 minutes</option>
+          <option value="15">Every 15 minutes</option>
+          <option value="30">Every 30 minutes</option>
+        </select>
+      </div>
+      
+      <div class="setting-group toggle-group">
+        <label>Show notifications</label>
         <input type="checkbox" id="notificationsToggle" checked>
       </div>
+      
+      <div class="setting-group toggle-group">
+        <label>Enable Firebase sync</label>
+        <input type="checkbox" id="firebaseToggle">
+      </div>
+      
+      <div id="firebaseConfig" class="firebase-config hidden">
+        <input type="text" id="firebaseApiKey" placeholder="Firebase API Key">
+        <input type="text" id="firebaseProjectId" placeholder="Project ID">
+        <input type="text" id="firebaseDatabaseUrl" placeholder="Database URL">
+      </div>
+      
       <div class="settings-actions">
-        <button id="saveSettings" class="btn primary">Save</button>
-        <button id="resetUsage" class="btn danger">Reset Usage</button>
+        <button id="saveSettings" class="btn primary">Save Settings</button>
+        <button id="resetUsage" class="btn danger">Reset All Data</button>
       </div>
     </section>
     
     <footer>
-      <span class="version">v1.0.0</span>
+      <span class="version">v1.1.0</span>
       <a href="https://github.com/nashkellermedia/claude-usage-pro" target="_blank">GitHub</a>
     </footer>
   </div>

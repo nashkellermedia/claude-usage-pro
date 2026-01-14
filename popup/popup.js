@@ -2,54 +2,59 @@
  * Claude Usage Pro - Popup Script
  */
 
-// Elements
 const elements = {
-  // Main stats
-  mainProgress: document.getElementById('mainProgress'),
-  usedTokens: document.getElementById('usedTokens'),
-  totalTokens: document.getElementById('totalTokens'),
+  // Sync
+  syncBtn: document.getElementById('syncBtn'),
+  syncStatus: document.getElementById('syncStatus'),
+  syncIndicator: document.getElementById('syncIndicator'),
+  
+  // Main usage
+  progressCircle: document.getElementById('progressCircle'),
   usagePercent: document.getElementById('usagePercent'),
+  usedTokens: document.getElementById('usedTokens'),
+  remaining: document.getElementById('remaining'),
+  totalTokens: document.getElementById('totalTokens'),
   resetTime: document.getElementById('resetTime'),
+  
+  // Stats
   messagesCount: document.getElementById('messagesCount'),
   avgTokens: document.getElementById('avgTokens'),
-  remaining: document.getElementById('remaining'),
+  timeToReset: document.getElementById('timeToReset'),
   
-  // Model breakdown
+  // Model bars
+  sonnetBar: document.getElementById('sonnetBar'),
   sonnetTokens: document.getElementById('sonnetTokens'),
-  sonnetProgress: document.getElementById('sonnetProgress'),
+  opusBar: document.getElementById('opusBar'),
   opusTokens: document.getElementById('opusTokens'),
-  opusProgress: document.getElementById('opusProgress'),
+  haikuBar: document.getElementById('haikuBar'),
   haikuTokens: document.getElementById('haikuTokens'),
-  haikuProgress: document.getElementById('haikuProgress'),
   
   // Settings
   settingsBtn: document.getElementById('settingsBtn'),
   settingsPanel: document.getElementById('settingsPanel'),
-  quotaInput: document.getElementById('quotaInput'),
+  closeSettings: document.getElementById('closeSettings'),
+  quotaSelect: document.getElementById('quotaSelect'),
+  customQuota: document.getElementById('customQuota'),
+  syncInterval: document.getElementById('syncInterval'),
   notificationsToggle: document.getElementById('notificationsToggle'),
+  firebaseToggle: document.getElementById('firebaseToggle'),
+  firebaseConfig: document.getElementById('firebaseConfig'),
   saveSettings: document.getElementById('saveSettings'),
   resetUsage: document.getElementById('resetUsage')
 };
 
-// Model multipliers
 const MODEL_MULTIPLIERS = {
   'claude-sonnet-4': 1.0,
   'claude-haiku-4': 0.2,
   'claude-opus-4': 5.0
 };
 
-/**
- * Format large numbers
- */
 function formatNumber(num) {
   if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
   if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
   return num.toLocaleString();
 }
 
-/**
- * Format time remaining
- */
 function formatTimeRemaining(ms) {
   if (ms <= 0) return 'Now!';
   
@@ -64,61 +69,63 @@ function formatTimeRemaining(ms) {
   return `${minutes}m`;
 }
 
-/**
- * Calculate weighted total
- */
 function getWeightedTotal(modelUsage) {
   let total = 0;
   for (const [model, tokens] of Object.entries(modelUsage || {})) {
-    const mult = MODEL_MULTIPLIERS[model] || 1.0;
-    total += tokens * mult;
+    total += tokens * (MODEL_MULTIPLIERS[model] || 1.0);
   }
   return Math.round(total);
 }
 
-/**
- * Get color based on percentage
- */
-function getColorClass(percentage) {
-  if (percentage >= 95) return 'danger';
-  if (percentage >= 80) return 'warning';
-  return '';
-}
-
-/**
- * Update the UI with usage data
- */
 function updateUI(usageData) {
   if (!usageData) return;
   
   const modelUsage = usageData.modelUsage || {};
   const weightedTotal = getWeightedTotal(modelUsage);
   const cap = usageData.usageCap || 45000000;
-  const percentage = (weightedTotal / cap) * 100;
+  
+  // Use synced percentage if available
+  let percentage;
+  if (usageData.syncedUsagePercent !== null && usageData.lastSynced) {
+    percentage = usageData.syncedUsagePercent;
+  } else {
+    percentage = (weightedTotal / cap) * 100;
+  }
+  
   const remaining = Math.max(0, cap - weightedTotal);
   const timeUntilReset = usageData.resetTimestamp ? usageData.resetTimestamp - Date.now() : 0;
   
-  // Main progress
-  elements.mainProgress.style.width = `${Math.min(percentage, 100)}%`;
-  elements.mainProgress.className = `progress-bar ${getColorClass(percentage)}`;
+  // Update circular progress
+  const circumference = 2 * Math.PI * 45;
+  const offset = circumference - (Math.min(percentage, 100) / 100) * circumference;
+  elements.progressCircle.style.strokeDashoffset = offset;
   
+  // Color based on percentage
+  let color = '#2c84db';
+  if (percentage >= 95) color = '#ef4444';
+  else if (percentage >= 80) color = '#f59e0b';
+  elements.progressCircle.style.stroke = color;
+  
+  // Update text
+  elements.usagePercent.textContent = percentage.toFixed(1) + '%';
   elements.usedTokens.textContent = formatNumber(weightedTotal);
+  elements.remaining.textContent = formatNumber(remaining);
   elements.totalTokens.textContent = formatNumber(cap);
-  elements.usagePercent.textContent = `${percentage.toFixed(1)}%`;
-  elements.usagePercent.style.color = percentage >= 95 ? '#de2929' : percentage >= 80 ? '#f59e0b' : '#2c84db';
   
   // Reset time
-  elements.resetTime.textContent = `Reset: ${formatTimeRemaining(timeUntilReset)}`;
+  elements.resetTime.textContent = 'Reset: ' + formatTimeRemaining(timeUntilReset);
+  elements.timeToReset.textContent = formatTimeRemaining(timeUntilReset);
   
-  // Quick stats
+  // Stats
   elements.messagesCount.textContent = usageData.messagesCount || 0;
-  elements.remaining.textContent = formatNumber(remaining);
-  
   if (usageData.messagesCount > 0) {
-    const avg = Math.round(usageData.tokensUsed / usageData.messagesCount);
-    elements.avgTokens.textContent = formatNumber(avg);
-  } else {
-    elements.avgTokens.textContent = '--';
+    elements.avgTokens.textContent = formatNumber(Math.round(usageData.tokensUsed / usageData.messagesCount));
+  }
+  
+  // Sync status
+  if (usageData.lastSynced) {
+    const ago = Math.round((Date.now() - usageData.lastSynced) / 60000);
+    elements.syncStatus.textContent = ago < 1 ? 'Just synced' : `Synced ${ago}m ago`;
   }
   
   // Model breakdown
@@ -126,24 +133,18 @@ function updateUI(usageData) {
   const opus = modelUsage['claude-opus-4'] || 0;
   const haiku = modelUsage['claude-haiku-4'] || 0;
   
-  // Sonnet (1x multiplier)
-  elements.sonnetTokens.textContent = formatNumber(sonnet);
-  elements.sonnetProgress.style.width = `${Math.min((sonnet / cap) * 100, 100)}%`;
+  const maxModel = Math.max(sonnet, opus * 5, haiku * 0.2, 1);
   
-  // Opus (5x multiplier)
-  const opusWeighted = opus * 5;
-  elements.opusTokens.textContent = `${formatNumber(opus)} (${formatNumber(opusWeighted)} weighted)`;
-  elements.opusProgress.style.width = `${Math.min((opusWeighted / cap) * 100, 100)}%`;
+  elements.sonnetBar.style.width = ((sonnet / cap) * 100) + '%';
+  elements.sonnetTokens.textContent = formatNumber(sonnet) + ' tokens';
   
-  // Haiku (0.2x multiplier)
-  const haikuWeighted = opus * 0.2;
-  elements.haikuTokens.textContent = `${formatNumber(haiku)} (${formatNumber(haikuWeighted)} weighted)`;
-  elements.haikuProgress.style.width = `${Math.min((haikuWeighted / cap) * 100, 100)}%`;
+  elements.opusBar.style.width = ((opus * 5 / cap) * 100) + '%';
+  elements.opusTokens.textContent = `${formatNumber(opus)} (${formatNumber(opus * 5)} weighted)`;
+  
+  elements.haikuBar.style.width = ((haiku * 0.2 / cap) * 100) + '%';
+  elements.haikuTokens.textContent = `${formatNumber(haiku)} (${formatNumber(haiku * 0.2)} weighted)`;
 }
 
-/**
- * Load and display data
- */
 async function loadData() {
   try {
     const response = await chrome.runtime.sendMessage({ type: 'GET_USAGE_DATA' });
@@ -155,34 +156,53 @@ async function loadData() {
   }
 }
 
-/**
- * Load settings
- */
 async function loadSettings() {
   try {
     const response = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
     if (response?.settings) {
-      elements.quotaInput.value = response.settings.quota || 45000000;
-      elements.notificationsToggle.checked = response.settings.notifications !== false;
+      const s = response.settings;
+      
+      // Quota
+      const quotaVal = s.quota || 45000000;
+      const quotaOptions = ['45000000', '90000000', '135000000'];
+      if (quotaOptions.includes(quotaVal.toString())) {
+        elements.quotaSelect.value = quotaVal;
+      } else {
+        elements.quotaSelect.value = 'custom';
+        elements.customQuota.classList.remove('hidden');
+        elements.customQuota.value = quotaVal;
+      }
+      
+      elements.syncInterval.value = s.syncInterval || 5;
+      elements.notificationsToggle.checked = s.notifications !== false;
+      elements.firebaseToggle.checked = s.firebaseEnabled || false;
+      
+      if (s.firebaseEnabled) {
+        elements.firebaseConfig.classList.remove('hidden');
+      }
     }
   } catch (error) {
     console.error('Error loading settings:', error);
   }
 }
 
-/**
- * Save settings
- */
 async function saveSettings() {
+  let quota;
+  if (elements.quotaSelect.value === 'custom') {
+    quota = parseInt(elements.customQuota.value, 10);
+  } else {
+    quota = parseInt(elements.quotaSelect.value, 10);
+  }
+  
+  const settings = {
+    quota,
+    syncInterval: parseInt(elements.syncInterval.value, 10),
+    notifications: elements.notificationsToggle.checked,
+    firebaseEnabled: elements.firebaseToggle.checked
+  };
+  
   try {
-    const settings = {
-      quota: parseInt(elements.quotaInput.value, 10),
-      notifications: elements.notificationsToggle.checked
-    };
-    
     await chrome.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings });
-    
-    // Hide settings panel and refresh data
     elements.settingsPanel.classList.add('hidden');
     await loadData();
   } catch (error) {
@@ -190,20 +210,31 @@ async function saveSettings() {
   }
 }
 
-/**
- * Reset usage
- */
-async function resetUsage() {
-  if (!confirm('Are you sure you want to reset your usage statistics? This cannot be undone.')) {
-    return;
+async function triggerSync() {
+  elements.syncIndicator.classList.add('syncing');
+  elements.syncStatus.textContent = 'Syncing...';
+  
+  try {
+    await chrome.runtime.sendMessage({ type: 'TRIGGER_SYNC' });
+    setTimeout(loadData, 1500);
+  } catch (error) {
+    console.error('Sync error:', error);
   }
+  
+  setTimeout(() => {
+    elements.syncIndicator.classList.remove('syncing');
+  }, 2000);
+}
+
+async function resetUsage() {
+  if (!confirm('Reset all usage data? This cannot be undone.')) return;
   
   try {
     await chrome.runtime.sendMessage({ type: 'RESET_USAGE' });
     await loadData();
     elements.settingsPanel.classList.add('hidden');
   } catch (error) {
-    console.error('Error resetting usage:', error);
+    console.error('Error resetting:', error);
   }
 }
 
@@ -215,11 +246,30 @@ elements.settingsBtn.addEventListener('click', () => {
   }
 });
 
+elements.closeSettings.addEventListener('click', () => {
+  elements.settingsPanel.classList.add('hidden');
+});
+
+elements.syncBtn.addEventListener('click', triggerSync);
 elements.saveSettings.addEventListener('click', saveSettings);
 elements.resetUsage.addEventListener('click', resetUsage);
 
-// Initial load
-loadData();
+elements.quotaSelect.addEventListener('change', () => {
+  if (elements.quotaSelect.value === 'custom') {
+    elements.customQuota.classList.remove('hidden');
+  } else {
+    elements.customQuota.classList.add('hidden');
+  }
+});
 
-// Auto-refresh every 5 seconds
+elements.firebaseToggle.addEventListener('change', () => {
+  if (elements.firebaseToggle.checked) {
+    elements.firebaseConfig.classList.remove('hidden');
+  } else {
+    elements.firebaseConfig.classList.add('hidden');
+  }
+});
+
+// Initialize
+loadData();
 setInterval(loadData, 5000);

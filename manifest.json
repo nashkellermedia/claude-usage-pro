@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Claude Usage Pro",
-  "version": "1.0.0",
-  "description": "Track your Claude.ai token usage with detailed analytics and in-page displays",
+  "version": "1.1.0",
+  "description": "Track your Claude.ai token usage with real-time sync, cross-device support, and detailed analytics",
   "author": "Nash Keller Media",
   "homepage_url": "https://github.com/nashkellermedia/claude-usage-pro",
   
@@ -27,6 +27,7 @@
       "js": [
         "content/utils.js",
         "content/data-classes.js",
+        "content/usage-scraper.js",
         "content/sidebar-ui.js",
         "content/chat-ui.js",
         "content/main.js"
@@ -37,7 +38,10 @@
   
   "web_accessible_resources": [
     {
-      "resources": ["injections/fetch-interceptor.js"],
+      "resources": [
+        "injections/fetch-interceptor.js",
+        "lib/firebase-sync.js"
+      ],
       "matches": ["https://claude.ai/*"]
     }
   ],
