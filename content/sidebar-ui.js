@@ -1,11 +1,13 @@
 /**
  * Claude Usage Pro - Sidebar UI
- * Displays percentage-based usage data
  * 
  * DOM Structure (from analysis):
- * NAV.flex → DIV.flex → DIV.flex → DIV.flex-1 → DIV.opacity-100 → DIV.px-2 → DIV.flex → H3 "Starred"
+ * Level 0: H3 "Starred"
+ * Level 1: DIV.flex.flex-col.mb-4 (2 children: H3, UL)
+ * Level 2: DIV.px-2.mt-4 (2 children: DIV.flex, DIV.flex) <-- Starred section container
+ * Level 3: DIV.opacity-100
  * 
- * We want to insert before the DIV.px-2 that contains Starred
+ * We need to insert BEFORE the DIV.px-2.mt-4 at Level 2
  */
 
 class SidebarUI {
@@ -36,7 +38,6 @@ class SidebarUI {
   }
   
   findStarredH3() {
-    // Find H3 element containing "Starred"
     const h3s = document.querySelectorAll('h3');
     for (const h3 of h3s) {
       if (h3.textContent?.trim() === 'Starred') {
@@ -47,59 +48,61 @@ class SidebarUI {
   }
   
   buildUI() {
+    // Match Claude's sidebar structure: DIV.px-2.mt-4 containing our content
     this.container = document.createElement('div');
     this.container.id = 'cup-sidebar-widget';
-    // Add px-2 class to match Claude's sidebar styling
-    this.container.className = 'px-2';
+    this.container.className = 'px-2 mt-4'; // Match Claude's styling
     this.container.innerHTML = `
-      <div class="cup-widget-header" id="cup-widget-toggle">
-        <span class="cup-widget-icon">📊</span>
-        <span class="cup-widget-title">Usage</span>
-        <span class="cup-widget-expand" id="cup-expand-icon">▲</span>
-      </div>
-      
-      <div class="cup-widget-details expanded" id="cup-widget-details">
-        <div class="cup-usage-section">
-          <div class="cup-usage-header">
-            <span class="cup-usage-label">Current Session</span>
-            <span class="cup-usage-percent" id="cup-session-percent">--%</span>
-          </div>
-          <div class="cup-usage-bar-bg">
-            <div class="cup-usage-bar" id="cup-session-bar"></div>
-          </div>
-          <div class="cup-usage-meta" id="cup-session-meta">Resets in --</div>
+      <div class="cup-widget-inner">
+        <div class="cup-widget-header" id="cup-widget-toggle">
+          <span class="cup-widget-icon">📊</span>
+          <span class="cup-widget-title">Usage</span>
+          <span class="cup-widget-expand" id="cup-expand-icon">▲</span>
         </div>
         
-        <div class="cup-usage-section">
-          <div class="cup-usage-header">
-            <span class="cup-usage-label">Weekly (All Models)</span>
-            <span class="cup-usage-percent" id="cup-weekly-all-percent">--%</span>
+        <div class="cup-widget-details expanded" id="cup-widget-details">
+          <div class="cup-usage-section">
+            <div class="cup-usage-header">
+              <span class="cup-usage-label">Current Session</span>
+              <span class="cup-usage-percent" id="cup-session-percent">--%</span>
+            </div>
+            <div class="cup-usage-bar-bg">
+              <div class="cup-usage-bar" id="cup-session-bar"></div>
+            </div>
+            <div class="cup-usage-meta" id="cup-session-meta">Resets in --</div>
           </div>
-          <div class="cup-usage-bar-bg">
-            <div class="cup-usage-bar" id="cup-weekly-all-bar"></div>
+          
+          <div class="cup-usage-section">
+            <div class="cup-usage-header">
+              <span class="cup-usage-label">Weekly (All Models)</span>
+              <span class="cup-usage-percent" id="cup-weekly-all-percent">--%</span>
+            </div>
+            <div class="cup-usage-bar-bg">
+              <div class="cup-usage-bar" id="cup-weekly-all-bar"></div>
+            </div>
+            <div class="cup-usage-meta" id="cup-weekly-all-meta">Resets --</div>
           </div>
-          <div class="cup-usage-meta" id="cup-weekly-all-meta">Resets --</div>
+          
+          <div class="cup-usage-section">
+            <div class="cup-usage-header">
+              <span class="cup-usage-label">Weekly (Sonnet)</span>
+              <span class="cup-usage-percent" id="cup-weekly-sonnet-percent">--%</span>
+            </div>
+            <div class="cup-usage-bar-bg">
+              <div class="cup-usage-bar" id="cup-weekly-sonnet-bar"></div>
+            </div>
+            <div class="cup-usage-meta" id="cup-weekly-sonnet-meta">Resets in --</div>
+          </div>
+          
+          <div class="cup-model-indicator">
+            <span class="cup-model-label">Current:</span>
+            <span class="cup-model-badge" id="cup-current-model">Sonnet 4.5</span>
+          </div>
+          
+          <a href="https://claude.ai/settings/usage" class="cup-usage-link" target="_self">
+            View full usage details →
+          </a>
         </div>
-        
-        <div class="cup-usage-section">
-          <div class="cup-usage-header">
-            <span class="cup-usage-label">Weekly (Sonnet)</span>
-            <span class="cup-usage-percent" id="cup-weekly-sonnet-percent">--%</span>
-          </div>
-          <div class="cup-usage-bar-bg">
-            <div class="cup-usage-bar" id="cup-weekly-sonnet-bar"></div>
-          </div>
-          <div class="cup-usage-meta" id="cup-weekly-sonnet-meta">Resets in --</div>
-        </div>
-        
-        <div class="cup-model-indicator">
-          <span class="cup-model-label">Current:</span>
-          <span class="cup-model-badge" id="cup-current-model">Sonnet 4.5</span>
-        </div>
-        
-        <a href="https://claude.ai/settings/usage" class="cup-usage-link" target="_self">
-          View full usage details →
-        </a>
       </div>
     `;
     
@@ -118,38 +121,26 @@ class SidebarUI {
       return;
     }
     
-    // Path: H3 → DIV.flex → DIV.px-2
-    // We want to insert before DIV.px-2
+    // Navigate up the DOM:
+    // H3 (Level 0) → DIV.flex.flex-col.mb-4 (Level 1) → DIV.px-2.mt-4 (Level 2)
+    const level1 = starredH3.parentElement; // DIV.flex.flex-col.mb-4
+    const level2 = level1?.parentElement;   // DIV.px-2.mt-4
     
-    // Go up to find the DIV.px-2 container
-    let pxContainer = starredH3.parentElement; // DIV.flex
-    if (pxContainer) {
-      pxContainer = pxContainer.parentElement; // DIV.px-2
-    }
-    
-    if (pxContainer && pxContainer.classList.contains('px-2')) {
-      // Insert before this px-2 container
-      pxContainer.parentElement.insertBefore(this.container, pxContainer);
-      window.CUP.log('SidebarUI: Injected before DIV.px-2 containing Starred');
-    } else {
-      // Fallback: try to find px-2 by walking up more
-      let current = starredH3;
-      for (let i = 0; i < 5; i++) {
-        current = current.parentElement;
-        if (!current) break;
-        
-        if (current.classList.contains('px-2')) {
-          current.parentElement.insertBefore(this.container, current);
-          window.CUP.log('SidebarUI: Injected before px-2 (fallback)');
-          return;
-        }
+    if (level2 && level2.classList.contains('px-2')) {
+      // Insert our widget BEFORE level2 (the Starred section container)
+      // into level2's parent (DIV.opacity-100)
+      const level3 = level2.parentElement;
+      if (level3) {
+        level3.insertBefore(this.container, level2);
+        window.CUP.log('SidebarUI: Inserted before DIV.px-2.mt-4 (Starred container)');
+        return;
       }
-      
-      // Last resort fallback
-      window.CUP.log('SidebarUI: Could not find px-2, using floating');
-      this.container.classList.add('cup-floating');
-      document.body.appendChild(this.container);
     }
+    
+    // Fallback
+    window.CUP.log('SidebarUI: Fallback - could not find correct insertion point');
+    this.container.classList.add('cup-floating');
+    document.body.appendChild(this.container);
   }
   
   toggleExpand() {
