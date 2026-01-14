@@ -9,7 +9,6 @@ const STORAGE_KEYS = {
   SETTINGS: 'settings'
 };
 
-// Initialize usage data
 async function initializeUsageData() {
   const data = await chrome.storage.local.get(STORAGE_KEYS.USAGE_DATA);
   
@@ -81,7 +80,7 @@ async function addUsage(tokens, model) {
   
   await saveUsageData(usageData);
   await updateBadge(usageData);
-  notifyAllTabs(usageData);
+  notifyAllTabs(usageData); // Don't await - fire and forget
   
   console.log(`[CUP] Added ${tokens} tokens for ${normalizedModel}`);
   return usageData;
@@ -94,11 +93,10 @@ async function syncWithScrapedData(scrapedData) {
     usageData.syncedUsagePercent = scrapedData.usagePercent;
     usageData.lastSynced = Date.now();
     
-    // Calculate tokens from percentage
     const actualTokens = Math.round((scrapedData.usagePercent / 100) * usageData.usageCap);
     usageData.tokensUsed = actualTokens;
     
-    console.log('[CUP] Synced with scraped data:', scrapedData.usagePercent + '%');
+    console.log('[CUP] Synced:', scrapedData.usagePercent + '%');
   }
   
   if (scrapedData && scrapedData.resetTime) {
@@ -172,15 +170,15 @@ async function updateBadge(usageData) {
   await chrome.action.setBadgeBackgroundColor({ color });
 }
 
-async function notifyAllTabs(usageData) {
-  try {
-    const tabs = await chrome.tabs.query({ url: 'https://claude.ai/*' });
+// Fire and forget - don't throw errors for unreachable tabs
+function notifyAllTabs(usageData) {
+  chrome.tabs.query({ url: 'https://claude.ai/*' }).then(tabs => {
     for (const tab of tabs) {
-      try {
-        chrome.tabs.sendMessage(tab.id, { type: 'USAGE_UPDATED', usageData });
-      } catch (e) {}
+      chrome.tabs.sendMessage(tab.id, { type: 'USAGE_UPDATED', usageData }).catch(() => {
+        // Tab might not have content script - ignore
+      });
     }
-  } catch (e) {}
+  }).catch(() => {});
 }
 
 async function getSettings() {
@@ -197,13 +195,13 @@ async function saveSettings(settings) {
   await chrome.storage.sync.set({ [STORAGE_KEYS.SETTINGS]: settings });
 }
 
-// Message handler - properly handle async
+// Message handler
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   handleMessage(message, sender).then(sendResponse).catch(err => {
     console.error('[CUP] Message error:', err);
     sendResponse({ error: err.message });
   });
-  return true; // Keep channel open
+  return true;
 });
 
 async function handleMessage(message, sender) {
@@ -272,12 +270,12 @@ async function handleMessage(message, sender) {
     }
     
     case 'TRIGGER_SYNC': {
-      const tabs = await chrome.tabs.query({ url: 'https://claude.ai/*', active: true });
-      if (tabs.length > 0) {
-        try {
-          chrome.tabs.sendMessage(tabs[0].id, { type: 'SCRAPE_USAGE' });
-        } catch (e) {}
-      }
+      try {
+        const tabs = await chrome.tabs.query({ url: 'https://claude.ai/*', active: true });
+        if (tabs.length > 0) {
+          chrome.tabs.sendMessage(tabs[0].id, { type: 'SCRAPE_USAGE' }).catch(() => {});
+        }
+      } catch (e) {}
       return { success: true };
     }
     
