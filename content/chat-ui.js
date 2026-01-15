@@ -1,6 +1,6 @@
 /**
  * Claude Usage Pro - Chat UI
- * Stats bar below chat input (matching Claude's native style)
+ * Stats bar below chat input
  */
 
 class ChatUI {
@@ -24,48 +24,14 @@ class ChatUI {
   
   async injectInputStats() {
     if (document.getElementById('cup-input-stats')) {
-      window.CUP.log('ChatUI: Input stats already exists');
       return;
     }
     
-    // Wait and retry to find the composer area
-    for (let attempt = 0; attempt < 20; attempt++) {
-      window.CUP.log('ChatUI: Looking for injection point, attempt', attempt);
-      
-      // Find the contenteditable input
+    // Simple approach: wait for contenteditable, then find main content area
+    for (let attempt = 0; attempt < 10; attempt++) {
       const contentEditable = document.querySelector('[contenteditable="true"]');
-      if (!contentEditable) {
-        await new Promise(r => setTimeout(r, 500));
-        continue;
-      }
       
-      // Walk up to find a good container - look for the main chat area
-      // Claude's structure: main > div > ... > form area
-      let target = contentEditable;
-      let container = null;
-      
-      // Go up until we find a reasonable container
-      for (let i = 0; i < 10; i++) {
-        target = target.parentElement;
-        if (!target) break;
-        
-        // Look for a container that has the send button area
-        // This is typically the grandparent of the form
-        if (target.tagName === 'FORM' || target.querySelector('button[type="submit"]')) {
-          container = target.parentElement;
-          break;
-        }
-      }
-      
-      if (!container) {
-        // Fallback: just use the form's parent
-        const form = contentEditable.closest('form');
-        if (form && form.parentElement) {
-          container = form.parentElement;
-        }
-      }
-      
-      if (container) {
+      if (contentEditable) {
         // Create our stats bar
         this.inputStats = document.createElement('div');
         this.inputStats.id = 'cup-input-stats';
@@ -98,32 +64,40 @@ class ChatUI {
           </span>
         `;
         
-        // Append to the container
-        container.appendChild(this.inputStats);
-        window.CUP.log('ChatUI: Input stats injected into', container.tagName, container.className?.substring(0, 50));
-        
-        // Apply any cached usage data
-        if (this.currentUsageData) {
-          this.updateUsage(this.currentUsageData);
+        // Go up 5-6 levels from contenteditable to find composer container
+        let container = contentEditable;
+        for (let i = 0; i < 6; i++) {
+          if (container.parentElement) {
+            container = container.parentElement;
+          }
         }
-        return;
+        
+        // Insert after the container
+        if (container && container.parentElement) {
+          container.parentElement.insertBefore(this.inputStats, container.nextSibling);
+          window.CUP.log('ChatUI: Input stats injected');
+          
+          // Apply cached data
+          if (this.currentUsageData) {
+            this.updateUsage(this.currentUsageData);
+          }
+          return;
+        }
       }
       
-      await new Promise(r => setTimeout(r, 500));
+      await new Promise(r => setTimeout(r, 300));
     }
     
-    window.CUP.log('ChatUI: Failed to find injection point after all attempts');
+    window.CUP.log('ChatUI: Could not inject input stats');
   }
   
   startDraftMonitor() {
     if (this.typingInterval) clearInterval(this.typingInterval);
     
     this.typingInterval = setInterval(() => {
-      const input = document.querySelector('[contenteditable="true"]') ||
-                   document.querySelector('textarea');
-      
+      const input = document.querySelector('[contenteditable="true"]');
       if (input) {
-        const text = input.innerText || input.value || '';
+        const text = input.innerText || '';
         const tokens = Math.ceil(text.length / 4);
         
         if (tokens !== this.lastDraftLength) {
@@ -138,29 +112,26 @@ class ChatUI {
     if (!usageData) return;
     this.currentUsageData = usageData;
     
-    // Update session percentage
     if (usageData.currentSession) {
       const pct = usageData.currentSession.percent || 0;
       this.updateElement('cup-session-pct', pct + '%');
-      this.colorizeElement('cup-session-pct', pct);
+      this.colorize('cup-session-pct', pct);
       
       if (usageData.currentSession.resetsIn) {
         this.updateElement('cup-reset-timer', usageData.currentSession.resetsIn);
       }
     }
     
-    // Update weekly all models
     if (usageData.weeklyAllModels) {
       const pct = usageData.weeklyAllModels.percent || 0;
       this.updateElement('cup-weekly-all-pct', pct + '%');
-      this.colorizeElement('cup-weekly-all-pct', pct);
+      this.colorize('cup-weekly-all-pct', pct);
     }
     
-    // Update weekly sonnet
     if (usageData.weeklySonnet) {
       const pct = usageData.weeklySonnet.percent || 0;
       this.updateElement('cup-weekly-sonnet-pct', pct + '%');
-      this.colorizeElement('cup-weekly-sonnet-pct', pct);
+      this.colorize('cup-weekly-sonnet-pct', pct);
     }
   }
   
@@ -169,16 +140,16 @@ class ChatUI {
     if (el) el.textContent = value;
   }
   
-  colorizeElement(id, percent) {
+  colorize(id, percent) {
     const el = document.getElementById(id);
     if (!el) return;
     
     if (percent >= 90) {
-      el.style.color = '#ef4444'; // red
+      el.style.color = '#ef4444';
     } else if (percent >= 70) {
-      el.style.color = '#f59e0b'; // yellow
+      el.style.color = '#f59e0b';
     } else {
-      el.style.color = '#22c55e'; // green
+      el.style.color = '#22c55e';
     }
   }
   
