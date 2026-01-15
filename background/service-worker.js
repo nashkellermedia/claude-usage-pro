@@ -14,7 +14,6 @@ const DEFAULT_SETTINGS = {
   badgeDisplay: 'session',
   showSidebar: true,
   showChatOverlay: true,
-  showTopBar: true,
   enableVoice: false
 };
 
@@ -63,16 +62,17 @@ async function updateBadge(usageData) {
     
     switch (display) {
       case 'session':
-        percent = usageData.currentSession?.percent || 0;
+        percent = usageData?.currentSession?.percent ?? 0;
         break;
       case 'weekly-all':
-        percent = usageData.weeklyAllModels?.percent || 0;
+        percent = usageData?.weeklyAllModels?.percent ?? 0;
         break;
       case 'weekly-sonnet':
-        percent = usageData.weeklySonnet?.percent || 0;
+        percent = usageData?.weeklySonnet?.percent ?? 0;
         break;
     }
     
+    // Always show the badge with percentage
     const text = percent >= 100 ? '!' : percent + '%';
     chrome.action.setBadgeText({ text });
     
@@ -81,9 +81,10 @@ async function updateBadge(usageData) {
     else if (percent >= 70) color = '#f59e0b'; // yellow
     
     chrome.action.setBadgeBackgroundColor({ color });
+    console.log('[CUP BG] Badge updated:', text, 'display:', display);
     
   } catch (e) {
-    // Badge update failed
+    console.error('[CUP BG] Badge update error:', e);
   }
 }
 
@@ -133,7 +134,6 @@ async function handleMessage(message, sender) {
     }
     
     case 'UPDATE_MODEL': {
-      // Update just the current model
       const usageData = await getUsageData();
       usageData.currentModel = message.model || 'sonnet';
       await saveUsageData(usageData);
@@ -165,6 +165,13 @@ async function handleMessage(message, sender) {
       const usageData = await getUsageData();
       await updateBadge(usageData);
       
+      // Notify tabs of settings change
+      chrome.tabs.query({ url: 'https://claude.ai/*' }).then(tabs => {
+        for (const tab of tabs) {
+          chrome.tabs.sendMessage(tab.id, { type: 'SETTINGS_UPDATED', settings: updated }).catch(() => {});
+        }
+      }).catch(() => {});
+      
       return { success: true };
     }
     
@@ -180,6 +187,7 @@ async function handleMessage(message, sender) {
   }
 }
 
+// On install/update, initialize badge
 chrome.runtime.onInstalled.addListener(async () => {
   console.log('[CUP BG] Extension installed/updated');
   
@@ -190,8 +198,20 @@ chrome.runtime.onInstalled.addListener(async () => {
   if (!existing.settings) {
     await chrome.storage.local.set({ settings: { ...DEFAULT_SETTINGS } });
   }
+  
+  // Update badge with current data
+  const usageData = await getUsageData();
+  await updateBadge(usageData);
 });
 
+// Also update badge on startup
+chrome.runtime.onStartup.addListener(async () => {
+  console.log('[CUP BG] Browser started');
+  const usageData = await getUsageData();
+  await updateBadge(usageData);
+});
+
+// Periodic sync
 chrome.alarms.create('syncUsage', { periodInMinutes: 5 });
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === 'syncUsage') {
@@ -205,3 +225,6 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 });
 
 console.log('[CUP BG] Service worker loaded');
+
+// Initialize badge immediately
+getUsageData().then(updateBadge);
