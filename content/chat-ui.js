@@ -464,6 +464,12 @@ class ChatUI {
     
     this.updateContextUsage();
   }
+  
+  checkAndReinject() {
+    if (!document.getElementById('cup-input-stats')) {
+      this.injectInputStats();
+    }
+  }
 }
 
 window.ChatUI = ChatUI;
