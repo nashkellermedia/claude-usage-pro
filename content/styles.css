@@ -1,3 +1,246 @@
+/**
+ * Claude Usage Pro - Content Styles
+ */
+
+:root {
+  --cup-bg: #1a1a2e;
+  --cup-bg-secondary: #25253a;
+  --cup-text: #e0e0e0;
+  --cup-text-muted: #888;
+  --cup-accent: #6b8afd;
+  --cup-success: #22c55e;
+  --cup-warning: #f59e0b;
+  --cup-danger: #ef4444;
+  --cup-border: #3a3a5a;
+}
+
+/* Sidebar Widget */
+#cup-sidebar-widget {
+  padding: 12px;
+  margin-bottom: 8px;
+}
+
+#cup-sidebar-widget .cup-widget-inner {
+  background: var(--cup-bg);
+  border-radius: 10px;
+  padding: 12px;
+  border: 1px solid var(--cup-border);
+}
+
+.cup-widget-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--cup-border);
+  margin-bottom: 10px;
+}
+
+.cup-widget-icon {
+  font-size: 16px;
+}
+
+.cup-widget-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cup-text);
+  flex: 1;
+}
+
+.cup-widget-expand {
+  font-size: 10px;
+  color: var(--cup-text-muted);
+  transition: transform 0.2s;
+}
+
+.cup-widget-details {
+  display: none;
+}
+
+.cup-widget-details.expanded {
+  display: block;
+}
+
+.cup-usage-section {
+  margin-bottom: 12px;
+}
+
+.cup-usage-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.cup-usage-label {
+  font-size: 11px;
+  color: var(--cup-text-muted);
+}
+
+.cup-usage-percent {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--cup-success);
+}
+
+.cup-usage-bar-bg {
+  height: 4px;
+  background: var(--cup-bg-secondary);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.cup-usage-bar {
+  height: 100%;
+  background: var(--cup-accent);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.cup-usage-bar.cup-bar-sonnet {
+  background: #a855f7;
+}
+
+.cup-usage-meta {
+  font-size: 10px;
+  color: var(--cup-text-muted);
+  margin-top: 2px;
+}
+
+.cup-model-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-top: 1px solid var(--cup-border);
+  margin-top: 8px;
+}
+
+.cup-model-label {
+  font-size: 11px;
+  color: var(--cup-text-muted);
+}
+
+.cup-model-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 10px;
+  background: var(--cup-accent);
+  color: white;
+}
+
+.cup-badge-opus {
+  background: linear-gradient(135deg, #f59e0b, #ef4444);
+}
+
+.cup-badge-haiku {
+  background: linear-gradient(135deg, #22c55e, #10b981);
+}
+
+.cup-badge-sonnet {
+  background: var(--cup-accent);
+}
+
+.cup-usage-link {
+  display: block;
+  text-align: center;
+  font-size: 11px;
+  color: var(--cup-accent);
+  text-decoration: none;
+  padding-top: 8px;
+  margin-top: 8px;
+  border-top: 1px solid var(--cup-border);
+}
+
+.cup-usage-link:hover {
+  text-decoration: underline;
+}
+
+/* Floating fallback */
+#cup-sidebar-widget.cup-floating {
+  position: fixed;
+  top: 80px;
+  left: 10px;
+  z-index: 9999;
+  width: 220px;
+}
+
+/* Chat UI - Top Bar */
+#cup-top-bar {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--cup-bg);
+  border: 1px solid var(--cup-border);
+  border-top: none;
+  border-radius: 0 0 10px 10px;
+  padding: 6px 16px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  z-index: 9998;
+  font-size: 12px;
+  color: var(--cup-text);
+}
+
+.cup-top-stat {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cup-top-label {
+  color: var(--cup-text-muted);
+}
+
+.cup-top-value {
+  font-weight: 600;
+  color: var(--cup-success);
+}
+
+.cup-top-value.warning {
+  color: var(--cup-warning);
+}
+
+.cup-top-value.danger {
+  color: var(--cup-danger);
+}
+
+/* Chat UI - Input Stats */
+#cup-input-stats {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--cup-bg);
+  border: 1px solid var(--cup-border);
+  border-bottom: none;
+  border-radius: 10px 10px 0 0;
+  padding: 6px 16px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  z-index: 9998;
+  font-size: 12px;
+  color: var(--cup-text);
+}
+
+.cup-input-stat {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cup-input-icon {
+  font-size: 14px;
+}
+
+.cup-input-value {
+  font-weight: 500;
+}
 
 /* Voice Input Button */
 .cup-voice-btn {
@@ -24,4 +267,11 @@
 @keyframes pulse {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.1); }
+}
+
+/* Hide elements based on settings */
+#cup-sidebar-widget.cup-hidden,
+#cup-top-bar.cup-hidden,
+#cup-input-stats.cup-hidden {
+  display: none !important;
 }
