@@ -25,7 +25,6 @@
   let settings = {
     showSidebar: true,
     showChatOverlay: true,
-    showTopBar: true,
     enableVoice: false
   };
   
@@ -52,9 +51,8 @@
     await window.cupSidebar.initialize();
   }
   
-  if (window.ChatUI && (settings.showChatOverlay || settings.showTopBar)) {
+  if (window.ChatUI && settings.showChatOverlay) {
     window.cupChatUI = new ChatUI();
-    window.cupChatUI.settings = settings;
     window.cupChatUI.initialize();
     await window.cupChatUI.injectUI();
   }
@@ -64,8 +62,6 @@
     window.CUP.log('Voice enabled, initializing...');
     window.cupVoice = new VoiceInput();
     window.cupVoice.initialize();
-  } else {
-    window.CUP.log('Voice not enabled or VoiceInput not available. enableVoice:', settings.enableVoice);
   }
   
   // Load initial data
@@ -113,24 +109,18 @@
     return true;
   });
   
-  // Model detection - watch for changes
-  startModelWatcher();
-  
   // Periodic UI check
   setInterval(() => {
     if (window.cupSidebar && settings.showSidebar) {
       window.cupSidebar.checkAndReinject();
     }
-    if (window.cupChatUI) {
+    if (window.cupChatUI && settings.showChatOverlay) {
       window.cupChatUI.checkAndReinject();
     }
-    // Also check voice button
+    // Check voice button
     if (settings.enableVoice && !document.getElementById('cup-voice-btn')) {
       if (window.cupVoice) {
         window.cupVoice.injectButton();
-      } else if (window.VoiceInput) {
-        window.cupVoice = new VoiceInput();
-        window.cupVoice.initialize();
       }
     }
   }, 5000);
@@ -144,43 +134,6 @@
     if (window.cupChatUI) {
       window.cupChatUI.updateUsage(usageData);
     }
-  }
-  
-  function startModelWatcher() {
-    let lastModel = null;
-    
-    setInterval(() => {
-      const model = detectCurrentModel();
-      if (model && model !== lastModel) {
-        lastModel = model;
-        window.CUP.sendToBackground({ type: 'UPDATE_MODEL', model });
-        window.CUP.log('Model changed to:', model);
-      }
-    }, 2000);
-  }
-  
-  function detectCurrentModel() {
-    // Check model selector button
-    const modelButton = document.querySelector('[data-testid="model-selector"]') ||
-                       document.querySelector('button[class*="model"]');
-    
-    if (modelButton) {
-      const text = modelButton.textContent?.toLowerCase() || '';
-      if (text.includes('opus')) return 'opus';
-      if (text.includes('haiku')) return 'haiku';
-      if (text.includes('sonnet')) return 'sonnet';
-    }
-    
-    // Check for model name in composer area
-    const composer = document.querySelector('[class*="composer"]') ||
-                    document.querySelector('form');
-    if (composer) {
-      const text = composer.textContent?.toLowerCase() || '';
-      if (text.includes('opus')) return 'opus';
-      if (text.includes('haiku')) return 'haiku';
-    }
-    
-    return 'sonnet';
   }
   
   function handleSettingsUpdate(newSettings) {
@@ -197,12 +150,6 @@
     const inputStats = document.getElementById('cup-input-stats');
     if (inputStats) {
       inputStats.style.display = settings.showChatOverlay ? '' : 'none';
-    }
-    
-    // Toggle top bar
-    const topBar = document.getElementById('cup-top-bar');
-    if (topBar) {
-      topBar.style.display = settings.showTopBar ? '' : 'none';
     }
     
     // Toggle voice

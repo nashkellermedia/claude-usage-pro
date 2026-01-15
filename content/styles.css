@@ -1,6 +1,6 @@
 /**
  * Claude Usage Pro - Content Styles
- * Colors matched to Claude's dark theme
+ * Designed to match Claude's native UI
  */
 
 :root {
@@ -160,7 +160,6 @@
   text-decoration: underline;
 }
 
-/* Floating fallback */
 #cup-sidebar-widget.cup-floating {
   position: fixed;
   top: 80px;
@@ -169,156 +168,61 @@
   width: 220px;
 }
 
-/* ========== TOP BAR ========== */
-#cup-top-bar {
-  position: fixed;
-  top: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  background: var(--cup-bg);
-  border: 1px solid var(--cup-border);
-  border-top: none;
-  border-radius: 0 0 10px 10px;
-  padding: 6px 16px;
-  z-index: 9998;
-  font-size: 12px;
-  color: var(--cup-text);
-}
-
-#cup-top-bar .cup-top-bar-inner {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 16px;
-  white-space: nowrap;
-}
-
-#cup-top-bar .cup-stat {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  white-space: nowrap;
-}
-
-#cup-top-bar .cup-icon {
-  font-size: 12px;
-}
-
-#cup-top-bar .cup-label {
-  color: var(--cup-text-muted);
-  font-size: 11px;
-}
-
-#cup-top-bar .cup-value {
-  font-weight: 600;
-  color: var(--cup-text);
-}
-
-#cup-top-bar .cup-unit {
-  color: var(--cup-text-muted);
-  font-size: 10px;
-}
-
-#cup-top-bar .cup-badge {
-  font-size: 10px;
-  font-weight: 700;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: var(--cup-accent);
-  color: white;
-}
-
-#cup-top-bar .cup-multiplier {
-  font-size: 10px;
-  color: var(--cup-text-muted);
-}
-
-/* ========== INPUT STATS (Below Chat Box) ========== */
+/* ========== INPUT STATS BAR (Below Chat Input) ========== */
+/* Matches Claude's native style: muted text, inline, below composer */
 #cup-input-stats {
-  /* Not fixed - flows with the page below composer */
-  background: var(--cup-bg);
-  border: 1px solid var(--cup-border);
-  border-radius: 8px;
-  padding: 6px 12px;
-  margin-top: 8px;
-  font-size: 12px;
-  color: var(--cup-text);
-  width: fit-content;
-  margin-left: auto;
-  margin-right: auto;
-}
-
-#cup-input-stats .cup-input-stats-inner {
   display: flex;
-  flex-direction: row;
   align-items: center;
-  gap: 16px;
-  white-space: nowrap;
+  gap: 8px;
+  padding: 8px 16px;
+  font-size: 12px;
+  color: #6b7280; /* Claude's muted text color */
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
-#cup-input-stats .cup-input-stat {
+#cup-input-stats .cup-stat-item {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   white-space: nowrap;
 }
 
-#cup-input-stats .cup-input-icon {
+#cup-input-stats .cup-stat-icon {
   font-size: 12px;
 }
 
-#cup-input-stats .cup-input-label {
-  color: var(--cup-text-muted);
-  font-size: 11px;
+#cup-input-stats .cup-stat-label {
+  color: #6b7280;
 }
 
-#cup-input-stats .cup-input-value {
-  font-weight: 600;
-  color: var(--cup-text);
+#cup-input-stats .cup-stat-value {
+  font-weight: 500;
+  color: #9ca3af;
 }
 
-#cup-input-stats .cup-input-unit {
-  color: var(--cup-text-muted);
-  font-size: 10px;
+#cup-input-stats .cup-stat-unit {
+  color: #6b7280;
 }
 
-#cup-input-stats .cup-input-progress {
+#cup-input-stats .cup-stat-divider {
+  color: #4b5563;
+  margin: 0 4px;
+}
+
+/* ========== VOICE INPUT BUTTON ========== */
+#cup-voice-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-}
-
-#cup-input-stats .cup-input-progress-bg {
-  width: 60px;
-  height: 4px;
-  background: var(--cup-bg-tertiary);
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-#cup-input-stats .cup-input-progress-bar {
-  height: 100%;
-  background: var(--cup-accent);
-  border-radius: 2px;
-  transition: width 0.3s;
-}
-
-#cup-input-stats .cup-input-percent {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--cup-success);
-}
-
-/* ========== VOICE INPUT ========== */
-#cup-voice-btn {
+  justify-content: center;
+  width: 32px;
+  height: 32px;
   background: transparent;
   border: none;
-  cursor: pointer;
-  font-size: 18px;
-  padding: 8px;
   border-radius: 8px;
+  cursor: pointer;
+  font-size: 16px;
+  opacity: 0.6;
   transition: all 0.2s;
-  opacity: 0.7;
   margin-right: 4px;
 }
 
@@ -329,8 +233,8 @@
 
 #cup-voice-btn.listening {
   opacity: 1;
+  background: rgba(239, 68, 68, 0.15);
   animation: pulse 1.5s infinite;
-  background: rgba(239, 68, 68, 0.2);
 }
 
 @keyframes pulse {
@@ -340,7 +244,6 @@
 
 /* ========== UTILITY ========== */
 #cup-sidebar-widget.cup-hidden,
-#cup-top-bar.cup-hidden,
 #cup-input-stats.cup-hidden {
   display: none !important;
 }

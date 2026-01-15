@@ -30,35 +30,72 @@ class VoiceInput {
     this.recognition.onerror = (event) => this.handleError(event);
     this.recognition.onend = () => this.handleEnd();
     
-    // Inject button
+    // Inject button with retry
     this.injectButton();
   }
   
   injectButton() {
-    // Wait for composer to be ready
-    const tryInject = () => {
-      const composer = document.querySelector('[class*="composer"]') ||
-                      document.querySelector('form:has([contenteditable])');
-      
-      if (!composer) {
-        setTimeout(tryInject, 1000);
+    if (document.getElementById('cup-voice-btn')) {
+      window.CUP.log('VoiceInput: Button already exists');
+      return;
+    }
+    
+    // Try multiple strategies to find the right place
+    const tryInject = (attempt = 0) => {
+      if (attempt > 10) {
+        window.CUP.log('VoiceInput: Failed to inject after 10 attempts');
         return;
       }
       
-      // Find the button area (near send button)
-      const sendButton = composer.querySelector('button[type="submit"]') ||
-                        composer.querySelector('button[aria-label*="Send"]') ||
-                        composer.querySelector('button:last-child');
+      window.CUP.log('VoiceInput: Injection attempt', attempt);
       
-      if (!sendButton || document.getElementById('cup-voice-btn')) {
+      // Strategy 1: Find the send button by aria-label
+      let sendButton = document.querySelector('button[aria-label="Send Message"]') ||
+                       document.querySelector('button[aria-label*="Send"]');
+      
+      // Strategy 2: Find button with SVG arrow icon near contenteditable
+      if (!sendButton) {
+        const contentEditable = document.querySelector('[contenteditable="true"]');
+        if (contentEditable) {
+          const form = contentEditable.closest('form');
+          if (form) {
+            // Look for the last button in the form area
+            const buttons = form.querySelectorAll('button');
+            for (const btn of buttons) {
+              if (btn.querySelector('svg') && !btn.textContent.trim()) {
+                sendButton = btn;
+                break;
+              }
+            }
+          }
+        }
+      }
+      
+      // Strategy 3: Find by looking for orange/accent colored button
+      if (!sendButton) {
+        const buttons = document.querySelectorAll('button');
+        for (const btn of buttons) {
+          const style = window.getComputedStyle(btn);
+          if (style.backgroundColor.includes('rgb(232, 121, 83)') || 
+              btn.className.includes('bg-accent')) {
+            sendButton = btn;
+            break;
+          }
+        }
+      }
+      
+      if (!sendButton) {
+        window.CUP.log('VoiceInput: Send button not found, retrying...');
+        setTimeout(() => tryInject(attempt + 1), 1000);
         return;
       }
+      
+      window.CUP.log('VoiceInput: Found send button:', sendButton);
       
       // Create voice button
       this.button = document.createElement('button');
       this.button.id = 'cup-voice-btn';
       this.button.type = 'button';
-      this.button.className = 'cup-voice-btn';
       this.button.innerHTML = '🎤';
       this.button.title = 'Voice Input (click to start/stop)';
       
@@ -69,9 +106,12 @@ class VoiceInput {
       });
       
       // Insert before send button
-      sendButton.parentNode.insertBefore(this.button, sendButton);
-      
-      window.CUP.log('VoiceInput: Button injected');
+      if (sendButton.parentNode) {
+        sendButton.parentNode.insertBefore(this.button, sendButton);
+        window.CUP.log('VoiceInput: Button injected successfully');
+      } else {
+        window.CUP.log('VoiceInput: Could not insert button - no parent node');
+      }
     };
     
     tryInject();
@@ -118,32 +158,30 @@ class VoiceInput {
     if (!input) return;
     
     let finalTranscript = '';
-    let interimTranscript = '';
     
     for (let i = event.resultIndex; i < event.results.length; i++) {
       const transcript = event.results[i][0].transcript;
       if (event.results[i].isFinal) {
         finalTranscript += transcript;
-      } else {
-        interimTranscript += transcript;
       }
     }
     
     if (finalTranscript) {
-      // Append to existing content
+      // For contenteditable (Claude uses this)
       if (input.contentEditable === 'true') {
-        // For contenteditable
-        const currentText = input.innerText || '';
+        // Get current content
+        const p = input.querySelector('p') || input;
+        const currentText = p.innerText || '';
         const newText = currentText + (currentText ? ' ' : '') + finalTranscript;
-        input.innerText = newText;
+        p.innerText = newText;
         
-        // Trigger input event for Claude to detect
+        // Trigger input event
         input.dispatchEvent(new Event('input', { bubbles: true }));
         
         // Move cursor to end
         const range = document.createRange();
         const sel = window.getSelection();
-        range.selectNodeContents(input);
+        range.selectNodeContents(p);
         range.collapse(false);
         sel.removeAllRanges();
         sel.addRange(range);
@@ -170,9 +208,7 @@ class VoiceInput {
   }
   
   handleEnd() {
-    // Recognition ended (might restart if continuous)
     if (this.isListening) {
-      // Restart if we're still supposed to be listening
       try {
         this.recognition.start();
       } catch (e) {
