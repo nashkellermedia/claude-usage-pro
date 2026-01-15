@@ -33,8 +33,11 @@
     const response = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
     if (response?.settings) {
       settings = { ...settings, ...response.settings };
+      window.CUP.log('Loaded settings:', settings);
     }
-  } catch (e) {}
+  } catch (e) {
+    window.CUP.logError('Failed to load settings:', e);
+  }
   
   // Wait for page load
   await new Promise(r => setTimeout(r, 1500));
@@ -56,9 +59,13 @@
     await window.cupChatUI.injectUI();
   }
   
+  // Initialize voice if enabled
   if (window.VoiceInput && settings.enableVoice) {
+    window.CUP.log('Voice enabled, initializing...');
     window.cupVoice = new VoiceInput();
     window.cupVoice.initialize();
+  } else {
+    window.CUP.log('Voice not enabled or VoiceInput not available. enableVoice:', settings.enableVoice);
   }
   
   // Load initial data
@@ -80,6 +87,8 @@
   
   // Listen for messages
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    window.CUP.log('Received message:', message.type);
+    
     switch (message.type) {
       case 'USAGE_UPDATED':
         updateAllUI(message.usageData);
@@ -96,6 +105,7 @@
         break;
         
       case 'SETTINGS_UPDATED':
+        window.CUP.log('Settings updated:', message.settings);
         handleSettingsUpdate(message.settings);
         break;
     }
@@ -113,6 +123,15 @@
     }
     if (window.cupChatUI) {
       window.cupChatUI.checkAndReinject();
+    }
+    // Also check voice button
+    if (settings.enableVoice && !document.getElementById('cup-voice-btn')) {
+      if (window.cupVoice) {
+        window.cupVoice.injectButton();
+      } else if (window.VoiceInput) {
+        window.cupVoice = new VoiceInput();
+        window.cupVoice.initialize();
+      }
     }
   }, 5000);
   
@@ -166,6 +185,7 @@
   
   function handleSettingsUpdate(newSettings) {
     settings = { ...settings, ...newSettings };
+    window.CUP.log('Applied settings:', settings);
     
     // Toggle sidebar
     const sidebarEl = document.getElementById('cup-sidebar-widget');
@@ -187,11 +207,18 @@
     
     // Toggle voice
     const voiceBtn = document.getElementById('cup-voice-btn');
-    if (settings.enableVoice && !voiceBtn && window.VoiceInput) {
-      window.cupVoice = new VoiceInput();
-      window.cupVoice.initialize();
-    } else if (!settings.enableVoice && voiceBtn) {
-      voiceBtn.remove();
+    if (settings.enableVoice) {
+      if (!voiceBtn && window.VoiceInput) {
+        window.CUP.log('Enabling voice input...');
+        window.cupVoice = new VoiceInput();
+        window.cupVoice.initialize();
+      }
+    } else {
+      if (voiceBtn) {
+        window.CUP.log('Disabling voice input...');
+        voiceBtn.remove();
+        window.cupVoice = null;
+      }
     }
   }
   
