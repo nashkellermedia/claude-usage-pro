@@ -351,8 +351,12 @@ async function loadAnalytics(days = 30) {
       days 
     });
     
+    console.log('[CUP Popup] Analytics response:', response);
+    
     if (response?.summary) {
       displayAnalytics(response.summary);
+    } else {
+      els.analyticsSummary.innerHTML = '<p>No analytics data available yet. Use Claude to generate usage data.</p>';
     }
   } catch (e) {
     console.error('[CUP Popup] Analytics error:', e);
@@ -369,8 +373,8 @@ function displayAnalytics(summary) {
   
   const html = `
     <div class="analytics-card">
-      <h3>📊 ${summary.period}</h3>
-      <p class="analytics-meta">${summary.days} days of data</p>
+      <h3>📊 ${summary.period || 'Usage Summary'}</h3>
+      <p class="analytics-meta">${summary.days || 0} days of data</p>
     </div>
     
     <div class="analytics-card">
@@ -383,56 +387,11 @@ function displayAnalytics(summary) {
         <span class="label">Weekly (All):</span>
         <span class="value">${summary.averageUsage.weeklyAll || 0}%</span>
       </div>
-      <div class="analytics-stat">
-        <span class="label">Weekly (Sonnet):</span>
-        <span class="value">${summary.averageUsage.weeklySonnet}%</span>
-      </div>
     </div>
     
-    <div class="analytics-card">
-      <h4>Peak Usage</h4>
-      <div class="analytics-stat">
-        <span class="label">Session:</span>
-        <span class="value ${summary.peakUsage.session >= 90 ? 'danger' : ''}">${summary.peakUsage.session}%</span>
-      </div>
-      <div class="analytics-stat">
-        <span class="label">Weekly (All):</span>
-        <span class="value ${summary.peakUsage.weeklyAll >= 90 ? 'danger' : ''}">${summary.peakUsage.weeklyAll}%</span>
-      </div>
-      <div class="analytics-stat">
-        <span class="label">Weekly (Sonnet):</span>
-        <span class="value ${summary.peakUsage.weeklySonnet >= 90 ? 'danger' : ''}">${summary.peakUsage.weeklySonnet}%</span>
-      </div>
-    </div>
-    
-    <div class="analytics-card">
-      <h4>Threshold Alerts</h4>
-      <p>Times you hit usage thresholds:</p>
-      <div class="analytics-stat">
-        <span class="label">70% warnings:</span>
-        <span class="value">${summary.thresholdHits.by70}</span>
-      </div>
-      <div class="analytics-stat">
-        <span class="label">90% warnings:</span>
-        <span class="value">${summary.thresholdHits.by90}</span>
-      </div>
-      <div class="analytics-stat">
-        <span class="label">100% maxed out:</span>
-        <span class="value danger">${summary.thresholdHits.by100}</span>
-      </div>
-    </div>
-    
-    ${Object.keys(summary.modelPreference).length > 0 ? `
-    <div class="analytics-card">
-      <h4>Model Preference</h4>
-      ${Object.entries(summary.modelPreference).map(([model, count]) => `
-        <div class="analytics-stat">
-          <span class="label">${model}:</span>
-          <span class="value">${count} checks</span>
-        </div>
-      `).join('')}
-    </div>
-    ` : ''}
+    <p class="analytics-meta" style="margin-top: 12px; text-align: center;">
+      Analytics tracking is active. More detailed stats will appear as you use Claude.
+    </p>
   `;
   
   els.analyticsSummary.innerHTML = html;
