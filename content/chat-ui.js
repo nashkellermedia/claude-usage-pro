@@ -65,6 +65,8 @@ class ChatUI {
     const visibleCount = this.countVisibleAttachments();
     const trackedCount = this.trackedAttachments.size;
     
+    window.CUP.log('ChatUI: Sync - visible:', visibleCount, 'tracked:', trackedCount);
+    
     // If visible count is less than tracked, some were removed
     if (visibleCount < trackedCount) {
       const toRemove = trackedCount - visibleCount;
@@ -79,22 +81,16 @@ class ChatUI {
         window.CUP.log('ChatUI: Removing tracked:', data.name, '(', data.tokens, 'tokens)');
         this.trackedAttachments.delete(id);
       }
+      
+      // Force update display
+      this.lastDraftTokens = -1;
     }
     
-    // If no visible attachments and tracked ones are older than 2 seconds, clear all
+    // If no visible attachments at all, clear everything after a short delay
     if (visibleCount === 0 && trackedCount > 0) {
-      const now = Date.now();
-      let hasRecent = false;
-      for (const [id, data] of this.trackedAttachments) {
-        if (now - data.addedAt < 2000) {
-          hasRecent = true;
-          break;
-        }
-      }
-      if (!hasRecent) {
-        window.CUP.log('ChatUI: No visible attachments, clearing all tracked');
-        this.trackedAttachments.clear();
-      }
+      window.CUP.log('ChatUI: No visible attachments, clearing all tracked');
+      this.trackedAttachments.clear();
+      this.lastDraftTokens = -1;
     }
   }
   
@@ -295,40 +291,63 @@ class ChatUI {
    */
   countVisibleAttachments() {
     let count = 0;
+    
+    // Look for the attachment preview area near the composer
+    // Claude typically shows attachments in a container above the input
+    
+    // Strategy 1: Look for images with delete/remove buttons nearby
+    // These are typically in a container with a close button
+    const attachmentContainers = document.querySelectorAll('[data-testid*="attachment"], [data-testid*="file-preview"], [data-testid*="image-preview"]');
+    count += attachmentContainers.length;
+    
+    // Strategy 2: Look for the composer's attachment area
+    // Find images that are siblings or near the contenteditable
     const composer = document.querySelector('[contenteditable="true"]');
-    if (!composer) return 0;
+    if (composer) {
+      // Look up to 5 parent levels for attachment containers
+      let parent = composer.parentElement;
+      for (let i = 0; i < 5 && parent; i++) {
+        // Look for images with API URLs (uploaded) or blob URLs (uploading)
+        const images = parent.querySelectorAll('img[src*="/api/"][src*="/files/"], img[src^="blob:"]');
+        for (const img of images) {
+          // Make sure it's not in the message history by checking if it has a remove button nearby
+          const container = img.closest('div');
+          if (container) {
+            const hasCloseButton = container.querySelector('button[aria-label*="Remove"], button[aria-label*="Delete"], button[aria-label*="Close"], svg');
+            if (hasCloseButton) {
+              count++;
+            }
+          }
+        }
+        parent = parent.parentElement;
+      }
+    }
     
-    const composerRect = composer.getBoundingClientRect();
-    
-    // Strategy 1: Claude API image URLs (uploaded images)
-    const apiImages = document.querySelectorAll('img[src*="/api/"][src*="/files/"]');
-    for (const img of apiImages) {
-      const imgRect = img.getBoundingClientRect();
-      if (imgRect.bottom > composerRect.top - 300 && imgRect.top < composerRect.bottom + 50) {
+    // Strategy 3: Count elements with specific patterns
+    // Look for thumbnail-like containers in the input area
+    const thumbnails = document.querySelectorAll('[class*="thumbnail"], [class*="preview-image"], [class*="attachment-thumb"]');
+    for (const thumb of thumbnails) {
+      // Only count if it's near the bottom of the page (input area)
+      const rect = thumb.getBoundingClientRect();
+      if (rect.top > window.innerHeight / 2) {
         count++;
       }
     }
     
-    // Strategy 2: Blob images (during upload)
-    const blobImages = document.querySelectorAll('img[src^="blob:"]');
-    for (const img of blobImages) {
-      const imgRect = img.getBoundingClientRect();
-      if (imgRect.bottom > composerRect.top - 300 && imgRect.top < composerRect.bottom + 50) {
-        count++;
-      }
-    }
-    
-    // Strategy 3: File preview containers
-    const previews = document.querySelectorAll('[data-testid*="file"], [data-testid*="attachment"], [data-testid*="preview"], [class*="attachment"], [class*="file-preview"]');
-    for (const preview of previews) {
-      const previewRect = preview.getBoundingClientRect();
-      if (previewRect.bottom > composerRect.top - 300 && previewRect.top < composerRect.bottom + 50) {
-        if (!preview.querySelector('img[src*="/api/"]') && !preview.querySelector('img[src^="blob:"]')) {
+    // Deduplicate - if count is 0, fall back to simple image count near composer
+    if (count === 0 && composer) {
+      const composerRect = composer.getBoundingClientRect();
+      const allImages = document.querySelectorAll('img[src*="/api/"][src*="/files/"], img[src^="blob:"]');
+      for (const img of allImages) {
+        const imgRect = img.getBoundingClientRect();
+        // Only count images that are below the middle of the screen (near input)
+        if (imgRect.top > window.innerHeight / 2 && imgRect.height > 20 && imgRect.height < 300) {
           count++;
         }
       }
     }
     
+    window.CUP.log('ChatUI: countVisibleAttachments =', count);
     return count;
   }
   
