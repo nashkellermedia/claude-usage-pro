@@ -11,8 +11,6 @@ class ChatUI {
     this.lastAttachmentCount = 0;
     this.typingInterval = null;
     this.currentUsageData = null;
-    this.conversationTokens = 0;
-    this.cachedConversationData = null;
     
     // Track attachments persistently (backup tracking via events)
     this.trackedAttachments = new Map();
@@ -26,13 +24,6 @@ class ChatUI {
     this.initialized = true;
     
     if (window.APIInterceptor) {
-      window.APIInterceptor.on('onConversationLoaded', (data) => {
-        this.cachedConversationData = data;
-        this.conversationTokens = data.totalTokens || 0;
-        window.CUP.log('ChatUI: Conversation loaded, tokens:', this.conversationTokens);
-        this.updateContextUsage();
-      });
-      
       // Clear attachments when message sent
       window.APIInterceptor.on('onMessageSent', () => {
         this.clearTrackedAttachments();
@@ -72,7 +63,12 @@ class ChatUI {
     const visibleCount = visibleAttachments.length;
     const trackedCount = this.trackedAttachments.size;
     
-    window.CUP.log('ChatUI: Sync - visible:', visibleCount, 'tracked:', trackedCount);
+    // Only log when there's a change
+    if (visibleCount !== this._lastVisibleCount || trackedCount !== this._lastTrackedCount) {
+      window.CUP.log('ChatUI: Sync - visible:', visibleCount, 'tracked:', trackedCount);
+      this._lastVisibleCount = visibleCount;
+      this._lastTrackedCount = trackedCount;
+    }
     
     // If we see attachments in DOM that aren't tracked, add them
     if (visibleCount > 0) {
@@ -150,7 +146,6 @@ class ChatUI {
           tokens,
           element: img
         });
-        window.CUP.log('ChatUI: Found API image:', img.naturalWidth, 'x', img.naturalHeight, '=', tokens, 'tokens');
       }
     }
     
@@ -167,7 +162,6 @@ class ChatUI {
           tokens,
           element: img
         });
-        window.CUP.log('ChatUI: Found blob image:', img.naturalWidth, 'x', img.naturalHeight, '=', tokens, 'tokens');
       }
     }
     
@@ -209,7 +203,7 @@ class ChatUI {
         // Estimate tokens based on file type
         let tokens = 1500;
         if (fileName.match(/\.pdf$/i)) {
-          tokens = 3000; // Rough estimate for PDF
+          tokens = 3000;
         } else if (fileName.match(/\.(txt|md|json|csv)$/i)) {
           tokens = 1000;
         } else if (fileName.match(/\.(doc|docx)$/i)) {
@@ -224,12 +218,11 @@ class ChatUI {
             tokens,
             element: container
           });
-          window.CUP.log('ChatUI: Found file preview:', fileName);
         }
       }
     }
     
-    // Strategy 5: Look for thumbnail-style previews (small images in attachment bar)
+    // Strategy 5: Look for thumbnail-style previews
     const thumbnails = document.querySelectorAll('[class*="thumbnail"], [class*="Thumbnail"]');
     for (const thumb of thumbnails) {
       if (!isNearComposer(thumb)) continue;
@@ -314,8 +307,6 @@ class ChatUI {
         window.CUP.log('ChatUI: Tracked file:', file.name, width, 'x', height, '=', tokens, 'tokens');
       };
       img.src = url;
-      
-      // Initial estimate while loading
       tokens = this.estimateImageTokensFromSize(file.size);
     } else if (file.type === 'application/pdf') {
       const pages = Math.max(1, Math.ceil(file.size / 100000));
@@ -344,7 +335,6 @@ class ChatUI {
   
   estimateImageTokens(width, height) {
     if (!width || !height || width < 10 || height < 10) {
-      // Default for unknown dimensions
       return 1500;
     }
     
@@ -362,9 +352,7 @@ class ChatUI {
     const tilesX = Math.ceil(w / TILE_SIZE);
     const tilesY = Math.ceil(h / TILE_SIZE);
     
-    const tokens = tilesX * tilesY * 765;
-    window.CUP.log('ChatUI: Image', width, 'x', height, '=', tokens, 'tokens');
-    return tokens;
+    return tilesX * tilesY * 765;
   }
   
   async injectUI() {
@@ -395,13 +383,6 @@ class ChatUI {
             <span class="cup-stat-icon">📎</span>
             <span class="cup-stat-label">Files:</span>
             <span class="cup-stat-value" id="cup-files-count">0</span>
-          </span>
-          <span class="cup-stat-divider">│</span>
-          <span class="cup-stat-item">
-            <span class="cup-stat-icon">💬</span>
-            <span class="cup-stat-label">Context:</span>
-            <span class="cup-stat-value" id="cup-context-pct">--%</span>
-            <span class="cup-stat-detail" id="cup-context-detail"></span>
           </span>
           <span class="cup-stat-divider">│</span>
           <span class="cup-stat-item">
@@ -467,7 +448,6 @@ class ChatUI {
     this.typingInterval = setInterval(() => {
       const input = document.querySelector('[contenteditable="true"]');
       if (input) {
-        // Get text and trim whitespace, also filter out placeholder text
         let text = input.innerText || '';
         text = text.trim();
         
@@ -531,9 +511,10 @@ class ChatUI {
   }
   
   updateUsage(usageData) {
+    if (!usageData) return;
     this.currentUsageData = usageData;
     
-    // Session
+    // Session percentage
     const sessionEl = document.getElementById('cup-session-pct');
     if (sessionEl && usageData.currentSession) {
       sessionEl.textContent = usageData.currentSession.percent + '%';
@@ -543,7 +524,13 @@ class ChatUI {
       else sessionEl.style.color = '#22c55e';
     }
     
-    // Weekly All
+    // Reset timer
+    const resetEl = document.getElementById('cup-reset-timer');
+    if (resetEl && usageData.currentSession?.resetsIn) {
+      resetEl.textContent = usageData.currentSession.resetsIn;
+    }
+    
+    // Weekly All Models
     const weeklyAllEl = document.getElementById('cup-weekly-all-pct');
     if (weeklyAllEl && usageData.weeklyAllModels) {
       weeklyAllEl.textContent = usageData.weeklyAllModels.percent + '%';
@@ -552,8 +539,6 @@ class ChatUI {
       else if (pct >= 70) weeklyAllEl.style.color = '#f59e0b';
       else weeklyAllEl.style.color = '#22c55e';
     }
-    
-    this.updateContextUsage();
   }
   
   checkAndReinject() {
