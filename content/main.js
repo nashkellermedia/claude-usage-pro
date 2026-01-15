@@ -40,6 +40,12 @@
   
   // Wait for page load
   await new Promise(r => setTimeout(r, 1500));
+
+  // Start API interceptor to capture conversation data
+  if (window.APIInterceptor) {
+    window.CUP.log('Starting API interceptor...');
+    window.APIInterceptor.start();
+  }
   
   // Initialize components based on settings
   if (window.UsageScraper) {

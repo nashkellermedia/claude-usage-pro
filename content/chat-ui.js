@@ -1,20 +1,33 @@
 /**
  * Claude Usage Pro - Chat UI
- * Stats bar below chat input
+ * Stats bar below chat input with attachment tracking and color coding
  */
 
 class ChatUI {
   constructor() {
     this.inputStats = null;
     this.initialized = false;
-    this.lastDraftLength = 0;
+    this.lastDraftTokens = 0;
     this.typingInterval = null;
     this.currentUsageData = null;
+    this.conversationTokens = 0;
+    this.attachmentTokens = 0;
+    this.cachedConversationData = null;
   }
   
   initialize() {
     window.CUP.log('ChatUI: Initializing...');
     this.initialized = true;
+    
+    // Listen for conversation data from API interceptor
+    if (window.APIInterceptor) {
+      window.APIInterceptor.on('onConversationLoaded', (data) => {
+        this.cachedConversationData = data;
+        this.conversationTokens = data.totalTokens || 0;
+        window.CUP.log('ChatUI: Conversation loaded, tokens:', this.conversationTokens);
+        this.updateContextUsage();
+      });
+    }
   }
   
   async injectUI() {
@@ -27,12 +40,10 @@ class ChatUI {
       return;
     }
     
-    // Simple approach: wait for contenteditable, then find main content area
     for (let attempt = 0; attempt < 10; attempt++) {
       const contentEditable = document.querySelector('[contenteditable="true"]');
       
       if (contentEditable) {
-        // Create our stats bar
         this.inputStats = document.createElement('div');
         this.inputStats.id = 'cup-input-stats';
         this.inputStats.innerHTML = `
@@ -47,6 +58,7 @@ class ChatUI {
             <span class="cup-stat-icon">💬</span>
             <span class="cup-stat-label">Context:</span>
             <span class="cup-stat-value" id="cup-context-pct">--%</span>
+            <span class="cup-stat-detail" id="cup-context-detail"></span>
           </span>
           <span class="cup-stat-divider">│</span>
           <span class="cup-stat-item">
@@ -70,7 +82,6 @@ class ChatUI {
           </span>
         `;
         
-        // Go up 5-6 levels from contenteditable to find composer container
         let container = contentEditable;
         for (let i = 0; i < 6; i++) {
           if (container.parentElement) {
@@ -78,12 +89,10 @@ class ChatUI {
           }
         }
         
-        // Insert after the container
         if (container && container.parentElement) {
           container.parentElement.insertBefore(this.inputStats, container.nextSibling);
           window.CUP.log('ChatUI: Input stats injected');
           
-          // Apply cached data
           if (this.currentUsageData) {
             this.updateUsage(this.currentUsageData);
           }
@@ -97,6 +106,75 @@ class ChatUI {
     window.CUP.log('ChatUI: Could not inject input stats');
   }
   
+  estimateFileTokens(file) {
+    if (!file) return 0;
+    
+    const size = file.size || 0;
+    const type = file.type || '';
+    const name = file.name || '';
+    
+    if (type.includes('image/') || name.match(/\.(png|jpg|jpeg|gif|webp|svg)$/i)) {
+      const baseTokens = 1000;
+      const sizeTokens = Math.min(Math.ceil(size / 1000), 500);
+      return baseTokens + sizeTokens;
+    } else if (type.includes('pdf') || name.match(/\.pdf$/i)) {
+      const estimatedPages = Math.max(1, Math.ceil(size / 50000));
+      return estimatedPages * 500;
+    } else if (type.includes('text/') || name.match(/\.(txt|md|csv|json|js|ts|py|html|css|xml)$/i)) {
+      return Math.ceil(size / 4);
+    } else if (name.match(/\.(doc|docx)$/i)) {
+      return Math.ceil(size / 2);
+    } else if (name.match(/\.(xls|xlsx)$/i)) {
+      return Math.ceil(size / 3);
+    } else {
+      return Math.ceil(size / 4);
+    }
+  }
+  
+  getAttachmentTokens() {
+    let totalTokens = 0;
+    let attachmentCount = 0;
+    
+    const fileInputs = document.querySelectorAll('input[type="file"]');
+    for (const input of fileInputs) {
+      if (input.files && input.files.length > 0) {
+        for (const file of input.files) {
+          totalTokens += this.estimateFileTokens(file);
+          attachmentCount++;
+        }
+      }
+    }
+    
+    const composerArea = document.querySelector('[contenteditable="true"]')?.closest('form') || 
+                         document.querySelector('[contenteditable="true"]')?.parentElement?.parentElement?.parentElement;
+    
+    if (composerArea && attachmentCount === 0) {
+      const attachmentElements = composerArea.querySelectorAll(
+        '[data-testid*="file"], [data-testid*="attachment"], ' +
+        '[class*="attachment"], [class*="file-preview"], ' +
+        'img[src*="blob:"], [class*="thumbnail"]'
+      );
+      
+      for (const el of attachmentElements) {
+        const fileName = el.getAttribute('alt') || el.getAttribute('title') || 
+                        el.textContent || el.closest('[title]')?.getAttribute('title') || '';
+        
+        if (fileName.match(/\.(png|jpg|jpeg|gif|webp|svg)$/i) || el.tagName === 'IMG') {
+          totalTokens += 1500;
+          attachmentCount++;
+        } else if (fileName.match(/\.pdf$/i)) {
+          totalTokens += 2000;
+          attachmentCount++;
+        } else if (fileName.length > 0) {
+          totalTokens += 500;
+          attachmentCount++;
+        }
+      }
+    }
+    
+    return { tokens: totalTokens, count: attachmentCount };
+  }
+  
   startDraftMonitor() {
     if (this.typingInterval) clearInterval(this.typingInterval);
     
@@ -104,14 +182,44 @@ class ChatUI {
       const input = document.querySelector('[contenteditable="true"]');
       if (input) {
         const text = input.innerText || '';
-        const tokens = Math.ceil(text.length / 4);
+        const textTokens = Math.ceil(text.length / 4);
         
-        if (tokens !== this.lastDraftLength) {
-          this.lastDraftLength = tokens;
-          this.updateElement('cup-draft-tokens', tokens.toLocaleString());
+        const attachments = this.getAttachmentTokens();
+        const totalTokens = textTokens + attachments.tokens;
+        
+        if (totalTokens !== this.lastDraftTokens || attachments.tokens !== this.attachmentTokens) {
+          this.lastDraftTokens = totalTokens;
+          this.attachmentTokens = attachments.tokens;
+          this.updateDraftDisplay(totalTokens, textTokens, attachments.tokens, attachments.count);
         }
       }
     }, 300);
+  }
+  
+  updateDraftDisplay(totalTokens, textTokens, attachmentTokens, attachmentCount) {
+    const el = document.getElementById('cup-draft-tokens');
+    if (!el) return;
+    
+    if (attachmentTokens > 0) {
+      el.textContent = totalTokens.toLocaleString();
+      el.title = 'Text: ' + textTokens.toLocaleString() + ' + ' + attachmentCount + ' file(s): ~' + attachmentTokens.toLocaleString() + ' tokens';
+    } else {
+      el.textContent = totalTokens.toLocaleString();
+      el.title = 'Estimated tokens in your message';
+    }
+    
+    if (totalTokens >= 32000) {
+      el.style.color = '#ef4444';
+      el.title += ' - Very large! Consider breaking up.';
+    } else if (totalTokens >= 8000) {
+      el.style.color = '#f97316';
+      el.title += ' - Large message';
+    } else if (totalTokens >= 2000) {
+      el.style.color = '#eab308';
+      el.title += ' - Moderate size';
+    } else {
+      el.style.color = '#a1a1aa';
+    }
   }
   
   updateUsage(usageData) {
@@ -140,32 +248,97 @@ class ChatUI {
       this.colorize('cup-weekly-sonnet-pct', pct);
     }
     
-    // Update context usage
     this.updateContextUsage();
   }
   
   async updateContextUsage() {
     try {
-      const messages = document.querySelectorAll('[data-testid*="message"], .font-claude-message, [class*="Message"]');
-      const messageCount = messages.length;
+      let totalTokens = 0;
+      let breakdown = [];
       
-      if (messageCount === 0) {
-        this.updateElement('cup-context-pct', '0%');
-        this.colorize('cup-context-pct', 0);
-        return;
+      if (this.cachedConversationData) {
+        totalTokens = this.cachedConversationData.totalTokens || 0;
+        
+        if (this.cachedConversationData.projectTokens > 0) {
+          breakdown.push('Project: ' + this.formatTokens(this.cachedConversationData.projectTokens));
+        }
+        if (this.cachedConversationData.fileTokens > 0) {
+          breakdown.push('Files: ' + this.formatTokens(this.cachedConversationData.fileTokens));
+        }
       }
       
-      const estimatedTokensPerMessage = 800;
-      const systemPromptTokens = 5000;
-      const estimatedUsed = systemPromptTokens + (messageCount * estimatedTokensPerMessage);
-      const total = 200000;
-      const percent = Math.min(Math.round((estimatedUsed / total) * 100), 100);
+      if (totalTokens === 0) {
+        const estimate = await this.estimateContextFromDOM();
+        totalTokens = estimate.tokens;
+        breakdown = estimate.breakdown;
+      }
       
-      this.updateElement('cup-context-pct', percent + '%');
-      this.colorize('cup-context-pct', percent);
+      const systemPromptTokens = 5000;
+      totalTokens += systemPromptTokens;
+      
+      const contextLimit = 200000;
+      const percent = Math.min(Math.round((totalTokens / contextLimit) * 100), 100);
+      
+      const pctEl = document.getElementById('cup-context-pct');
+      const detailEl = document.getElementById('cup-context-detail');
+      
+      if (pctEl) {
+        pctEl.textContent = percent + '%';
+        pctEl.title = this.formatTokens(totalTokens) + ' / ' + this.formatTokens(contextLimit) + ' tokens\n' +
+                      'System: ~' + this.formatTokens(systemPromptTokens) + '\n' +
+                      breakdown.join('\n');
+        this.colorize('cup-context-pct', percent);
+      }
+      
+      if (detailEl) {
+        detailEl.textContent = ' (' + this.formatTokens(totalTokens) + ')';
+      }
+      
     } catch (e) {
       window.CUP.log('Chat context update error:', e);
     }
+  }
+  
+  async estimateContextFromDOM() {
+    let totalTokens = 0;
+    const breakdown = [];
+    
+    const messageContainers = document.querySelectorAll('[data-testid*="message"], [class*="Message"]');
+    let messageTokens = 0;
+    
+    for (const container of messageContainers) {
+      const textContent = container.innerText || '';
+      const tokens = Math.ceil(textContent.length / 4);
+      messageTokens += tokens;
+    }
+    
+    if (messageTokens > 0) {
+      totalTokens += messageTokens;
+      breakdown.push('Messages: ' + this.formatTokens(messageTokens));
+    }
+    
+    const fileElements = document.querySelectorAll('[data-testid*="file"], [class*="attachment"]');
+    if (fileElements.length > 0) {
+      const fileTokens = fileElements.length * 1000;
+      totalTokens += fileTokens;
+      breakdown.push('Files: ~' + this.formatTokens(fileTokens) + ' (' + fileElements.length + ' files)');
+    }
+    
+    const projectBadge = document.querySelector('[class*="project"], [data-testid*="project"]');
+    if (projectBadge) {
+      const projectTokens = 3000;
+      totalTokens += projectTokens;
+      breakdown.push('Project: ~' + this.formatTokens(projectTokens));
+    }
+    
+    return { tokens: totalTokens, breakdown: breakdown };
+  }
+  
+  formatTokens(num) {
+    if (num >= 1000) {
+      return Math.round(num / 1000) + 'K';
+    }
+    return num.toString();
   }
   
   updateElement(id, value) {

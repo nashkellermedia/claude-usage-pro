@@ -355,3 +355,16 @@
 body.cup-context-active {
   padding-top: 75px !important;
 }
+
+/* Detail span for context tokens */
+#cup-input-stats .cup-stat-detail {
+  font-size: 10px;
+  color: #6b7280;
+  margin-left: 2px;
+}
+
+@media (prefers-color-scheme: dark) {
+  #cup-input-stats .cup-stat-detail {
+    color: #6b7280;
+  }
+}
