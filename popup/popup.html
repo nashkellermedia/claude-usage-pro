@@ -60,6 +60,11 @@
       <a href="https://claude.ai/settings/usage" class="usage-link" id="viewUsageLink">
         📈 View Full Usage Page
       </a>
+      
+      <!-- Analytics Button -->
+      <button class="btn btn-secondary" id="viewAnalytics" style="margin-top: 8px;">
+        📊 View Usage Analytics
+      </button>
     </main>
     
     <!-- Settings Panel -->
@@ -154,8 +159,26 @@ Optional: Create a custom path like /usage/your-name for personal tracking</text
       </div>
       
       <div class="settings-footer">
-        <span class="version">v1.6.0</span>
+        <span class="version">v1.7.0</span>
         <a href="https://github.com/NashKellerMedia/claude-usage-pro" target="_blank" class="github-link">GitHub</a>
+      </div>
+    </div>
+    
+    <!-- Analytics Panel -->
+    <div class="settings-panel hidden" id="analyticsPanel">
+      <div class="settings-header">
+        <h2>Usage Analytics</h2>
+        <button id="closeAnalytics" class="icon-btn">✕</button>
+      </div>
+      
+      <div class="settings-content">
+        <div class="analytics-summary" id="analyticsSummary">
+          <p>Loading analytics...</p>
+        </div>
+      </div>
+      
+      <div class="settings-footer">
+        <button id="exportAnalytics" class="btn btn-secondary">Export Data</button>
       </div>
     </div>
   </div>

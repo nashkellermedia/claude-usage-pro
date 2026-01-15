@@ -468,3 +468,67 @@ body {
   color: var(--text-secondary);
   line-height: 1.4;
 }
+
+/* Analytics Panel */
+.analytics-summary {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.analytics-card {
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.analytics-card h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 4px 0;
+  color: var(--text-primary);
+}
+
+.analytics-card h4 {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0 0 8px 0;
+  color: var(--text-primary);
+}
+
+.analytics-card p {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 4px 0;
+}
+
+.analytics-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.analytics-stat {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.analytics-stat:last-child {
+  border-bottom: none;
+}
+
+.analytics-stat .label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.analytics-stat .value {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.analytics-stat .value.danger {
+  color: #ef4444;
+}
