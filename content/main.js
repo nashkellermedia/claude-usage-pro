@@ -1,179 +1,198 @@
 /**
  * Claude Usage Pro - Main Content Script
- * Safe initialization with error handling
  */
 
-class ClaudeUsagePro {
-  constructor() {
-    this.sidebarUI = null;
-    this.chatUI = null;
-    this.usageScraper = null;
-    this.usageData = null;
-    this.currentModel = 'sonnet';
-  }
-  
-  async initialize() {
-    window.CUP.log('=== Initializing Claude Usage Pro ===');
-    
-    try {
-      // Wait for page to be ready
-      await window.CUP.sleep(1500);
-      
-      // Initialize components one by one with error handling
-      try {
-        this.usageScraper = new window.UsageScraper();
-        window.CUP.log('UsageScraper created');
-      } catch (e) {
-        window.CUP.logError('UsageScraper failed:', e);
-      }
-      
-      try {
-        this.sidebarUI = new window.SidebarUI();
-        await this.sidebarUI.initialize();
-        window.CUP.log('SidebarUI initialized');
-      } catch (e) {
-        window.CUP.logError('SidebarUI failed:', e);
-      }
-      
-      try {
-        this.chatUI = new window.ChatUI();
-        this.chatUI.initialize();
-        await this.chatUI.injectUI();
-        window.CUP.log('ChatUI initialized');
-      } catch (e) {
-        window.CUP.logError('ChatUI failed:', e);
-      }
-      
-      // Setup message listener
-      this.setupMessageListener();
-      
-      // Load initial data
-      await this.loadInitialData();
-      
-      // Start background tasks
-      this.startBackgroundTasks();
-      
-      window.CUP.log('=== Claude Usage Pro Ready ===');
-      
-    } catch (error) {
-      window.CUP.logError('Initialization failed:', error);
-    }
-  }
-  
-  setupMessageListener() {
-    if (!window.CUP.isExtensionValid()) return;
-    
-    try {
-      chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-        try {
-          if (message.type === 'USAGE_UPDATED' && message.usageData) {
-            this.usageData = message.usageData;
-            this.updateAllUI();
-          }
-          if (message.type === 'SCRAPE_USAGE') {
-            this.performScrape();
-          }
-        } catch (e) {}
-        sendResponse({ received: true });
-        return false;
+(async function() {
+  // Initialize CUP namespace
+  window.CUP = {
+    debug: true,
+    log: (...args) => {
+      if (window.CUP.debug) console.log('[Claude Usage Pro]', ...args);
+    },
+    logError: (...args) => {
+      console.error('[Claude Usage Pro]', ...args);
+    },
+    sendToBackground: (message) => {
+      return chrome.runtime.sendMessage(message).catch(e => {
+        window.CUP.logError('sendToBackground failed:', e);
       });
-    } catch (e) {}
-  }
-  
-  async loadInitialData() {
-    if (!window.CUP.isExtensionValid()) return;
-    
-    try {
-      const response = await window.CUP.sendToBackground({ type: 'GET_USAGE_DATA' });
-      if (response?.usageData) {
-        this.usageData = response.usageData;
-        this.updateAllUI();
-      }
-    } catch (e) {}
-  }
-  
-  updateAllUI() {
-    try {
-      // Detect current model
-      if (this.usageScraper) {
-        this.currentModel = this.usageScraper.detectCurrentModel();
-      }
-      
-      // Add model to usage data
-      const dataWithModel = {
-        ...this.usageData,
-        currentModel: this.currentModel
-      };
-      
-      if (this.sidebarUI) {
-        this.sidebarUI.update(dataWithModel);
-      }
-      if (this.chatUI) {
-        this.chatUI.updateUsage(dataWithModel, null, this.currentModel);
-      }
-    } catch (e) {
-      window.CUP.logError('UI update error:', e);
     }
-  }
+  };
   
-  startBackgroundTasks() {
-    // Initial scrape
-    setTimeout(() => this.performScrape(), 3000);
-    
-    // Periodic scrape every 2 minutes
-    setInterval(() => this.performScrape(), 2 * 60 * 1000);
-    
-    // Periodic UI check every 10 seconds
-    setInterval(() => {
-      try {
-        if (this.sidebarUI) this.sidebarUI.checkAndReinject();
-        if (this.chatUI) this.chatUI.checkAndReinject();
-      } catch (e) {}
-    }, 10000);
-  }
+  window.CUP.log('Initializing...');
   
-  async performScrape() {
-    if (!this.usageScraper || !window.CUP.isExtensionValid()) return;
-    
-    try {
-      const data = await this.usageScraper.scrapeUsage();
-      if (data) {
-        window.CUP.log('Scraped:', data);
-        
-        const response = await window.CUP.sendToBackground({
-          type: 'SYNC_SCRAPED_DATA',
-          data: data
-        });
-        
-        if (response?.usageData) {
-          this.usageData = response.usageData;
-          this.updateAllUI();
-        }
-      }
-    } catch (e) {}
-  }
-}
-
-window.ClaudeUsagePro = ClaudeUsagePro;
-
-// Safe start
-async function startExtension() {
-  if (document.readyState === 'loading') {
-    await new Promise(r => document.addEventListener('DOMContentLoaded', r));
-  }
-  
-  // Extra safety: wait a bit for Claude UI to initialize
-  await new Promise(r => setTimeout(r, 500));
-  
-  window.CUP.log('Starting extension...');
+  // Load settings
+  let settings = {
+    showSidebar: true,
+    showChatOverlay: true,
+    showTopBar: true,
+    enableVoice: false
+  };
   
   try {
-    const app = new ClaudeUsagePro();
-    await app.initialize();
-    window.__claudeUsagePro = app;
-  } catch (e) {
-    window.CUP.logError('Failed to start:', e);
+    const response = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
+    if (response?.settings) {
+      settings = { ...settings, ...response.settings };
+    }
+  } catch (e) {}
+  
+  // Wait for page load
+  await new Promise(r => setTimeout(r, 1500));
+  
+  // Initialize components based on settings
+  if (window.UsageScraper) {
+    window.cupScraper = new UsageScraper();
   }
-}
-
-startExtension();
+  
+  if (window.SidebarUI && settings.showSidebar) {
+    window.cupSidebar = new SidebarUI();
+    await window.cupSidebar.initialize();
+  }
+  
+  if (window.ChatUI && (settings.showChatOverlay || settings.showTopBar)) {
+    window.cupChatUI = new ChatUI();
+    window.cupChatUI.settings = settings;
+    window.cupChatUI.initialize();
+    await window.cupChatUI.injectUI();
+  }
+  
+  if (window.VoiceInput && settings.enableVoice) {
+    window.cupVoice = new VoiceInput();
+    window.cupVoice.initialize();
+  }
+  
+  // Load initial data
+  try {
+    const response = await chrome.runtime.sendMessage({ type: 'GET_USAGE_DATA' });
+    if (response?.usageData) {
+      updateAllUI(response.usageData);
+    }
+  } catch (e) {}
+  
+  // Trigger a scrape if on usage page
+  if (window.location.pathname.includes('/settings/usage')) {
+    setTimeout(() => {
+      if (window.cupScraper) {
+        window.cupScraper.scrapeCurrentPage();
+      }
+    }, 2000);
+  }
+  
+  // Listen for messages
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    switch (message.type) {
+      case 'USAGE_UPDATED':
+        updateAllUI(message.usageData);
+        break;
+        
+      case 'SCRAPE_USAGE':
+        if (window.cupScraper) {
+          window.cupScraper.scrapeUsage().then(data => {
+            if (data) {
+              window.CUP.sendToBackground({ type: 'SYNC_SCRAPED_DATA', data });
+            }
+          });
+        }
+        break;
+        
+      case 'SETTINGS_UPDATED':
+        handleSettingsUpdate(message.settings);
+        break;
+    }
+    sendResponse({ received: true });
+    return true;
+  });
+  
+  // Model detection - watch for changes
+  startModelWatcher();
+  
+  // Periodic UI check
+  setInterval(() => {
+    if (window.cupSidebar && settings.showSidebar) {
+      window.cupSidebar.checkAndReinject();
+    }
+    if (window.cupChatUI) {
+      window.cupChatUI.checkAndReinject();
+    }
+  }, 5000);
+  
+  window.CUP.log('Initialized successfully');
+  
+  function updateAllUI(usageData) {
+    if (window.cupSidebar) {
+      window.cupSidebar.update(usageData);
+    }
+    if (window.cupChatUI) {
+      window.cupChatUI.updateUsage(usageData);
+    }
+  }
+  
+  function startModelWatcher() {
+    let lastModel = null;
+    
+    setInterval(() => {
+      const model = detectCurrentModel();
+      if (model && model !== lastModel) {
+        lastModel = model;
+        window.CUP.sendToBackground({ type: 'UPDATE_MODEL', model });
+        window.CUP.log('Model changed to:', model);
+      }
+    }, 2000);
+  }
+  
+  function detectCurrentModel() {
+    // Check model selector button
+    const modelButton = document.querySelector('[data-testid="model-selector"]') ||
+                       document.querySelector('button[class*="model"]');
+    
+    if (modelButton) {
+      const text = modelButton.textContent?.toLowerCase() || '';
+      if (text.includes('opus')) return 'opus';
+      if (text.includes('haiku')) return 'haiku';
+      if (text.includes('sonnet')) return 'sonnet';
+    }
+    
+    // Check for model name in composer area
+    const composer = document.querySelector('[class*="composer"]') ||
+                    document.querySelector('form');
+    if (composer) {
+      const text = composer.textContent?.toLowerCase() || '';
+      if (text.includes('opus')) return 'opus';
+      if (text.includes('haiku')) return 'haiku';
+    }
+    
+    return 'sonnet';
+  }
+  
+  function handleSettingsUpdate(newSettings) {
+    settings = { ...settings, ...newSettings };
+    
+    // Toggle sidebar
+    const sidebarEl = document.getElementById('cup-sidebar-widget');
+    if (sidebarEl) {
+      sidebarEl.style.display = settings.showSidebar ? '' : 'none';
+    }
+    
+    // Toggle chat overlay
+    const inputStats = document.getElementById('cup-input-stats');
+    if (inputStats) {
+      inputStats.style.display = settings.showChatOverlay ? '' : 'none';
+    }
+    
+    // Toggle top bar
+    const topBar = document.getElementById('cup-top-bar');
+    if (topBar) {
+      topBar.style.display = settings.showTopBar ? '' : 'none';
+    }
+    
+    // Toggle voice
+    const voiceBtn = document.getElementById('cup-voice-btn');
+    if (settings.enableVoice && !voiceBtn && window.VoiceInput) {
+      window.cupVoice = new VoiceInput();
+      window.cupVoice.initialize();
+    } else if (!settings.enableVoice && voiceBtn) {
+      voiceBtn.remove();
+    }
+  }
+  
+})();

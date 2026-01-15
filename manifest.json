@@ -1,50 +1,34 @@
 {
   "manifest_version": 3,
   "name": "Claude Usage Pro",
-  "version": "1.4.0",
-  "description": "Track Claude.ai usage with percentage displays, model breakdown, and cross-device sync",
-  "author": "Nash Keller Media",
-  "homepage_url": "https://github.com/nashkellermedia/claude-usage-pro",
-  
+  "version": "1.5.0",
+  "description": "Track and visualize your Claude.ai usage with real-time stats, voice input, and cross-device sync",
   "permissions": [
     "storage",
-    "alarms"
+    "alarms",
+    "tabs"
   ],
-  
   "host_permissions": [
     "https://claude.ai/*"
   ],
-  
   "background": {
     "service_worker": "background/service-worker.js"
   },
-  
   "content_scripts": [
     {
       "matches": ["https://claude.ai/*"],
-      "css": ["styles/content.css"],
+      "css": ["content/styles.css"],
       "js": [
         "content/utils.js",
-        "content/data-classes.js",
         "content/usage-scraper.js",
         "content/sidebar-ui.js",
         "content/chat-ui.js",
+        "content/voice-input.js",
         "content/main.js"
       ],
       "run_at": "document_idle"
     }
   ],
-  
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "injections/fetch-interceptor.js",
-        "lib/firebase-sync.js"
-      ],
-      "matches": ["https://claude.ai/*"]
-    }
-  ],
-  
   "action": {
     "default_popup": "popup/popup.html",
     "default_icon": {
@@ -52,10 +36,8 @@
       "32": "icons/icon32.png",
       "48": "icons/icon48.png",
       "128": "icons/icon128.png"
-    },
-    "default_title": "Claude Usage Pro"
+    }
   },
-  
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",

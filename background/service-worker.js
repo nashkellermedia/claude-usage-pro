@@ -1,9 +1,7 @@
 /**
  * Claude Usage Pro - Background Service Worker
- * Handles storage and sync of percentage-based usage data
  */
 
-// Default usage data - now percentage based
 const DEFAULT_USAGE = {
   currentSession: { percent: 0, resetsIn: '--' },
   weeklyAllModels: { percent: 0, resetsAt: '--' },
@@ -12,9 +10,14 @@ const DEFAULT_USAGE = {
   lastSynced: null
 };
 
-/**
- * Get stored usage data
- */
+const DEFAULT_SETTINGS = {
+  badgeDisplay: 'session',
+  showSidebar: true,
+  showChatOverlay: true,
+  showTopBar: true,
+  enableVoice: false
+};
+
 async function getUsageData() {
   try {
     const result = await chrome.storage.local.get('usageData');
@@ -25,14 +28,20 @@ async function getUsageData() {
   }
 }
 
-/**
- * Save usage data
- */
+async function getSettings() {
+  try {
+    const result = await chrome.storage.local.get('settings');
+    return { ...DEFAULT_SETTINGS, ...result.settings };
+  } catch (e) {
+    return { ...DEFAULT_SETTINGS };
+  }
+}
+
 async function saveUsageData(data) {
   try {
     data.lastSynced = Date.now();
     await chrome.storage.local.set({ usageData: data });
-    updateBadge(data);
+    await updateBadge(data);
     return data;
   } catch (e) {
     console.error('[CUP BG] Save error:', e);
@@ -40,24 +49,33 @@ async function saveUsageData(data) {
   }
 }
 
-/**
- * Update extension badge with current session percentage
- */
 async function updateBadge(usageData) {
   try {
-    const settings = (await chrome.storage.local.get('settings')).settings || {};
-    if (settings.showBadge === false) {
+    const settings = await getSettings();
+    const display = settings.badgeDisplay || 'session';
+    
+    if (display === 'none') {
       chrome.action.setBadgeText({ text: '' });
       return;
     }
     
-    // Show current session percentage on badge
-    const percent = usageData.currentSession?.percent || 0;
-    const text = percent >= 100 ? '!' : percent + '%';
+    let percent = 0;
     
+    switch (display) {
+      case 'session':
+        percent = usageData.currentSession?.percent || 0;
+        break;
+      case 'weekly-all':
+        percent = usageData.weeklyAllModels?.percent || 0;
+        break;
+      case 'weekly-sonnet':
+        percent = usageData.weeklySonnet?.percent || 0;
+        break;
+    }
+    
+    const text = percent >= 100 ? '!' : percent + '%';
     chrome.action.setBadgeText({ text });
     
-    // Color based on usage
     let color = '#22c55e'; // green
     if (percent >= 90) color = '#ef4444'; // red
     else if (percent >= 70) color = '#f59e0b'; // yellow
@@ -69,9 +87,6 @@ async function updateBadge(usageData) {
   }
 }
 
-/**
- * Notify all Claude tabs of update
- */
 function notifyAllTabs(usageData) {
   chrome.tabs.query({ url: 'https://claude.ai/*' }).then(tabs => {
     for (const tab of tabs) {
@@ -80,9 +95,6 @@ function notifyAllTabs(usageData) {
   }).catch(() => {});
 }
 
-/**
- * Message handler
- */
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   handleMessage(message, sender).then(sendResponse);
   return true;
@@ -105,7 +117,6 @@ async function handleMessage(message, sender) {
         return { usageData: await getUsageData() };
       }
       
-      // Build new usage data from scraped percentages
       const usageData = {
         currentSession: scraped.currentSession || { percent: 0, resetsIn: '--' },
         weeklyAllModels: scraped.weeklyAllModels || { percent: 0, resetsAt: '--' },
@@ -116,8 +127,15 @@ async function handleMessage(message, sender) {
         lastSynced: Date.now()
       };
       
-      console.log('[CUP BG] Saving usage data:', usageData);
-      
+      await saveUsageData(usageData);
+      notifyAllTabs(usageData);
+      return { usageData };
+    }
+    
+    case 'UPDATE_MODEL': {
+      // Update just the current model
+      const usageData = await getUsageData();
+      usageData.currentModel = message.model || 'sonnet';
       await saveUsageData(usageData);
       notifyAllTabs(usageData);
       return { usageData };
@@ -134,12 +152,19 @@ async function handleMessage(message, sender) {
     }
     
     case 'GET_SETTINGS': {
-      const result = await chrome.storage.local.get('settings');
-      return { settings: result.settings || {} };
+      const settings = await getSettings();
+      return { settings };
     }
     
     case 'SAVE_SETTINGS': {
-      await chrome.storage.local.set({ settings: message.settings });
+      const current = await getSettings();
+      const updated = { ...current, ...message.settings };
+      await chrome.storage.local.set({ settings: updated });
+      
+      // Update badge if display setting changed
+      const usageData = await getUsageData();
+      await updateBadge(usageData);
+      
       return { success: true };
     }
     
@@ -155,17 +180,18 @@ async function handleMessage(message, sender) {
   }
 }
 
-// Initialize on install
 chrome.runtime.onInstalled.addListener(async () => {
   console.log('[CUP BG] Extension installed/updated');
   
-  const existing = await chrome.storage.local.get('usageData');
+  const existing = await chrome.storage.local.get(['usageData', 'settings']);
   if (!existing.usageData) {
     await chrome.storage.local.set({ usageData: { ...DEFAULT_USAGE } });
   }
+  if (!existing.settings) {
+    await chrome.storage.local.set({ settings: { ...DEFAULT_SETTINGS } });
+  }
 });
 
-// Periodic sync alarm - every 5 minutes
 chrome.alarms.create('syncUsage', { periodInMinutes: 5 });
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === 'syncUsage') {

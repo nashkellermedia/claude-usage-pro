@@ -2,122 +2,158 @@
 <html>
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Claude Usage Pro</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
   <div class="popup-container">
-    <!-- Header -->
-    <header>
-      <div class="logo">
-        <span class="logo-icon">📊</span>
+    <header class="popup-header">
+      <div class="header-left">
+        <span class="logo">📊</span>
         <h1>Claude Usage Pro</h1>
       </div>
-      <div class="header-actions">
-        <button id="refreshBtn" class="icon-btn" title="Refresh Usage">🔄</button>
+      <div class="header-right">
+        <button id="refreshBtn" class="icon-btn" title="Refresh">🔄</button>
         <button id="settingsBtn" class="icon-btn" title="Settings">⚙️</button>
       </div>
     </header>
     
-    <!-- Main Usage Display -->
-    <section class="usage-section">
-      <h2>Current Session</h2>
-      <div class="usage-row">
+    <main class="popup-main">
+      <!-- Current Session -->
+      <div class="usage-section">
+        <div class="usage-header">
+          <span class="usage-label">Current Session</span>
+          <span class="usage-percent" id="sessionPercent">--%</span>
+        </div>
         <div class="usage-bar-container">
           <div class="usage-bar" id="sessionBar"></div>
         </div>
-        <span class="usage-percent" id="sessionPercent">--%</span>
+        <div class="usage-meta" id="sessionMeta">Resets in --</div>
       </div>
-      <div class="usage-meta" id="sessionMeta">Resets in --</div>
-    </section>
-    
-    <section class="usage-section">
-      <h2>Weekly (All Models)</h2>
-      <div class="usage-row">
+      
+      <!-- Weekly All Models -->
+      <div class="usage-section">
+        <div class="usage-header">
+          <span class="usage-label">Weekly (All Models)</span>
+          <span class="usage-percent" id="weeklyAllPercent">--%</span>
+        </div>
         <div class="usage-bar-container">
           <div class="usage-bar" id="weeklyAllBar"></div>
         </div>
-        <span class="usage-percent" id="weeklyAllPercent">--%</span>
+        <div class="usage-meta" id="weeklyAllMeta">Resets --</div>
       </div>
-      <div class="usage-meta" id="weeklyAllMeta">Resets --</div>
-    </section>
-    
-    <section class="usage-section">
-      <h2>Weekly (Sonnet Only)</h2>
-      <div class="usage-row">
+      
+      <!-- Weekly Sonnet -->
+      <div class="usage-section">
+        <div class="usage-header">
+          <span class="usage-label">Weekly (Sonnet Only)</span>
+          <span class="usage-percent" id="weeklySonnetPercent">--%</span>
+        </div>
         <div class="usage-bar-container">
           <div class="usage-bar sonnet" id="weeklySonnetBar"></div>
         </div>
-        <span class="usage-percent" id="weeklySonnetPercent">--%</span>
+        <div class="usage-meta" id="weeklySonnetMeta">Resets in --</div>
       </div>
-      <div class="usage-meta" id="weeklySonnetMeta">Resets in --</div>
-    </section>
-    
-    <!-- Current Model -->
-    <section class="model-section">
-      <span class="model-label">Current Model:</span>
-      <span class="model-badge" id="currentModel">Sonnet 4.5</span>
-    </section>
-    
-    <!-- Quick Actions -->
-    <section class="actions-section">
-      <a href="https://claude.ai/settings/usage" target="_blank" class="action-link">
+      
+      <!-- Current Model -->
+      <div class="model-section">
+        <span class="model-label">Current Model:</span>
+        <span class="model-badge" id="currentModel">Sonnet 4.5</span>
+      </div>
+      
+      <!-- View Full Usage -->
+      <a href="https://claude.ai/settings/usage" class="usage-link" id="viewUsageLink">
         📈 View Full Usage Page
       </a>
-    </section>
+    </main>
     
     <!-- Settings Panel -->
-    <section id="settingsPanel" class="settings-panel hidden">
+    <div class="settings-panel hidden" id="settingsPanel">
       <div class="settings-header">
-        <span>⚙️ Settings</span>
-        <button id="closeSettings" class="close-btn">×</button>
+        <h2>Settings</h2>
+        <button id="closeSettings" class="icon-btn">✕</button>
       </div>
       
-      <div class="setting-group">
-        <label>Auto-refresh interval</label>
-        <select id="refreshInterval">
-          <option value="1">Every 1 minute</option>
-          <option value="5" selected>Every 5 minutes</option>
-          <option value="15">Every 15 minutes</option>
-        </select>
-      </div>
-      
-      <div class="setting-group toggle-group">
-        <label>Show badge on icon</label>
-        <input type="checkbox" id="showBadge" checked>
-      </div>
-      
-      <div class="settings-divider"></div>
-      
-      <div class="setting-group">
-        <label>🔥 Firebase Sync (Cross-Device)</label>
-        <p class="setting-hint">Enable to sync usage across browsers/devices</p>
-        
-        <div class="firebase-config">
-          <input type="text" id="firebaseApiKey" placeholder="API Key">
-          <input type="text" id="firebaseProjectId" placeholder="Project ID">
-          <input type="text" id="firebaseAppId" placeholder="App ID">
+      <div class="settings-content">
+        <!-- Badge Display Setting -->
+        <div class="setting-group">
+          <label class="setting-label">Badge Display</label>
+          <select id="badgeDisplay" class="setting-select">
+            <option value="session">Current Session %</option>
+            <option value="weekly-all">Weekly All Models %</option>
+            <option value="weekly-sonnet">Weekly Sonnet %</option>
+            <option value="none">Hide Badge</option>
+          </select>
+          <p class="setting-hint">Choose what percentage to show on the extension icon</p>
         </div>
         
-        <div class="firebase-status" id="firebaseStatus">
-          Not configured
+        <!-- UI Toggles -->
+        <div class="setting-group">
+          <label class="setting-label">Display Options</label>
+          
+          <div class="setting-toggle">
+            <input type="checkbox" id="showSidebar" checked>
+            <label for="showSidebar">Show Sidebar Widget</label>
+          </div>
+          
+          <div class="setting-toggle">
+            <input type="checkbox" id="showChatOverlay" checked>
+            <label for="showChatOverlay">Show Chat Input Stats</label>
+          </div>
+          
+          <div class="setting-toggle">
+            <input type="checkbox" id="showTopBar" checked>
+            <label for="showTopBar">Show Top Bar</label>
+          </div>
         </div>
         
-        <button id="saveFirebase" class="btn small">Save Firebase Config</button>
+        <!-- Voice Input -->
+        <div class="setting-group">
+          <label class="setting-label">Voice Input</label>
+          
+          <div class="setting-toggle">
+            <input type="checkbox" id="enableVoice">
+            <label for="enableVoice">Enable Voice-to-Text</label>
+          </div>
+          <p class="setting-hint">Adds a microphone button to the chat input</p>
+        </div>
+        
+        <!-- Firebase Sync -->
+        <div class="setting-group">
+          <label class="setting-label">
+            Firebase Sync (Optional)
+            <a href="#" id="firebaseHelp" class="help-link" title="Setup Instructions">ℹ️</a>
+          </label>
+          
+          <div id="firebaseInstructions" class="instructions hidden">
+            <p><strong>To set up Firebase sync:</strong></p>
+            <ol>
+              <li>Go to <a href="https://console.firebase.google.com" target="_blank">Firebase Console</a></li>
+              <li>Create a new project (or use existing)</li>
+              <li>Go to Project Settings → General</li>
+              <li>Scroll to "Your apps" → Add web app</li>
+              <li>Copy the config values below</li>
+              <li>Enable Firestore Database in Build menu</li>
+            </ol>
+          </div>
+          
+          <input type="text" id="firebaseApiKey" placeholder="API Key" class="setting-input">
+          <input type="text" id="firebaseProjectId" placeholder="Project ID" class="setting-input">
+          <input type="text" id="firebaseAppId" placeholder="App ID" class="setting-input">
+          
+          <div class="firebase-status" id="firebaseStatus">Not configured</div>
+          <button id="saveFirebase" class="btn btn-secondary">Save Firebase Config</button>
+        </div>
+        
+        <button id="saveSettings" class="btn btn-primary">Save Settings</button>
       </div>
       
-      <div class="settings-divider"></div>
-      
-      <div class="settings-actions">
-        <button id="saveSettings" class="btn primary">Save Settings</button>
+      <div class="settings-footer">
+        <span class="version">v1.5.0</span>
+        <a href="https://github.com/NashKellerMedia/claude-usage-pro" target="_blank" class="github-link">GitHub</a>
       </div>
-    </section>
-    
-    <!-- Footer -->
-    <footer>
-      <span class="version">v1.4.0</span>
-      <a href="https://github.com/nashkellermedia/claude-usage-pro" target="_blank">GitHub</a>
-    </footer>
+    </div>
   </div>
   
   <script src="popup.js"></script>

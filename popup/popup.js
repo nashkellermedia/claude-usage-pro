@@ -7,24 +7,31 @@ const els = {
   settingsBtn: document.getElementById('settingsBtn'),
   settingsPanel: document.getElementById('settingsPanel'),
   closeSettings: document.getElementById('closeSettings'),
+  viewUsageLink: document.getElementById('viewUsageLink'),
   
-  sessionBar: document.getElementById('sessionBar'),
   sessionPercent: document.getElementById('sessionPercent'),
+  sessionBar: document.getElementById('sessionBar'),
   sessionMeta: document.getElementById('sessionMeta'),
   
-  weeklyAllBar: document.getElementById('weeklyAllBar'),
   weeklyAllPercent: document.getElementById('weeklyAllPercent'),
+  weeklyAllBar: document.getElementById('weeklyAllBar'),
   weeklyAllMeta: document.getElementById('weeklyAllMeta'),
   
-  weeklySonnetBar: document.getElementById('weeklySonnetBar'),
   weeklySonnetPercent: document.getElementById('weeklySonnetPercent'),
+  weeklySonnetBar: document.getElementById('weeklySonnetBar'),
   weeklySonnetMeta: document.getElementById('weeklySonnetMeta'),
   
   currentModel: document.getElementById('currentModel'),
   
-  refreshInterval: document.getElementById('refreshInterval'),
-  showBadge: document.getElementById('showBadge'),
+  // Settings
+  badgeDisplay: document.getElementById('badgeDisplay'),
+  showSidebar: document.getElementById('showSidebar'),
+  showChatOverlay: document.getElementById('showChatOverlay'),
+  showTopBar: document.getElementById('showTopBar'),
+  enableVoice: document.getElementById('enableVoice'),
   
+  firebaseHelp: document.getElementById('firebaseHelp'),
+  firebaseInstructions: document.getElementById('firebaseInstructions'),
   firebaseApiKey: document.getElementById('firebaseApiKey'),
   firebaseProjectId: document.getElementById('firebaseProjectId'),
   firebaseAppId: document.getElementById('firebaseAppId'),
@@ -33,32 +40,30 @@ const els = {
   saveSettings: document.getElementById('saveSettings')
 };
 
-function updateUsageBar(barEl, percentEl, percent) {
-  if (!barEl || !percentEl) return;
+function updateUsageDisplay(el, barEl, percent) {
+  if (!el || !barEl) return;
   
+  el.textContent = percent + '%';
   barEl.style.width = Math.min(percent, 100) + '%';
-  percentEl.textContent = percent + '%';
   
+  el.classList.remove('warning', 'danger');
   barEl.classList.remove('warning', 'danger');
-  percentEl.classList.remove('warning', 'danger');
   
   if (percent >= 90) {
+    el.classList.add('danger');
     barEl.classList.add('danger');
-    percentEl.classList.add('danger');
   } else if (percent >= 70) {
+    el.classList.add('warning');
     barEl.classList.add('warning');
-    percentEl.classList.add('warning');
   }
 }
 
 function updateUI(usageData) {
   if (!usageData) return;
   
-  console.log('[CUP Popup] Updating UI with:', usageData);
-  
   // Current Session
   if (usageData.currentSession) {
-    updateUsageBar(els.sessionBar, els.sessionPercent, usageData.currentSession.percent || 0);
+    updateUsageDisplay(els.sessionPercent, els.sessionBar, usageData.currentSession.percent || 0);
     if (usageData.currentSession.resetsIn) {
       els.sessionMeta.textContent = `Resets in ${usageData.currentSession.resetsIn}`;
     }
@@ -66,7 +71,7 @@ function updateUI(usageData) {
   
   // Weekly All Models
   if (usageData.weeklyAllModels) {
-    updateUsageBar(els.weeklyAllBar, els.weeklyAllPercent, usageData.weeklyAllModels.percent || 0);
+    updateUsageDisplay(els.weeklyAllPercent, els.weeklyAllBar, usageData.weeklyAllModels.percent || 0);
     if (usageData.weeklyAllModels.resetsAt) {
       els.weeklyAllMeta.textContent = `Resets ${usageData.weeklyAllModels.resetsAt}`;
     }
@@ -74,7 +79,7 @@ function updateUI(usageData) {
   
   // Weekly Sonnet
   if (usageData.weeklySonnet) {
-    updateUsageBar(els.weeklySonnetBar, els.weeklySonnetPercent, usageData.weeklySonnet.percent || 0);
+    updateUsageDisplay(els.weeklySonnetPercent, els.weeklySonnetBar, usageData.weeklySonnet.percent || 0);
     if (usageData.weeklySonnet.resetsIn) {
       els.weeklySonnetMeta.textContent = `Resets in ${usageData.weeklySonnet.resetsIn}`;
     }
@@ -100,7 +105,6 @@ function updateUI(usageData) {
 async function loadUsageData() {
   try {
     const response = await chrome.runtime.sendMessage({ type: 'GET_USAGE_DATA' });
-    console.log('[CUP Popup] Got usage data:', response);
     if (response?.usageData) {
       updateUI(response.usageData);
     }
@@ -114,9 +118,16 @@ async function loadSettings() {
     const response = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
     const settings = response?.settings || {};
     
-    els.refreshInterval.value = settings.refreshInterval || '5';
-    els.showBadge.checked = settings.showBadge !== false;
+    // Badge display
+    els.badgeDisplay.value = settings.badgeDisplay || 'session';
     
+    // UI toggles
+    els.showSidebar.checked = settings.showSidebar !== false;
+    els.showChatOverlay.checked = settings.showChatOverlay !== false;
+    els.showTopBar.checked = settings.showTopBar !== false;
+    els.enableVoice.checked = settings.enableVoice === true;
+    
+    // Firebase
     if (settings.firebase) {
       els.firebaseApiKey.value = settings.firebase.apiKey || '';
       els.firebaseProjectId.value = settings.firebase.projectId || '';
@@ -134,10 +145,22 @@ async function loadSettings() {
 
 async function saveSettings() {
   const settings = {
-    refreshInterval: els.refreshInterval.value,
-    showBadge: els.showBadge.checked
+    badgeDisplay: els.badgeDisplay.value,
+    showSidebar: els.showSidebar.checked,
+    showChatOverlay: els.showChatOverlay.checked,
+    showTopBar: els.showTopBar.checked,
+    enableVoice: els.enableVoice.checked
   };
+  
   await chrome.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings });
+  
+  // Notify tabs to update UI visibility
+  chrome.tabs.query({ url: 'https://claude.ai/*' }, (tabs) => {
+    tabs.forEach(tab => {
+      chrome.tabs.sendMessage(tab.id, { type: 'SETTINGS_UPDATED', settings }).catch(() => {});
+    });
+  });
+  
   els.settingsPanel.classList.add('hidden');
 }
 
@@ -149,11 +172,15 @@ async function saveFirebaseConfig() {
   };
   
   if (firebase.apiKey && firebase.projectId) {
-    await chrome.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings: { firebase } });
+    const response = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
+    const settings = response?.settings || {};
+    settings.firebase = firebase;
+    await chrome.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings });
+    
     els.firebaseStatus.textContent = 'Configured ✓';
     els.firebaseStatus.classList.add('connected');
   } else {
-    els.firebaseStatus.textContent = 'Please fill in all fields';
+    els.firebaseStatus.textContent = 'Please fill in API Key and Project ID';
     els.firebaseStatus.classList.remove('connected');
   }
 }
@@ -175,6 +202,15 @@ els.closeSettings.addEventListener('click', () => els.settingsPanel.classList.ad
 els.refreshBtn.addEventListener('click', triggerRefresh);
 els.saveSettings.addEventListener('click', saveSettings);
 els.saveFirebase.addEventListener('click', saveFirebaseConfig);
+
+els.firebaseHelp.addEventListener('click', (e) => {
+  e.preventDefault();
+  els.firebaseInstructions.classList.toggle('hidden');
+});
+
+els.viewUsageLink.addEventListener('click', () => {
+  chrome.tabs.create({ url: 'https://claude.ai/settings/usage' });
+});
 
 // Initialize
 loadUsageData();
