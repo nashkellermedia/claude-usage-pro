@@ -64,14 +64,6 @@
     window.cupVoice.initialize();
   }
   
-  // Initialize context indicator (always show)
-  if (window.ContextIndicator) {
-    window.CUP.log('Initializing context indicator...');
-    window.cupContextIndicator = new ContextIndicator();
-    window.cupContextIndicator.initialize();
-    document.body.classList.add('cup-context-active');
-  }
-  
   // Load initial data
   try {
     const response = await chrome.runtime.sendMessage({ type: 'GET_USAGE_DATA' });
