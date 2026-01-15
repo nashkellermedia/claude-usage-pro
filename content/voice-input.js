@@ -35,8 +35,14 @@ class VoiceInput {
   }
   
   injectButton() {
-    if (document.getElementById('cup-voice-btn')) {
-      window.CUP.log('VoiceInput: Button already exists');
+    // Check if ANY voice button exists (by ID or class)
+    const existing = document.querySelectorAll('.cup-voice-btn, #cup-voice-btn');
+    if (existing.length > 0) {
+      window.CUP.log('VoiceInput: Button already exists, removing duplicates');
+      // Remove all but the first one
+      for (let i = 1; i < existing.length; i++) {
+        existing[i].remove();
+      }
       return;
     }
     
@@ -95,6 +101,7 @@ class VoiceInput {
       // Create voice button
       this.button = document.createElement('button');
       this.button.id = 'cup-voice-btn';
+      this.button.className = 'cup-voice-btn';
       this.button.type = 'button';
       this.button.innerHTML = '🎤';
       this.button.title = 'Voice Input (click to start/stop)';

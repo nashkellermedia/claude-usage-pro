@@ -134,9 +134,19 @@
       }
     }
     // Check voice button
-    if (settings.enableVoice && !document.getElementById('cup-voice-btn')) {
-      if (window.cupVoice) {
-        window.cupVoice.injectButton();
+    if (settings.enableVoice) {
+      const voiceBtns = document.querySelectorAll('.cup-voice-btn, #cup-voice-btn');
+      if (voiceBtns.length === 0) {
+        // No button exists, inject it
+        if (window.cupVoice) {
+          window.cupVoice.injectButton();
+        }
+      } else if (voiceBtns.length > 1) {
+        // Duplicates exist, remove all but first
+        window.CUP.log('Removing duplicate voice buttons:', voiceBtns.length);
+        for (let i = 1; i < voiceBtns.length; i++) {
+          voiceBtns[i].remove();
+        }
       }
     }
   }, 5000);
