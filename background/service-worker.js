@@ -11,16 +11,22 @@
 class FirebaseSync {
   constructor() {
     this.firebaseUrl = null;
-    this.deviceId = this.getOrCreateDeviceId();
+    this.deviceId = null;
     this.syncEnabled = false;
     this.lastSync = null;
     this.syncInterval = null;
+    this.initialized = false;
   }
   
   /**
    * Initialize with Firebase URL from settings
    */
   async initialize(firebaseUrl) {
+    // Get or create device ID first
+    if (!this.deviceId) {
+      this.deviceId = await this.getOrCreateDeviceId();
+    }
+    
     if (!firebaseUrl || firebaseUrl.trim() === '') {
       console.log('[Firebase] No URL provided, sync disabled');
       this.syncEnabled = false;
@@ -67,11 +73,12 @@ class FirebaseSync {
   /**
    * Get or create unique device ID
    */
-  getOrCreateDeviceId() {
-    let deviceId = localStorage.getItem('cup_device_id');
+  async getOrCreateDeviceId() {
+    const result = await chrome.storage.local.get('cup_device_id');
+    let deviceId = result.cup_device_id;
     if (!deviceId) {
       deviceId = 'device_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-      localStorage.setItem('cup_device_id', deviceId);
+      await chrome.storage.local.set({ cup_device_id: deviceId });
     }
     return deviceId;
   }
@@ -88,7 +95,7 @@ class FirebaseSync {
       const syncData = {
         ...usageData,
         deviceId: this.deviceId,
-        deviceName: this.getDeviceName(),
+        deviceName: await this.getDeviceName(),
         syncedAt: Date.now(),
         timestamp: new Date().toISOString()
       };
@@ -215,9 +222,9 @@ class FirebaseSync {
   /**
    * Get device name for identification
    */
-  getDeviceName() {
+  async getDeviceName() {
     // Try to get Chrome profile name or generate one
-    const ua = navigator.userAgent;
+    const ua = self.navigator?.userAgent || 'Unknown';
     let os = 'Unknown';
     
     if (ua.includes('Mac')) os = 'Mac';
@@ -225,7 +232,7 @@ class FirebaseSync {
     else if (ua.includes('Linux')) os = 'Linux';
     
     const browser = 'Chrome';
-    const profile = this.getProfileName();
+    const profile = await this.getProfileName();
     
     return `${os} - ${browser}${profile ? ' - ' + profile : ''}`;
   }
@@ -233,10 +240,11 @@ class FirebaseSync {
   /**
    * Try to get Chrome profile name
    */
-  getProfileName() {
+  async getProfileName() {
     // Chrome profile name is hard to get from extension
     // Use a stored name if user sets one, otherwise use device ID
-    const savedName = localStorage.getItem('cup_profile_name');
+    const result = await chrome.storage.local.get('cup_profile_name');
+    const savedName = result.cup_profile_name;
     if (savedName) return savedName;
     
     // Default to shortened device ID
@@ -246,8 +254,8 @@ class FirebaseSync {
   /**
    * Set custom profile name
    */
-  setProfileName(name) {
-    localStorage.setItem('cup_profile_name', name);
+  async setProfileName(name) {
+    await chrome.storage.local.set({ cup_profile_name: name });
   }
   
   /**
