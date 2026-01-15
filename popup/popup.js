@@ -21,22 +21,11 @@ const els = {
   weeklySonnetBar: document.getElementById('weeklySonnetBar'),
   weeklySonnetMeta: document.getElementById('weeklySonnetMeta'),
   
-  currentModel: document.getElementById('currentModel'),
-  
   // Settings
   badgeDisplay: document.getElementById('badgeDisplay'),
   showSidebar: document.getElementById('showSidebar'),
   showChatOverlay: document.getElementById('showChatOverlay'),
-  showTopBar: document.getElementById('showTopBar'),
   enableVoice: document.getElementById('enableVoice'),
-  
-  firebaseHelp: document.getElementById('firebaseHelp'),
-  firebaseInstructions: document.getElementById('firebaseInstructions'),
-  firebaseApiKey: document.getElementById('firebaseApiKey'),
-  firebaseProjectId: document.getElementById('firebaseProjectId'),
-  firebaseAppId: document.getElementById('firebaseAppId'),
-  firebaseStatus: document.getElementById('firebaseStatus'),
-  saveFirebase: document.getElementById('saveFirebase'),
   saveSettings: document.getElementById('saveSettings')
 };
 
@@ -84,22 +73,6 @@ function updateUI(usageData) {
       els.weeklySonnetMeta.textContent = `Resets in ${usageData.weeklySonnet.resetsIn}`;
     }
   }
-  
-  // Current Model
-  if (usageData.currentModel) {
-    const model = (usageData.currentModel || '').toLowerCase();
-    els.currentModel.classList.remove('opus', 'haiku');
-    
-    if (model.includes('opus')) {
-      els.currentModel.textContent = 'Opus 4.5';
-      els.currentModel.classList.add('opus');
-    } else if (model.includes('haiku')) {
-      els.currentModel.textContent = 'Haiku 4.5';
-      els.currentModel.classList.add('haiku');
-    } else {
-      els.currentModel.textContent = 'Sonnet 4.5';
-    }
-  }
 }
 
 async function loadUsageData() {
@@ -118,26 +91,10 @@ async function loadSettings() {
     const response = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
     const settings = response?.settings || {};
     
-    // Badge display
     els.badgeDisplay.value = settings.badgeDisplay || 'session';
-    
-    // UI toggles
     els.showSidebar.checked = settings.showSidebar !== false;
     els.showChatOverlay.checked = settings.showChatOverlay !== false;
-    els.showTopBar.checked = settings.showTopBar !== false;
     els.enableVoice.checked = settings.enableVoice === true;
-    
-    // Firebase
-    if (settings.firebase) {
-      els.firebaseApiKey.value = settings.firebase.apiKey || '';
-      els.firebaseProjectId.value = settings.firebase.projectId || '';
-      els.firebaseAppId.value = settings.firebase.appId || '';
-      
-      if (settings.firebase.apiKey) {
-        els.firebaseStatus.textContent = 'Configured ✓';
-        els.firebaseStatus.classList.add('connected');
-      }
-    }
   } catch (e) {
     console.error('[CUP Popup] Settings error:', e);
   }
@@ -148,7 +105,6 @@ async function saveSettings() {
     badgeDisplay: els.badgeDisplay.value,
     showSidebar: els.showSidebar.checked,
     showChatOverlay: els.showChatOverlay.checked,
-    showTopBar: els.showTopBar.checked,
     enableVoice: els.enableVoice.checked
   };
   
@@ -162,27 +118,6 @@ async function saveSettings() {
   });
   
   els.settingsPanel.classList.add('hidden');
-}
-
-async function saveFirebaseConfig() {
-  const firebase = {
-    apiKey: els.firebaseApiKey.value.trim(),
-    projectId: els.firebaseProjectId.value.trim(),
-    appId: els.firebaseAppId.value.trim()
-  };
-  
-  if (firebase.apiKey && firebase.projectId) {
-    const response = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
-    const settings = response?.settings || {};
-    settings.firebase = firebase;
-    await chrome.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings });
-    
-    els.firebaseStatus.textContent = 'Configured ✓';
-    els.firebaseStatus.classList.add('connected');
-  } else {
-    els.firebaseStatus.textContent = 'Please fill in API Key and Project ID';
-    els.firebaseStatus.classList.remove('connected');
-  }
 }
 
 async function triggerRefresh() {
@@ -201,12 +136,6 @@ els.settingsBtn.addEventListener('click', () => {
 els.closeSettings.addEventListener('click', () => els.settingsPanel.classList.add('hidden'));
 els.refreshBtn.addEventListener('click', triggerRefresh);
 els.saveSettings.addEventListener('click', saveSettings);
-els.saveFirebase.addEventListener('click', saveFirebaseConfig);
-
-els.firebaseHelp.addEventListener('click', (e) => {
-  e.preventDefault();
-  els.firebaseInstructions.classList.toggle('hidden');
-});
 
 els.viewUsageLink.addEventListener('click', () => {
   chrome.tabs.create({ url: 'https://claude.ai/settings/usage' });

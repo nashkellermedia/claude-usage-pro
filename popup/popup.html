@@ -56,12 +56,6 @@
         <div class="usage-meta" id="weeklySonnetMeta">Resets in --</div>
       </div>
       
-      <!-- Current Model -->
-      <div class="model-section">
-        <span class="model-label">Current Model:</span>
-        <span class="model-badge" id="currentModel">Sonnet 4.5</span>
-      </div>
-      
       <!-- View Full Usage -->
       <a href="https://claude.ai/settings/usage" class="usage-link" id="viewUsageLink">
         📈 View Full Usage Page
@@ -101,11 +95,6 @@
             <input type="checkbox" id="showChatOverlay" checked>
             <label for="showChatOverlay">Show Chat Input Stats</label>
           </div>
-          
-          <div class="setting-toggle">
-            <input type="checkbox" id="showTopBar" checked>
-            <label for="showTopBar">Show Top Bar</label>
-          </div>
         </div>
         
         <!-- Voice Input -->
@@ -117,33 +106,6 @@
             <label for="enableVoice">Enable Voice-to-Text</label>
           </div>
           <p class="setting-hint">Adds a microphone button to the chat input</p>
-        </div>
-        
-        <!-- Firebase Sync -->
-        <div class="setting-group">
-          <label class="setting-label">
-            Firebase Sync (Optional)
-            <a href="#" id="firebaseHelp" class="help-link" title="Setup Instructions">ℹ️</a>
-          </label>
-          
-          <div id="firebaseInstructions" class="instructions hidden">
-            <p><strong>To set up Firebase sync:</strong></p>
-            <ol>
-              <li>Go to <a href="https://console.firebase.google.com" target="_blank">Firebase Console</a></li>
-              <li>Create a new project (or use existing)</li>
-              <li>Go to Project Settings → General</li>
-              <li>Scroll to "Your apps" → Add web app</li>
-              <li>Copy the config values below</li>
-              <li>Enable Firestore Database in Build menu</li>
-            </ol>
-          </div>
-          
-          <input type="text" id="firebaseApiKey" placeholder="API Key" class="setting-input">
-          <input type="text" id="firebaseProjectId" placeholder="Project ID" class="setting-input">
-          <input type="text" id="firebaseAppId" placeholder="App ID" class="setting-input">
-          
-          <div class="firebase-status" id="firebaseStatus">Not configured</div>
-          <button id="saveFirebase" class="btn btn-secondary">Save Firebase Config</button>
         </div>
         
         <button id="saveSettings" class="btn btn-primary">Save Settings</button>
