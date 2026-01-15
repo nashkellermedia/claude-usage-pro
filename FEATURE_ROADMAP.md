@@ -1,5 +1,18 @@
 # Claude Usage Pro - Feature Roadmap
 
+# Claude Usage Pro - Feature Roadmap
+
+**📋 Active Feature Tracking:** See [GitHub Issues](https://github.com/nashkellermedia/claude-usage-pro/issues) for detailed specs and progress tracking.
+
+**Top Features Created as Issues:**
+- [#1 Usage Prediction & Smart Alerts](https://github.com/nashkellermedia/claude-usage-pro/issues/1)
+- [#2 Quick Actions Context Menu](https://github.com/nashkellermedia/claude-usage-pro/issues/2)
+- [#3 Desktop Usage Notifications](https://github.com/nashkellermedia/claude-usage-pro/issues/3)
+- [#4 Weekly Usage Summary Report](https://github.com/nashkellermedia/claude-usage-pro/issues/4)
+- [#5 Session Timer & Active Time Tracking](https://github.com/nashkellermedia/claude-usage-pro/issues/5)
+
+---
+
 ## Ranking Methodology
 - **Value Score**: How useful/impactful (1-10)
 - **Ease Score**: How easy to implement (1-10, 10 = easiest)
