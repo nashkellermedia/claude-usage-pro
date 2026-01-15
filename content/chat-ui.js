@@ -290,65 +290,42 @@ class ChatUI {
    * Count attachments visible in the composer area
    */
   countVisibleAttachments() {
-    let count = 0;
-    
-    // Look for the attachment preview area near the composer
-    // Claude typically shows attachments in a container above the input
-    
-    // Strategy 1: Look for images with delete/remove buttons nearby
-    // These are typically in a container with a close button
-    const attachmentContainers = document.querySelectorAll('[data-testid*="attachment"], [data-testid*="file-preview"], [data-testid*="image-preview"]');
-    count += attachmentContainers.length;
-    
-    // Strategy 2: Look for the composer's attachment area
-    // Find images that are siblings or near the contenteditable
+    // Find the composer/input form - this is the key element
     const composer = document.querySelector('[contenteditable="true"]');
-    if (composer) {
-      // Look up to 5 parent levels for attachment containers
-      let parent = composer.parentElement;
-      for (let i = 0; i < 5 && parent; i++) {
-        // Look for images with API URLs (uploaded) or blob URLs (uploading)
-        const images = parent.querySelectorAll('img[src*="/api/"][src*="/files/"], img[src^="blob:"]');
-        for (const img of images) {
-          // Make sure it's not in the message history by checking if it has a remove button nearby
-          const container = img.closest('div');
-          if (container) {
-            const hasCloseButton = container.querySelector('button[aria-label*="Remove"], button[aria-label*="Delete"], button[aria-label*="Close"], svg');
-            if (hasCloseButton) {
-              count++;
-            }
-          }
-        }
-        parent = parent.parentElement;
-      }
-    }
+    if (!composer) return 0;
     
-    // Strategy 3: Count elements with specific patterns
-    // Look for thumbnail-like containers in the input area
-    const thumbnails = document.querySelectorAll('[class*="thumbnail"], [class*="preview-image"], [class*="attachment-thumb"]');
-    for (const thumb of thumbnails) {
-      // Only count if it's near the bottom of the page (input area)
-      const rect = thumb.getBoundingClientRect();
-      if (rect.top > window.innerHeight / 2) {
-        count++;
+    // Find the form or container that holds the composer
+    // Claude's composer is typically in a form element
+    const form = composer.closest('form') || composer.closest('[role="presentation"]') || composer.closest('div[class*="composer"]');
+    if (!form) {
+      // Fallback: use parent containers
+      let container = composer.parentElement;
+      for (let i = 0; i < 3 && container; i++) {
+        container = container.parentElement;
       }
-    }
-    
-    // Deduplicate - if count is 0, fall back to simple image count near composer
-    if (count === 0 && composer) {
-      const composerRect = composer.getBoundingClientRect();
-      const allImages = document.querySelectorAll('img[src*="/api/"][src*="/files/"], img[src^="blob:"]');
-      for (const img of allImages) {
-        const imgRect = img.getBoundingClientRect();
-        // Only count images that are below the middle of the screen (near input)
-        if (imgRect.top > window.innerHeight / 2 && imgRect.height > 20 && imgRect.height < 300) {
+      if (!container) return 0;
+      
+      // Count images only in this container that are NOT in message bubbles
+      const images = container.querySelectorAll('img[src*="/api/"][src*="/files/"], img[src^="blob:"]');
+      let count = 0;
+      for (const img of images) {
+        // Check if this image is in the composer area (not in chat history)
+        // Chat history images are typically in elements with specific roles or deeper nesting
+        const isInMessageBubble = img.closest('[data-testid*="message"]') || 
+                                   img.closest('[class*="message"]') ||
+                                   img.closest('[role="article"]');
+        if (!isInMessageBubble) {
           count++;
         }
       }
+      window.CUP.log('ChatUI: countVisibleAttachments (fallback) =', count);
+      return count;
     }
     
-    window.CUP.log('ChatUI: countVisibleAttachments =', count);
-    return count;
+    // Count images within the form/composer area
+    const images = form.querySelectorAll('img[src*="/api/"][src*="/files/"], img[src^="blob:"]');
+    window.CUP.log('ChatUI: countVisibleAttachments =', images.length);
+    return images.length;
   }
   
   getAttachmentTokens() {
