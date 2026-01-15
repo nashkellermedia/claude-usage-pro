@@ -142,6 +142,22 @@
   color: #6b7280;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   margin-top: 4px;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(10px);
+}
+
+/* Dark mode for input stats */
+@media (prefers-color-scheme: dark) {
+  #cup-input-stats {
+    background: rgba(30, 30, 30, 0.95);
+    color: #9ca3af;
+  }
+  
+  #cup-input-stats .cup-stat-label {
+    color: #9ca3af;
+  }
 }
 
 #cup-input-stats .cup-stat-item {

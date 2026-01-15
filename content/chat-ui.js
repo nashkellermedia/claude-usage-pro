@@ -44,6 +44,12 @@ class ChatUI {
           </span>
           <span class="cup-stat-divider">│</span>
           <span class="cup-stat-item">
+            <span class="cup-stat-icon">💬</span>
+            <span class="cup-stat-label">Context:</span>
+            <span class="cup-stat-value" id="cup-context-pct">--%</span>
+          </span>
+          <span class="cup-stat-divider">│</span>
+          <span class="cup-stat-item">
             <span class="cup-stat-label">Session:</span>
             <span class="cup-stat-value" id="cup-session-pct">--%</span>
           </span>
@@ -132,6 +138,33 @@ class ChatUI {
       const pct = usageData.weeklySonnet.percent || 0;
       this.updateElement('cup-weekly-sonnet-pct', pct + '%');
       this.colorize('cup-weekly-sonnet-pct', pct);
+    }
+    
+    // Update context usage
+    this.updateContextUsage();
+  }
+  
+  async updateContextUsage() {
+    try {
+      const messages = document.querySelectorAll('[data-testid*="message"], .font-claude-message, [class*="Message"]');
+      const messageCount = messages.length;
+      
+      if (messageCount === 0) {
+        this.updateElement('cup-context-pct', '0%');
+        this.colorize('cup-context-pct', 0);
+        return;
+      }
+      
+      const estimatedTokensPerMessage = 800;
+      const systemPromptTokens = 5000;
+      const estimatedUsed = systemPromptTokens + (messageCount * estimatedTokensPerMessage);
+      const total = 200000;
+      const percent = Math.min(Math.round((estimatedUsed / total) * 100), 100);
+      
+      this.updateElement('cup-context-pct', percent + '%');
+      this.colorize('cup-context-pct', percent);
+    } catch (e) {
+      window.CUP.log('Chat context update error:', e);
     }
   }
   

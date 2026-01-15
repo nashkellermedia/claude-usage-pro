@@ -64,13 +64,13 @@
     window.cupVoice.initialize();
   }
   
-  // Initialize context indicator (always show)
-  if (window.ContextIndicator) {
-    window.CUP.log('Initializing context indicator...');
-    window.cupContextIndicator = new ContextIndicator();
-    window.cupContextIndicator.initialize();
-    document.body.classList.add('cup-context-active');
-  }
+  // Context indicator disabled - using sidebar and chat overlay instead
+  // if (window.ContextIndicator) {
+  //   window.CUP.log('Initializing context indicator...');
+  //   window.cupContextIndicator = new ContextIndicator();
+  //   window.cupContextIndicator.initialize();
+  //   document.body.classList.add('cup-context-active');
+  // }
   
   // Load initial data
   try {
@@ -121,9 +121,17 @@
   setInterval(() => {
     if (window.cupSidebar && settings.showSidebar) {
       window.cupSidebar.checkAndReinject();
+      // Update context usage in sidebar
+      if (window.cupSidebar.updateContextUsage) {
+        window.cupSidebar.updateContextUsage();
+      }
     }
     if (window.cupChatUI && settings.showChatOverlay) {
       window.cupChatUI.checkAndReinject();
+      // Update context usage in chat overlay
+      if (window.cupChatUI.updateContextUsage) {
+        window.cupChatUI.updateContextUsage();
+      }
     }
     // Check voice button
     if (settings.enableVoice && !document.getElementById('cup-voice-btn')) {
