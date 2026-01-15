@@ -45,6 +45,13 @@
   if (window.APIInterceptor) {
     window.CUP.log('Starting API interceptor...');
     window.APIInterceptor.start();
+    
+    // Clear tracked attachments when message is sent
+    window.APIInterceptor.on('onMessageSent', () => {
+      if (window.cupChatUI && window.cupChatUI.clearTrackedAttachments) {
+        window.cupChatUI.clearTrackedAttachments();
+      }
+    });
   }
   
   // Initialize components based on settings
