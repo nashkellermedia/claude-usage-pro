@@ -139,7 +139,7 @@ class ChatUI {
     for (const input of fileInputs) {
       if (input.files && input.files.length > 0) {
         for (const file of input.files) {
-          totalTokens += this.estimateFileTokens(file);
+          totalTokens += window.TokenCounter ? window.TokenCounter.estimateFileTokens(file) : this.estimateFileTokens(file);
           attachmentCount++;
         }
       }
@@ -182,7 +182,7 @@ class ChatUI {
       const input = document.querySelector('[contenteditable="true"]');
       if (input) {
         const text = input.innerText || '';
-        const textTokens = Math.ceil(text.length / 4);
+        const textTokens = window.TokenCounter ? window.TokenCounter.estimateTokens(text) : Math.ceil(text.length / 4);
         
         const attachments = this.getAttachmentTokens();
         const totalTokens = textTokens + attachments.tokens;

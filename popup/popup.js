@@ -26,6 +26,15 @@ const els = {
   showSidebar: document.getElementById('showSidebar'),
   showChatOverlay: document.getElementById('showChatOverlay'),
   enableVoice: document.getElementById('enableVoice'),
+  
+  // API Key
+  anthropicApiKey: document.getElementById('anthropicApiKey'),
+  apiKeyStatus: document.getElementById('apiKeyStatus'),
+  apiKeyStatusDot: document.getElementById('apiKeyStatusDot'),
+  apiKeyStatusText: document.getElementById('apiKeyStatusText'),
+  validateApiKey: document.getElementById('validateApiKey'),
+  
+  // Firebase
   firebaseUrl: document.getElementById('firebaseUrl'),
   firebaseHelp: document.getElementById('firebaseHelp'),
   firebaseInstructions: document.getElementById('firebaseInstructions'),
@@ -99,41 +108,61 @@ async function loadUsageData() {
   }
 }
 
-async function loadSettings() {
+async function triggerRefresh() {
+  els.refreshBtn.textContent = '⏳';
+  els.refreshBtn.disabled = true;
+  
   try {
-    const response = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
-    const settings = response?.settings || {};
+    // Try to trigger scrape on active Claude tab
+    const tabs = await chrome.tabs.query({ url: 'https://claude.ai/*', active: true });
+    if (tabs.length > 0) {
+      await chrome.tabs.sendMessage(tabs[0].id, { type: 'SCRAPE_USAGE' });
+    }
     
-    els.badgeDisplay.value = settings.badgeDisplay || 'session';
-    els.showSidebar.checked = settings.showSidebar !== false;
-    els.showChatOverlay.checked = settings.showChatOverlay !== false;
-    els.enableVoice.checked = settings.enableVoice === true;
-    els.firebaseUrl.value = settings.firebaseUrl || '';
+    // Then refresh our display
+    await loadUsageData();
     
-    // Update Firebase status
-    await updateFirebaseStatus();
+    els.refreshBtn.textContent = '✓';
+    setTimeout(() => {
+      els.refreshBtn.textContent = '🔄';
+      els.refreshBtn.disabled = false;
+    }, 1000);
   } catch (e) {
-    console.error('[CUP Popup] Settings error:', e);
+    console.error('[CUP Popup] Refresh error:', e);
+    els.refreshBtn.textContent = '❌';
+    setTimeout(() => {
+      els.refreshBtn.textContent = '🔄';
+      els.refreshBtn.disabled = false;
+    }, 1000);
   }
 }
 
-async function updateFirebaseStatus() {
+async function loadSettings() {
   try {
-    const response = await chrome.runtime.sendMessage({ type: 'GET_FIREBASE_STATUS' });
-    const status = response || { enabled: false };
+    const result = await chrome.storage.sync.get([
+      'badgeDisplay', 
+      'showSidebar', 
+      'showChatOverlay',
+      'enableVoice',
+      'firebaseUrl',
+      'anthropicApiKey'
+    ]);
     
-    if (status.enabled) {
-      els.firebaseStatusDot.className = 'status-indicator connected';
-      els.firebaseStatusText.textContent = `✓ Connected - ${status.deviceName || 'Unknown device'}`;
-      if (status.lastSyncTime) {
-        els.firebaseStatusText.textContent += ` (Last sync: ${status.lastSyncTime})`;
-      }
-    } else {
-      els.firebaseStatusDot.className = 'status-indicator';
-      els.firebaseStatusText.textContent = 'Not configured';
+    if (result.badgeDisplay) els.badgeDisplay.value = result.badgeDisplay;
+    if (typeof result.showSidebar !== 'undefined') els.showSidebar.checked = result.showSidebar;
+    if (typeof result.showChatOverlay !== 'undefined') els.showChatOverlay.checked = result.showChatOverlay;
+    if (typeof result.enableVoice !== 'undefined') els.enableVoice.checked = result.enableVoice;
+    if (result.firebaseUrl) {
+      els.firebaseUrl.value = result.firebaseUrl;
+      updateFirebaseStatus(true);
+    }
+    if (result.anthropicApiKey) {
+      // Show masked key
+      els.anthropicApiKey.value = result.anthropicApiKey;
+      updateApiKeyStatus(true, 'API key configured - using accurate counting');
     }
   } catch (e) {
-    console.error('[CUP Popup] Firebase status error:', e);
+    console.error('[CUP Popup] Load settings error:', e);
   }
 }
 
@@ -146,39 +175,117 @@ async function saveSettings() {
     firebaseUrl: els.firebaseUrl.value.trim()
   };
   
-  await chrome.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings });
+  // Handle API key
+  const apiKey = els.anthropicApiKey.value.trim();
+  if (apiKey && apiKey.startsWith('sk-ant-')) {
+    settings.anthropicApiKey = apiKey;
+  } else if (!apiKey) {
+    // Clear the key
+    await chrome.storage.sync.remove('anthropicApiKey');
+  }
   
-  // Update Firebase status after save
-  await updateFirebaseStatus();
+  try {
+    await chrome.storage.sync.set(settings);
+    
+    // Notify background
+    await chrome.runtime.sendMessage({ type: 'SETTINGS_UPDATED', settings });
+    
+    // Notify all Claude tabs
+    const tabs = await chrome.tabs.query({ url: 'https://claude.ai/*' });
+    for (const tab of tabs) {
+      try {
+        await chrome.tabs.sendMessage(tab.id, { type: 'SETTINGS_UPDATED', settings });
+      } catch (e) {}
+    }
+    
+    els.saveSettings.textContent = '✓ Saved!';
+    setTimeout(() => els.saveSettings.textContent = 'Save Settings', 1500);
+    
+    // Update Firebase status
+    if (settings.firebaseUrl) {
+      updateFirebaseStatus(true);
+    } else {
+      updateFirebaseStatus(false);
+    }
+    
+  } catch (e) {
+    console.error('[CUP Popup] Save settings error:', e);
+    els.saveSettings.textContent = 'Error!';
+    setTimeout(() => els.saveSettings.textContent = 'Save Settings', 1500);
+  }
+}
+
+function updateFirebaseStatus(connected) {
+  if (connected) {
+    els.firebaseStatusDot.style.background = '#22c55e';
+    els.firebaseStatusText.textContent = 'Connected';
+  } else {
+    els.firebaseStatusDot.style.background = '#6b7280';
+    els.firebaseStatusText.textContent = 'Not configured';
+  }
+}
+
+function updateApiKeyStatus(valid, message) {
+  if (valid) {
+    els.apiKeyStatusDot.style.background = '#22c55e';
+    els.apiKeyStatusText.textContent = message || 'API key valid - using accurate counting';
+  } else {
+    els.apiKeyStatusDot.style.background = '#6b7280';
+    els.apiKeyStatusText.textContent = message || 'Not configured (using estimates)';
+  }
+}
+
+async function validateAnthropicApiKey() {
+  const apiKey = els.anthropicApiKey.value.trim();
   
-  // Notify tabs to update UI visibility
-  chrome.tabs.query({ url: 'https://claude.ai/*' }, (tabs) => {
-    tabs.forEach(tab => {
-      chrome.tabs.sendMessage(tab.id, { type: 'SETTINGS_UPDATED', settings }).catch(() => {});
+  if (!apiKey) {
+    updateApiKeyStatus(false, 'No API key entered');
+    return;
+  }
+  
+  if (!apiKey.startsWith('sk-ant-')) {
+    updateApiKeyStatus(false, 'Invalid format - should start with sk-ant-');
+    return;
+  }
+  
+  els.validateApiKey.textContent = 'Testing...';
+  els.validateApiKey.disabled = true;
+  
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages/count_tokens', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        messages: [{ role: 'user', content: 'test' }]
+      })
     });
-  });
+    
+    if (response.ok) {
+      updateApiKeyStatus(true, 'API key valid ✓ - using accurate counting');
+      els.validateApiKey.textContent = '✓ Valid!';
+    } else if (response.status === 401) {
+      updateApiKeyStatus(false, 'Invalid API key');
+      els.validateApiKey.textContent = 'Invalid Key';
+    } else {
+      updateApiKeyStatus(false, `API error: ${response.status}`);
+      els.validateApiKey.textContent = 'Error';
+    }
+  } catch (e) {
+    updateApiKeyStatus(false, 'Connection failed');
+    els.validateApiKey.textContent = 'Failed';
+  }
   
-  // Show brief success message
-  els.saveSettings.textContent = '✓ Saved!';
   setTimeout(() => {
-    els.saveSettings.textContent = 'Save Settings';
-  }, 1500);
-  
-  els.settingsPanel.classList.add('hidden');
+    els.validateApiKey.textContent = 'Test API Key';
+    els.validateApiKey.disabled = false;
+  }, 2000);
 }
-
-async function triggerRefresh() {
-  els.refreshBtn.textContent = '⏳';
-  await chrome.runtime.sendMessage({ type: 'TRIGGER_SYNC' });
-  setTimeout(loadUsageData, 2000);
-  setTimeout(() => { els.refreshBtn.textContent = '🔄'; }, 2000);
-}
-
-// Firebase help toggle
-els.firebaseHelp.addEventListener('click', (e) => {
-  e.preventDefault();
-  els.firebaseInstructions.classList.toggle('hidden');
-});
 
 // Analytics functions
 async function loadAnalytics(days = 30) {
@@ -311,6 +418,18 @@ els.saveSettings.addEventListener('click', saveSettings);
 els.viewUsageLink.addEventListener('click', () => {
   chrome.tabs.create({ url: 'https://claude.ai/settings/usage' });
 });
+
+// API Key validation
+if (els.validateApiKey) {
+  els.validateApiKey.addEventListener('click', validateAnthropicApiKey);
+}
+
+// Firebase help toggle
+if (els.firebaseHelp) {
+  els.firebaseHelp.addEventListener('click', () => {
+    els.firebaseInstructions.classList.toggle('hidden');
+  });
+}
 
 // Analytics listeners
 els.viewAnalytics.addEventListener('click', () => {

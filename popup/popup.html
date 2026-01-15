@@ -113,6 +113,32 @@
           <p class="setting-hint">Adds a microphone button to the chat input</p>
         </div>
         
+        <!-- Anthropic API Key (for accurate token counting) -->
+        <div class="setting-group">
+          <label class="setting-label">
+            Anthropic API Key (Optional)
+            <span class="badge badge-free">FREE</span>
+          </label>
+          
+          <input 
+            type="password" 
+            id="anthropicApiKey" 
+            class="setting-input" 
+            placeholder="sk-ant-..."
+          >
+          <p class="setting-hint">
+            For 100% accurate token counting. The token counting API is free - no charges.
+            <a href="https://console.anthropic.com/settings/keys" target="_blank">Get API key</a>
+          </p>
+          
+          <div class="api-key-status" id="apiKeyStatus">
+            <span class="status-indicator" id="apiKeyStatusDot"></span>
+            <span id="apiKeyStatusText">Not configured (using estimates)</span>
+          </div>
+          
+          <button id="validateApiKey" class="btn btn-small">Test API Key</button>
+        </div>
+        
         <!-- Firebase Sync (Optional) -->
         <div class="setting-group">
           <label class="setting-label">
@@ -159,7 +185,7 @@ Optional: Create a custom path like /usage/your-name for personal tracking</text
       </div>
       
       <div class="settings-footer">
-        <span class="version">v1.7.0</span>
+        <span class="version">v1.8.0</span>
         <a href="https://github.com/NashKellerMedia/claude-usage-pro" target="_blank" class="github-link">GitHub</a>
       </div>
     </div>
