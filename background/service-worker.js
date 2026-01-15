@@ -241,6 +241,10 @@ class FirebaseSync {
       this.syncEnabled = true;
       this.startAutoSync();
       console.log('[Firebase] Initialized');
+      
+      // Try to get shared settings (including API key) from Firebase
+      await this.syncSharedSettingsFromFirebase();
+      
       return true;
     }
 
@@ -364,6 +368,71 @@ class FirebaseSync {
       lastSync: this.lastSync,
       lastSyncTime: this.lastSync ? new Date(this.lastSync).toLocaleString() : 'Never'
     };
+  }
+
+  /**
+   * Sync shared settings (like API key) TO Firebase
+   * This allows other devices to retrieve settings without manual entry
+   */
+  async syncSharedSettingsToFirebase(settings) {
+    if (!this.syncEnabled || !this.firebaseUrl) return { success: false };
+
+    try {
+      const sharedSettings = {
+        anthropicApiKey: settings.anthropicApiKey || null,
+        updatedAt: Date.now(),
+        updatedBy: this.deviceId
+      };
+
+      const response = await fetch(`${this.firebaseUrl}/shared_settings.json`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(sharedSettings)
+      });
+
+      if (response.ok) {
+        console.log('[Firebase] Shared settings synced (API key)');
+        return { success: true };
+      }
+      return { success: false };
+    } catch (e) {
+      console.error('[Firebase] Shared settings sync error:', e.message);
+      return { success: false, error: e.message };
+    }
+  }
+
+  /**
+   * Get shared settings FROM Firebase
+   * Called on init to retrieve API key from other devices
+   */
+  async syncSharedSettingsFromFirebase() {
+    if (!this.syncEnabled || !this.firebaseUrl) return { success: false };
+
+    try {
+      const response = await fetch(`${this.firebaseUrl}/shared_settings.json`);
+      if (!response.ok) return { success: false };
+
+      const sharedSettings = await response.json();
+      if (!sharedSettings) return { success: true, settings: null };
+
+      // If we got an API key from Firebase, save it locally
+      if (sharedSettings.anthropicApiKey) {
+        const currentSettings = await chrome.storage.local.get('settings');
+        const settings = currentSettings.settings || {};
+        
+        // Only update if we don't have one locally
+        if (!settings.anthropicApiKey) {
+          settings.anthropicApiKey = sharedSettings.anthropicApiKey;
+          await chrome.storage.local.set({ settings });
+          console.log('[Firebase] Retrieved API key from shared settings');
+        }
+      }
+
+      return { success: true, settings: sharedSettings };
+    } catch (e) {
+      console.error('[Firebase] Get shared settings error:', e.message);
+      return { success: false, error: e.message };
+    }
   }
 
   disable() {
@@ -705,6 +774,14 @@ async function handleMessage(message, sender) {
         firebaseSync = new FirebaseSync();
         if (updated.firebaseUrl?.trim()) {
           await firebaseSync.initialize(updated.firebaseUrl);
+        }
+      }
+
+      // Sync API key to Firebase if it changed
+      if (updated.anthropicApiKey && updated.anthropicApiKey !== current.anthropicApiKey) {
+        if (firebaseSync?.syncEnabled) {
+          await firebaseSync.syncSharedSettingsToFirebase(updated);
+          console.log('[CUP BG] API key synced to Firebase');
         }
       }
 

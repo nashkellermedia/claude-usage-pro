@@ -8,6 +8,7 @@ class ChatUI {
     this.inputStats = null;
     this.initialized = false;
     this.lastDraftTokens = 0;
+    this.lastAttachmentCount = 0;
     this.typingInterval = null;
     this.currentUsageData = null;
     this.conversationTokens = 0;
@@ -28,12 +29,73 @@ class ChatUI {
         window.CUP.log('ChatUI: Conversation loaded, tokens:', this.conversationTokens);
         this.updateContextUsage();
       });
+      
+      // Clear attachments when message is sent
+      window.APIInterceptor.on('onMessageSent', () => {
+        this.clearTrackedAttachments();
+      });
     }
     
     // Intercept file additions
     this.interceptFileInputs();
     document.addEventListener('paste', (e) => this.handlePaste(e), true);
     document.addEventListener('drop', (e) => this.handleDrop(e), true);
+    
+    // Start watching for attachment changes (additions AND removals)
+    this.startAttachmentWatcher();
+  }
+  
+  /**
+   * Watch for attachment changes every 200ms
+   * This catches when user clicks X to remove an attachment
+   */
+  startAttachmentWatcher() {
+    setInterval(() => {
+      this.syncAttachmentsWithDOM();
+    }, 200);
+    
+    window.CUP.log('ChatUI: Attachment watcher started');
+  }
+  
+  /**
+   * Sync tracked attachments with what's visible in DOM
+   * If visible count decreases, remove tracked attachments
+   */
+  syncAttachmentsWithDOM() {
+    const visibleCount = this.countVisibleAttachments();
+    const trackedCount = this.trackedAttachments.size;
+    
+    // If visible count is less than tracked, some were removed
+    if (visibleCount < trackedCount) {
+      const toRemove = trackedCount - visibleCount;
+      window.CUP.log('ChatUI: Detected', toRemove, 'attachment(s) removed');
+      
+      // Remove oldest tracked attachments (FIFO order)
+      const sorted = Array.from(this.trackedAttachments.entries())
+        .sort((a, b) => a[1].addedAt - b[1].addedAt);
+      
+      for (let i = 0; i < toRemove && i < sorted.length; i++) {
+        const [id, data] = sorted[i];
+        window.CUP.log('ChatUI: Removing tracked:', data.name, '(', data.tokens, 'tokens)');
+        this.trackedAttachments.delete(id);
+      }
+    }
+    
+    // If no visible attachments and tracked ones are older than 2 seconds, clear all
+    if (visibleCount === 0 && trackedCount > 0) {
+      const now = Date.now();
+      let hasRecent = false;
+      for (const [id, data] of this.trackedAttachments) {
+        if (now - data.addedAt < 2000) {
+          hasRecent = true;
+          break;
+        }
+      }
+      if (!hasRecent) {
+        window.CUP.log('ChatUI: No visible attachments, clearing all tracked');
+        this.trackedAttachments.clear();
+      }
+    }
   }
   
   interceptFileInputs() {
@@ -80,8 +142,8 @@ class ChatUI {
   trackFile(file) {
     if (!file) return;
     
-    const id = `${file.name}-${file.size}-${file.type}`;
-    if (this.trackedAttachments.has(id)) return;
+    // Use unique ID with timestamp to avoid duplicates
+    const id = `${file.name}-${file.size}-${file.type}-${Date.now()}`;
     
     let tokens = 1500;
     
@@ -93,16 +155,16 @@ class ChatUI {
         const height = img.naturalHeight;
         URL.revokeObjectURL(url);
         
-        tokens = this.estimateImageTokens(width, height);
-        this.trackedAttachments.set(id, {
-          name: file.name || 'image',
-          size: file.size,
-          type: file.type,
-          tokens: tokens,
-          addedAt: Date.now()
-        });
+        const calculatedTokens = this.estimateImageTokens(width, height);
         
-        window.CUP.log('ChatUI: Image dimensions:', width, 'x', height, '=', tokens, 'tokens');
+        // Update tracked attachment with accurate token count
+        if (this.trackedAttachments.has(id)) {
+          const data = this.trackedAttachments.get(id);
+          data.tokens = calculatedTokens;
+          this.trackedAttachments.set(id, data);
+        }
+        
+        window.CUP.log('ChatUI: Image', width, 'x', height, '=', calculatedTokens, 'tokens');
       };
       img.src = url;
       tokens = this.estimateImageTokensFromSize(file.size);
@@ -176,6 +238,12 @@ class ChatUI {
           </span>
           <span class="cup-stat-divider">│</span>
           <span class="cup-stat-item">
+            <span class="cup-stat-icon">📎</span>
+            <span class="cup-stat-label">Files:</span>
+            <span class="cup-stat-value" id="cup-attachment-count">0</span>
+          </span>
+          <span class="cup-stat-divider">│</span>
+          <span class="cup-stat-item">
             <span class="cup-stat-icon">💬</span>
             <span class="cup-stat-label">Context:</span>
             <span class="cup-stat-value" id="cup-context-pct">--%</span>
@@ -190,11 +258,6 @@ class ChatUI {
           <span class="cup-stat-item">
             <span class="cup-stat-label">Weekly:</span>
             <span class="cup-stat-value" id="cup-weekly-all-pct">--%</span>
-          </span>
-          <span class="cup-stat-divider">│</span>
-          <span class="cup-stat-item">
-            <span class="cup-stat-label">Sonnet:</span>
-            <span class="cup-stat-value" id="cup-weekly-sonnet-pct">--%</span>
           </span>
           <span class="cup-stat-divider">│</span>
           <span class="cup-stat-item">
@@ -229,45 +292,39 @@ class ChatUI {
   
   /**
    * Count attachments visible in the composer area
-   * Uses multiple strategies to find them
    */
   countVisibleAttachments() {
     let count = 0;
+    const composer = document.querySelector('[contenteditable="true"]');
+    if (!composer) return 0;
     
-    // Strategy 1: Look for images with Claude API URLs (uploaded images)
+    const composerRect = composer.getBoundingClientRect();
+    
+    // Strategy 1: Claude API image URLs (uploaded images)
     const apiImages = document.querySelectorAll('img[src*="/api/"][src*="/files/"]');
     for (const img of apiImages) {
-      // Make sure it's not in the message history (check if near contenteditable)
-      const composer = document.querySelector('[contenteditable="true"]');
-      if (composer) {
-        // Check if this image is in the same general area as the composer
-        const composerRect = composer.getBoundingClientRect();
-        const imgRect = img.getBoundingClientRect();
-        
-        // Image should be above or at same level as composer (not way below in history)
-        if (imgRect.bottom > composerRect.top - 200 && imgRect.top < composerRect.bottom + 100) {
-          count++;
-          window.CUP.log('ChatUI: Found API image attachment');
-        }
+      const imgRect = img.getBoundingClientRect();
+      if (imgRect.bottom > composerRect.top - 300 && imgRect.top < composerRect.bottom + 50) {
+        count++;
       }
     }
     
-    // Strategy 2: Look for blob images (during upload)
+    // Strategy 2: Blob images (during upload)
     const blobImages = document.querySelectorAll('img[src^="blob:"]');
-    count += blobImages.length;
+    for (const img of blobImages) {
+      const imgRect = img.getBoundingClientRect();
+      if (imgRect.bottom > composerRect.top - 300 && imgRect.top < composerRect.bottom + 50) {
+        count++;
+      }
+    }
     
-    // Strategy 3: Look for file preview containers with specific data-testid
-    const previews = document.querySelectorAll('[data-testid*="file"], [data-testid*="attachment"], [data-testid*="preview"]');
+    // Strategy 3: File preview containers
+    const previews = document.querySelectorAll('[data-testid*="file"], [data-testid*="attachment"], [data-testid*="preview"], [class*="attachment"], [class*="file-preview"]');
     for (const preview of previews) {
-      const composer = document.querySelector('[contenteditable="true"]');
-      if (composer) {
-        const composerRect = composer.getBoundingClientRect();
-        const previewRect = preview.getBoundingClientRect();
-        if (previewRect.bottom > composerRect.top - 200 && previewRect.top < composerRect.bottom + 100) {
-          // Avoid double counting if we already found an image
-          if (!preview.querySelector('img[src*="/api/"]') && !preview.querySelector('img[src^="blob:"]')) {
-            count++;
-          }
+      const previewRect = preview.getBoundingClientRect();
+      if (previewRect.bottom > composerRect.top - 300 && previewRect.top < composerRect.bottom + 50) {
+        if (!preview.querySelector('img[src*="/api/"]') && !preview.querySelector('img[src^="blob:"]')) {
+          count++;
         }
       }
     }
@@ -278,25 +335,6 @@ class ChatUI {
   getAttachmentTokens() {
     let totalTokens = 0;
     let count = 0;
-    
-    // Check if visible attachments match our tracked count
-    const visibleCount = this.countVisibleAttachments();
-    
-    // If we see no attachments and our tracked ones are old, clear them
-    if (visibleCount === 0 && this.trackedAttachments.size > 0) {
-      const now = Date.now();
-      let allOld = true;
-      for (const [id, data] of this.trackedAttachments) {
-        if (now - data.addedAt < 5000) {
-          allOld = false;
-          break;
-        }
-      }
-      if (allOld) {
-        window.CUP.log('ChatUI: No visible attachments, clearing old tracked ones');
-        this.trackedAttachments.clear();
-      }
-    }
     
     for (const [id, data] of this.trackedAttachments) {
       totalTokens += data.tokens;
@@ -325,8 +363,9 @@ class ChatUI {
         const attachments = this.getAttachmentTokens();
         const totalTokens = textTokens + attachments.tokens;
         
-        if (totalTokens !== this.lastDraftTokens) {
+        if (totalTokens !== this.lastDraftTokens || attachments.count !== this.lastAttachmentCount) {
           this.lastDraftTokens = totalTokens;
+          this.lastAttachmentCount = attachments.count;
           this.updateDraftDisplay(totalTokens, textTokens, attachments.tokens, attachments.count);
         }
       }
@@ -334,157 +373,88 @@ class ChatUI {
   }
   
   updateDraftDisplay(totalTokens, textTokens, attachmentTokens, attachmentCount) {
-    const el = document.getElementById('cup-draft-tokens');
-    if (!el) return;
+    const draftEl = document.getElementById('cup-draft-tokens');
+    const attachEl = document.getElementById('cup-attachment-count');
     
-    if (attachmentTokens > 0) {
-      el.textContent = totalTokens.toLocaleString();
-      el.title = 'Text: ' + textTokens.toLocaleString() + ' + ' + attachmentCount + ' file(s): ~' + attachmentTokens.toLocaleString() + ' tokens';
-    } else {
-      el.textContent = totalTokens.toLocaleString();
-      el.title = 'Estimated tokens in your message';
+    if (draftEl) {
+      draftEl.textContent = totalTokens.toLocaleString();
+      draftEl.title = 'Text: ' + textTokens.toLocaleString() + (attachmentTokens > 0 ? ' + Files: ~' + attachmentTokens.toLocaleString() : '');
+      
+      if (totalTokens >= 32000) {
+        draftEl.style.color = '#ef4444';
+      } else if (totalTokens >= 8000) {
+        draftEl.style.color = '#f59e0b';
+      } else {
+        draftEl.style.color = '';
+      }
     }
     
-    if (totalTokens >= 32000) {
-      el.style.color = '#ef4444';
-    } else if (totalTokens >= 8000) {
-      el.style.color = '#f97316';
-    } else if (totalTokens >= 2000) {
-      el.style.color = '#eab308';
+    if (attachEl) {
+      if (attachmentCount > 0) {
+        attachEl.textContent = attachmentCount + ' (~' + attachmentTokens.toLocaleString() + ' tokens)';
+        attachEl.style.color = '#a855f7';
+      } else {
+        attachEl.textContent = '0';
+        attachEl.style.color = '';
+      }
+    }
+  }
+  
+  updateContextUsage() {
+    const contextEl = document.getElementById('cup-context-pct');
+    const detailEl = document.getElementById('cup-context-detail');
+    
+    if (!contextEl) return;
+    
+    const MAX_CONTEXT = 200000;
+    const totalTokens = this.conversationTokens + this.lastDraftTokens;
+    const percent = Math.round((totalTokens / MAX_CONTEXT) * 100);
+    
+    contextEl.textContent = percent + '%';
+    
+    if (detailEl) {
+      detailEl.textContent = '(' + totalTokens.toLocaleString() + '/' + MAX_CONTEXT.toLocaleString() + ')';
+    }
+    
+    if (percent >= 90) {
+      contextEl.style.color = '#ef4444';
+    } else if (percent >= 70) {
+      contextEl.style.color = '#f59e0b';
     } else {
-      el.style.color = '#a1a1aa';
+      contextEl.style.color = '#22c55e';
     }
   }
   
   updateUsage(usageData) {
-    if (!usageData) return;
     this.currentUsageData = usageData;
     
-    if (usageData.currentSession) {
-      const pct = usageData.currentSession.percent || 0;
-      this.updateElement('cup-session-pct', pct + '%');
-      this.colorize('cup-session-pct', pct);
-      
-      if (usageData.currentSession.resetsIn) {
-        this.updateElement('cup-reset-timer', usageData.currentSession.resetsIn);
-      }
+    // Session
+    const sessionEl = document.getElementById('cup-session-pct');
+    if (sessionEl && usageData.currentSession) {
+      sessionEl.textContent = usageData.currentSession.percent + '%';
+      const pct = usageData.currentSession.percent;
+      if (pct >= 90) sessionEl.style.color = '#ef4444';
+      else if (pct >= 70) sessionEl.style.color = '#f59e0b';
+      else sessionEl.style.color = '#22c55e';
     }
     
-    if (usageData.weeklyAllModels) {
-      const pct = usageData.weeklyAllModels.percent || 0;
-      this.updateElement('cup-weekly-all-pct', pct + '%');
-      this.colorize('cup-weekly-all-pct', pct);
+    // Weekly All
+    const weeklyAllEl = document.getElementById('cup-weekly-all-pct');
+    if (weeklyAllEl && usageData.weeklyAllModels) {
+      weeklyAllEl.textContent = usageData.weeklyAllModels.percent + '%';
+      const pct = usageData.weeklyAllModels.percent;
+      if (pct >= 90) weeklyAllEl.style.color = '#ef4444';
+      else if (pct >= 70) weeklyAllEl.style.color = '#f59e0b';
+      else weeklyAllEl.style.color = '#22c55e';
     }
     
-    if (usageData.weeklySonnet) {
-      const pct = usageData.weeklySonnet.percent || 0;
-      this.updateElement('cup-weekly-sonnet-pct', pct + '%');
-      this.colorize('cup-weekly-sonnet-pct', pct);
+    // Timer
+    const timerEl = document.getElementById('cup-reset-timer');
+    if (timerEl && usageData.currentSession?.resetsIn) {
+      timerEl.textContent = usageData.currentSession.resetsIn;
     }
     
     this.updateContextUsage();
-  }
-  
-  async updateContextUsage() {
-    try {
-      let totalTokens = 0;
-      let breakdown = [];
-      
-      if (this.cachedConversationData) {
-        totalTokens = this.cachedConversationData.totalTokens || 0;
-        
-        if (this.cachedConversationData.projectTokens > 0) {
-          breakdown.push('Project: ' + this.formatTokens(this.cachedConversationData.projectTokens));
-        }
-        if (this.cachedConversationData.fileTokens > 0) {
-          breakdown.push('Files: ' + this.formatTokens(this.cachedConversationData.fileTokens));
-        }
-      }
-      
-      if (totalTokens === 0) {
-        const estimate = await this.estimateContextFromDOM();
-        totalTokens = estimate.tokens;
-        breakdown = estimate.breakdown;
-      }
-      
-      const systemPromptTokens = 5000;
-      totalTokens += systemPromptTokens;
-      
-      const contextLimit = 200000;
-      const percent = Math.min(Math.round((totalTokens / contextLimit) * 100), 100);
-      
-      const pctEl = document.getElementById('cup-context-pct');
-      const detailEl = document.getElementById('cup-context-detail');
-      
-      if (pctEl) {
-        pctEl.textContent = percent + '%';
-        pctEl.title = this.formatTokens(totalTokens) + ' / ' + this.formatTokens(contextLimit) + ' tokens\n' +
-                      'System: ~' + this.formatTokens(systemPromptTokens) + '\n' +
-                      breakdown.join('\n');
-        this.colorize('cup-context-pct', percent);
-      }
-      
-      if (detailEl) {
-        detailEl.textContent = ' (' + this.formatTokens(totalTokens) + ')';
-      }
-      
-    } catch (e) {
-      window.CUP.log('Chat context update error:', e);
-    }
-  }
-  
-  async estimateContextFromDOM() {
-    let totalTokens = 0;
-    const breakdown = [];
-    
-    const messageContainers = document.querySelectorAll('[data-testid*="message"], [class*="Message"]');
-    let messageTokens = 0;
-    
-    for (const container of messageContainers) {
-      const textContent = container.innerText || '';
-      const tokens = window.TokenCounter ? 
-        window.TokenCounter.estimateTokens(textContent) :
-        Math.ceil(textContent.length / 4);
-      messageTokens += tokens;
-    }
-    
-    if (messageTokens > 0) {
-      totalTokens += messageTokens;
-      breakdown.push('Messages: ' + this.formatTokens(messageTokens));
-    }
-    
-    return { tokens: totalTokens, breakdown: breakdown };
-  }
-  
-  formatTokens(num) {
-    if (num >= 1000) {
-      return Math.round(num / 1000) + 'K';
-    }
-    return num.toString();
-  }
-  
-  updateElement(id, value) {
-    const el = document.getElementById(id);
-    if (el) el.textContent = value;
-  }
-  
-  colorize(id, percent) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    
-    if (percent >= 90) {
-      el.style.color = '#ef4444';
-    } else if (percent >= 70) {
-      el.style.color = '#f59e0b';
-    } else {
-      el.style.color = '#22c55e';
-    }
-  }
-  
-  checkAndReinject() {
-    if (!document.getElementById('cup-input-stats')) {
-      this.injectInputStats();
-    }
   }
 }
 
