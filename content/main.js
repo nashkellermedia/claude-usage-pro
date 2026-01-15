@@ -77,14 +77,6 @@
     window.cupVoice.initialize();
   }
   
-  // Context indicator disabled - using sidebar and chat overlay instead
-  // if (window.ContextIndicator) {
-  //   window.CUP.log('Initializing context indicator...');
-  //   window.cupContextIndicator = new ContextIndicator();
-  //   window.cupContextIndicator.initialize();
-  //   document.body.classList.add('cup-context-active');
-  // }
-  
   // Load initial data
   try {
     const response = await chrome.runtime.sendMessage({ type: 'GET_USAGE_DATA' });
@@ -134,14 +126,12 @@
   setInterval(() => {
     if (window.cupSidebar && settings.showSidebar) {
       window.cupSidebar.checkAndReinject();
-      // Update context usage in sidebar
       if (window.cupSidebar.updateContextUsage) {
         window.cupSidebar.updateContextUsage();
       }
     }
     if (window.cupChatUI && settings.showChatOverlay) {
       window.cupChatUI.checkAndReinject();
-      // Update context usage in chat overlay
       if (window.cupChatUI.updateContextUsage) {
         window.cupChatUI.updateContextUsage();
       }
@@ -150,12 +140,10 @@
     if (settings.enableVoice) {
       const voiceBtns = document.querySelectorAll('.cup-voice-btn, #cup-voice-btn');
       if (voiceBtns.length === 0) {
-        // No button exists, inject it
         if (window.cupVoice) {
           window.cupVoice.injectButton();
         }
       } else if (voiceBtns.length > 1) {
-        // Duplicates exist, remove all but first
         window.CUP.log('Removing duplicate voice buttons:', voiceBtns.length);
         for (let i = 1; i < voiceBtns.length; i++) {
           voiceBtns[i].remove();

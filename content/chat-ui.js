@@ -14,8 +14,11 @@ class ChatUI {
     this.conversationTokens = 0;
     this.cachedConversationData = null;
     
-    // Track attachments persistently
+    // Track attachments persistently (backup tracking via events)
     this.trackedAttachments = new Map();
+    
+    // Start attachment watcher for DOM-based detection
+    this.attachmentWatcherInterval = null;
   }
   
   initialize() {
@@ -30,68 +33,222 @@ class ChatUI {
         this.updateContextUsage();
       });
       
-      // Clear attachments when message is sent
+      // Clear attachments when message sent
       window.APIInterceptor.on('onMessageSent', () => {
         this.clearTrackedAttachments();
       });
     }
     
-    // Intercept file additions
+    // Intercept file additions (backup method)
     this.interceptFileInputs();
     document.addEventListener('paste', (e) => this.handlePaste(e), true);
     document.addEventListener('drop', (e) => this.handleDrop(e), true);
     
-    // Start watching for attachment changes (additions AND removals)
+    // Start DOM-based attachment watcher
     this.startAttachmentWatcher();
   }
   
   /**
-   * Watch for attachment changes every 200ms
-   * This catches when user clicks X to remove an attachment
+   * DOM-based attachment watcher - primary detection method
+   * Scans for visible attachments and estimates their tokens
    */
   startAttachmentWatcher() {
-    setInterval(() => {
-      this.syncAttachmentsWithDOM();
-    }, 200);
+    if (this.attachmentWatcherInterval) {
+      clearInterval(this.attachmentWatcherInterval);
+    }
     
     window.CUP.log('ChatUI: Attachment watcher started');
+    
+    this.attachmentWatcherInterval = setInterval(() => {
+      this.syncAttachmentsFromDOM();
+    }, 500);
   }
   
   /**
-   * Sync tracked attachments with what's visible in DOM
-   * If visible count decreases, remove tracked attachments
+   * Synchronize tracked attachments with what's visible in the DOM
    */
-  syncAttachmentsWithDOM() {
-    const visibleCount = this.countVisibleAttachments();
+  syncAttachmentsFromDOM() {
+    const visibleAttachments = this.findVisibleAttachments();
+    const visibleCount = visibleAttachments.length;
     const trackedCount = this.trackedAttachments.size;
     
     window.CUP.log('ChatUI: Sync - visible:', visibleCount, 'tracked:', trackedCount);
     
-    // If visible count is less than tracked, some were removed
-    if (visibleCount < trackedCount) {
-      const toRemove = trackedCount - visibleCount;
-      window.CUP.log('ChatUI: Detected', toRemove, 'attachment(s) removed');
-      
-      // Remove oldest tracked attachments (FIFO order)
-      const sorted = Array.from(this.trackedAttachments.entries())
-        .sort((a, b) => a[1].addedAt - b[1].addedAt);
-      
-      for (let i = 0; i < toRemove && i < sorted.length; i++) {
-        const [id, data] = sorted[i];
-        window.CUP.log('ChatUI: Removing tracked:', data.name, '(', data.tokens, 'tokens)');
-        this.trackedAttachments.delete(id);
+    // If we see attachments in DOM that aren't tracked, add them
+    if (visibleCount > 0) {
+      for (const att of visibleAttachments) {
+        const id = att.id;
+        if (!this.trackedAttachments.has(id)) {
+          this.trackedAttachments.set(id, {
+            name: att.name || 'attachment',
+            type: att.type,
+            tokens: att.tokens,
+            addedAt: Date.now(),
+            source: 'dom'
+          });
+          window.CUP.log('ChatUI: Auto-tracked from DOM:', att.name, att.tokens, 'tokens');
+        }
       }
       
-      // Force update display
-      this.lastDraftTokens = -1;
+      // Remove tracked items that are no longer visible
+      const visibleIds = new Set(visibleAttachments.map(a => a.id));
+      for (const [id, data] of this.trackedAttachments) {
+        if (!visibleIds.has(id)) {
+          window.CUP.log('ChatUI: Removing tracked:', data.name, '(', data.tokens, 'tokens)');
+          this.trackedAttachments.delete(id);
+        }
+      }
+    } else if (trackedCount > 0) {
+      // No visible attachments but we have tracked ones
+      // Check if they're stale (added more than 2 seconds ago)
+      const now = Date.now();
+      let hasStale = false;
+      for (const [id, data] of this.trackedAttachments) {
+        if (now - data.addedAt > 2000) {
+          hasStale = true;
+          break;
+        }
+      }
+      if (hasStale) {
+        window.CUP.log('ChatUI: Detected attachment removal, clearing tracked');
+        this.trackedAttachments.clear();
+      }
+    }
+  }
+  
+  /**
+   * Find all visible attachments in the composer area
+   * Returns array of { id, name, type, tokens, element }
+   */
+  findVisibleAttachments() {
+    const attachments = [];
+    const composer = document.querySelector('[contenteditable="true"]');
+    
+    if (!composer) return attachments;
+    
+    const composerRect = composer.getBoundingClientRect();
+    
+    // Helper to check if element is near composer
+    const isNearComposer = (el) => {
+      const rect = el.getBoundingClientRect();
+      // Attachment previews appear above the composer input
+      return rect.bottom > composerRect.top - 300 && 
+             rect.top < composerRect.bottom + 50 &&
+             rect.width > 20 && rect.height > 20;
+    };
+    
+    // Strategy 1: Find images with Claude API URLs (uploaded images)
+    const apiImages = document.querySelectorAll('img[src*="/api/"][src*="/files/"]');
+    for (const img of apiImages) {
+      if (isNearComposer(img)) {
+        const tokens = this.estimateImageTokens(img.naturalWidth || img.width, img.naturalHeight || img.height);
+        const id = `api-img-${img.src.split('/').pop()?.substring(0, 20) || Date.now()}`;
+        attachments.push({
+          id,
+          name: img.alt || 'uploaded image',
+          type: 'image',
+          tokens,
+          element: img
+        });
+        window.CUP.log('ChatUI: Found API image:', img.naturalWidth, 'x', img.naturalHeight, '=', tokens, 'tokens');
+      }
     }
     
-    // If no visible attachments at all, clear everything after a short delay
-    if (visibleCount === 0 && trackedCount > 0) {
-      window.CUP.log('ChatUI: No visible attachments, clearing all tracked');
-      this.trackedAttachments.clear();
-      this.lastDraftTokens = -1;
+    // Strategy 2: Find blob images (during/after upload)
+    const blobImages = document.querySelectorAll('img[src^="blob:"]');
+    for (const img of blobImages) {
+      if (isNearComposer(img)) {
+        const tokens = this.estimateImageTokens(img.naturalWidth || img.width, img.naturalHeight || img.height);
+        const id = `blob-${img.src.substring(5, 30)}`;
+        attachments.push({
+          id,
+          name: 'pasted image',
+          type: 'image',
+          tokens,
+          element: img
+        });
+        window.CUP.log('ChatUI: Found blob image:', img.naturalWidth, 'x', img.naturalHeight, '=', tokens, 'tokens');
+      }
     }
+    
+    // Strategy 3: Find data URL images
+    const dataImages = document.querySelectorAll('img[src^="data:"]');
+    for (const img of dataImages) {
+      if (isNearComposer(img)) {
+        const tokens = this.estimateImageTokens(img.naturalWidth || img.width, img.naturalHeight || img.height);
+        const id = `data-img-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+        // Avoid duplicates
+        if (!attachments.some(a => a.element === img)) {
+          attachments.push({
+            id,
+            name: 'embedded image',
+            type: 'image',
+            tokens,
+            element: img
+          });
+        }
+      }
+    }
+    
+    // Strategy 4: Look for file preview containers
+    const previewContainers = document.querySelectorAll('[data-testid*="file"], [data-testid*="attachment"], [class*="preview"], [class*="Preview"]');
+    for (const container of previewContainers) {
+      if (!isNearComposer(container)) continue;
+      
+      // Skip if we already found an image inside this container
+      const hasImage = container.querySelector('img');
+      if (hasImage && attachments.some(a => a.element === hasImage)) continue;
+      
+      // Look for file info (non-image files like PDFs, docs)
+      const textContent = container.textContent || '';
+      const fileName = textContent.trim().substring(0, 50);
+      
+      if (fileName && !fileName.includes('Add content') && fileName.length > 2) {
+        const id = `file-${fileName.replace(/\s+/g, '-').substring(0, 30)}`;
+        
+        // Estimate tokens based on file type
+        let tokens = 1500;
+        if (fileName.match(/\.pdf$/i)) {
+          tokens = 3000; // Rough estimate for PDF
+        } else if (fileName.match(/\.(txt|md|json|csv)$/i)) {
+          tokens = 1000;
+        } else if (fileName.match(/\.(doc|docx)$/i)) {
+          tokens = 2000;
+        }
+        
+        if (!attachments.some(a => a.id === id)) {
+          attachments.push({
+            id,
+            name: fileName,
+            type: 'file',
+            tokens,
+            element: container
+          });
+          window.CUP.log('ChatUI: Found file preview:', fileName);
+        }
+      }
+    }
+    
+    // Strategy 5: Look for thumbnail-style previews (small images in attachment bar)
+    const thumbnails = document.querySelectorAll('[class*="thumbnail"], [class*="Thumbnail"]');
+    for (const thumb of thumbnails) {
+      if (!isNearComposer(thumb)) continue;
+      
+      const img = thumb.querySelector('img');
+      if (img && !attachments.some(a => a.element === img)) {
+        const tokens = this.estimateImageTokens(img.naturalWidth || 200, img.naturalHeight || 200);
+        const id = `thumb-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+        attachments.push({
+          id,
+          name: 'image attachment',
+          type: 'image',
+          tokens,
+          element: img
+        });
+      }
+    }
+    
+    return attachments;
   }
   
   interceptFileInputs() {
@@ -104,12 +261,6 @@ class ChatUI {
           for (const file of input.files) {
             self.trackFile(file);
           }
-          const checkCleared = setInterval(() => {
-            if (!input.files || input.files.length === 0) {
-              clearInterval(checkCleared);
-              input._cupTracked = false;
-            }
-          }, 100);
         }
       }
     }, 200);
@@ -138,8 +289,8 @@ class ChatUI {
   trackFile(file) {
     if (!file) return;
     
-    // Use unique ID with timestamp to avoid duplicates
-    const id = `${file.name}-${file.size}-${file.type}-${Date.now()}`;
+    const id = `file-${file.name}-${file.size}`;
+    if (this.trackedAttachments.has(id)) return;
     
     let tokens = 1500;
     
@@ -151,18 +302,20 @@ class ChatUI {
         const height = img.naturalHeight;
         URL.revokeObjectURL(url);
         
-        const calculatedTokens = this.estimateImageTokens(width, height);
+        tokens = this.estimateImageTokens(width, height);
+        this.trackedAttachments.set(id, {
+          name: file.name || 'image',
+          type: file.type,
+          tokens: tokens,
+          addedAt: Date.now(),
+          source: 'event'
+        });
         
-        // Update tracked attachment with accurate token count
-        if (this.trackedAttachments.has(id)) {
-          const data = this.trackedAttachments.get(id);
-          data.tokens = calculatedTokens;
-          this.trackedAttachments.set(id, data);
-        }
-        
-        window.CUP.log('ChatUI: Image', width, 'x', height, '=', calculatedTokens, 'tokens');
+        window.CUP.log('ChatUI: Tracked file:', file.name, width, 'x', height, '=', tokens, 'tokens');
       };
       img.src = url;
+      
+      // Initial estimate while loading
       tokens = this.estimateImageTokensFromSize(file.size);
     } else if (file.type === 'application/pdf') {
       const pages = Math.max(1, Math.ceil(file.size / 100000));
@@ -175,10 +328,10 @@ class ChatUI {
     
     this.trackedAttachments.set(id, {
       name: file.name || 'file',
-      size: file.size,
       type: file.type,
       tokens: tokens,
-      addedAt: Date.now()
+      addedAt: Date.now(),
+      source: 'event'
     });
     
     window.CUP.log('ChatUI: Tracked file:', file.name, tokens, 'tokens');
@@ -190,7 +343,10 @@ class ChatUI {
   }
   
   estimateImageTokens(width, height) {
-    if (!width || !height) return 1500;
+    if (!width || !height || width < 10 || height < 10) {
+      // Default for unknown dimensions
+      return 1500;
+    }
     
     const MAX_DIM = 1568;
     let w = width;
@@ -206,7 +362,9 @@ class ChatUI {
     const tilesX = Math.ceil(w / TILE_SIZE);
     const tilesY = Math.ceil(h / TILE_SIZE);
     
-    return tilesX * tilesY * 765;
+    const tokens = tilesX * tilesY * 765;
+    window.CUP.log('ChatUI: Image', width, 'x', height, '=', tokens, 'tokens');
+    return tokens;
   }
   
   async injectUI() {
@@ -236,7 +394,7 @@ class ChatUI {
           <span class="cup-stat-item">
             <span class="cup-stat-icon">📎</span>
             <span class="cup-stat-label">Files:</span>
-            <span class="cup-stat-value" id="cup-attachment-count">0</span>
+            <span class="cup-stat-value" id="cup-files-count">0</span>
           </span>
           <span class="cup-stat-divider">│</span>
           <span class="cup-stat-item">
@@ -284,48 +442,6 @@ class ChatUI {
     }
     
     window.CUP.log('ChatUI: Could not inject input stats');
-  }
-  
-  /**
-   * Count attachments visible in the composer area
-   */
-  countVisibleAttachments() {
-    // Find the composer/input form - this is the key element
-    const composer = document.querySelector('[contenteditable="true"]');
-    if (!composer) return 0;
-    
-    // Find the form or container that holds the composer
-    // Claude's composer is typically in a form element
-    const form = composer.closest('form') || composer.closest('[role="presentation"]') || composer.closest('div[class*="composer"]');
-    if (!form) {
-      // Fallback: use parent containers
-      let container = composer.parentElement;
-      for (let i = 0; i < 3 && container; i++) {
-        container = container.parentElement;
-      }
-      if (!container) return 0;
-      
-      // Count images only in this container that are NOT in message bubbles
-      const images = container.querySelectorAll('img[src*="/api/"][src*="/files/"], img[src^="blob:"]');
-      let count = 0;
-      for (const img of images) {
-        // Check if this image is in the composer area (not in chat history)
-        // Chat history images are typically in elements with specific roles or deeper nesting
-        const isInMessageBubble = img.closest('[data-testid*="message"]') || 
-                                   img.closest('[class*="message"]') ||
-                                   img.closest('[role="article"]');
-        if (!isInMessageBubble) {
-          count++;
-        }
-      }
-      window.CUP.log('ChatUI: countVisibleAttachments (fallback) =', count);
-      return count;
-    }
-    
-    // Count images within the form/composer area
-    const images = form.querySelectorAll('img[src*="/api/"][src*="/files/"], img[src^="blob:"]');
-    window.CUP.log('ChatUI: countVisibleAttachments =', images.length);
-    return images.length;
   }
   
   getAttachmentTokens() {
@@ -378,54 +494,39 @@ class ChatUI {
   
   updateDraftDisplay(totalTokens, textTokens, attachmentTokens, attachmentCount) {
     const draftEl = document.getElementById('cup-draft-tokens');
-    const attachEl = document.getElementById('cup-attachment-count');
+    const filesEl = document.getElementById('cup-files-count');
     
     if (draftEl) {
       draftEl.textContent = totalTokens.toLocaleString();
-      draftEl.title = 'Text: ' + textTokens.toLocaleString() + (attachmentTokens > 0 ? ' + Files: ~' + attachmentTokens.toLocaleString() : '');
+      
+      if (attachmentTokens > 0) {
+        draftEl.title = 'Text: ' + textTokens.toLocaleString() + ' + Files: ~' + attachmentTokens.toLocaleString() + ' tokens';
+      } else {
+        draftEl.title = 'Estimated tokens in your message';
+      }
       
       if (totalTokens >= 32000) {
         draftEl.style.color = '#ef4444';
       } else if (totalTokens >= 8000) {
-        draftEl.style.color = '#f59e0b';
+        draftEl.style.color = '#f97316';
+      } else if (totalTokens >= 2000) {
+        draftEl.style.color = '#eab308';
       } else {
-        draftEl.style.color = '';
+        draftEl.style.color = '#a1a1aa';
       }
     }
     
-    if (attachEl) {
+    if (filesEl) {
+      filesEl.textContent = attachmentCount;
+      filesEl.title = attachmentCount > 0 
+        ? `${attachmentCount} file(s) attached (~${attachmentTokens.toLocaleString()} tokens)`
+        : 'No files attached';
+      
       if (attachmentCount > 0) {
-        attachEl.textContent = attachmentCount + ' (~' + attachmentTokens.toLocaleString() + ' tokens)';
-        attachEl.style.color = '#a855f7';
+        filesEl.style.color = '#60a5fa';
       } else {
-        attachEl.textContent = '0';
-        attachEl.style.color = '';
+        filesEl.style.color = '#a1a1aa';
       }
-    }
-  }
-  
-  updateContextUsage() {
-    const contextEl = document.getElementById('cup-context-pct');
-    const detailEl = document.getElementById('cup-context-detail');
-    
-    if (!contextEl) return;
-    
-    const MAX_CONTEXT = 200000;
-    const totalTokens = this.conversationTokens + this.lastDraftTokens;
-    const percent = Math.round((totalTokens / MAX_CONTEXT) * 100);
-    
-    contextEl.textContent = percent + '%';
-    
-    if (detailEl) {
-      detailEl.textContent = '(' + totalTokens.toLocaleString() + '/' + MAX_CONTEXT.toLocaleString() + ')';
-    }
-    
-    if (percent >= 90) {
-      contextEl.style.color = '#ef4444';
-    } else if (percent >= 70) {
-      contextEl.style.color = '#f59e0b';
-    } else {
-      contextEl.style.color = '#22c55e';
     }
   }
   
@@ -450,12 +551,6 @@ class ChatUI {
       if (pct >= 90) weeklyAllEl.style.color = '#ef4444';
       else if (pct >= 70) weeklyAllEl.style.color = '#f59e0b';
       else weeklyAllEl.style.color = '#22c55e';
-    }
-    
-    // Timer
-    const timerEl = document.getElementById('cup-reset-timer');
-    if (timerEl && usageData.currentSession?.resetsIn) {
-      timerEl.textContent = usageData.currentSession.resetsIn;
     }
     
     this.updateContextUsage();
