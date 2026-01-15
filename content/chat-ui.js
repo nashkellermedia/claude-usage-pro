@@ -355,8 +355,16 @@ class ChatUI {
     this.typingInterval = setInterval(() => {
       const input = document.querySelector('[contenteditable="true"]');
       if (input) {
-        const text = input.innerText || '';
-        const textTokens = window.TokenCounter ? 
+        // Get text and trim whitespace, also filter out placeholder text
+        let text = input.innerText || '';
+        text = text.trim();
+        
+        // Ignore common placeholder patterns
+        if (text.match(/^(Reply to Claude|Type a message|Ask Claude|How can I help|Message Claude)/i)) {
+          text = '';
+        }
+        
+        const textTokens = text.length > 0 && window.TokenCounter ? 
           window.TokenCounter.estimateTokens(text) : 
           Math.ceil(text.length / 4);
         
