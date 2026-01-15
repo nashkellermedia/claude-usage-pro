@@ -361,6 +361,12 @@ async function loadAnalytics(days = 30) {
 }
 
 function displayAnalytics(summary) {
+  // Safety check for missing data
+  if (!summary || !summary.averageUsage) {
+    els.analyticsSummary.innerHTML = '<p>No analytics data available yet. Use Claude to generate usage data.</p>';
+    return;
+  }
+  
   const html = `
     <div class="analytics-card">
       <h3>📊 ${summary.period}</h3>
@@ -371,11 +377,11 @@ function displayAnalytics(summary) {
       <h4>Average Usage</h4>
       <div class="analytics-stat">
         <span class="label">Session:</span>
-        <span class="value">${summary.averageUsage.session}%</span>
+        <span class="value">${summary.averageUsage.session || 0}%</span>
       </div>
       <div class="analytics-stat">
         <span class="label">Weekly (All):</span>
-        <span class="value">${summary.averageUsage.weeklyAll}%</span>
+        <span class="value">${summary.averageUsage.weeklyAll || 0}%</span>
       </div>
       <div class="analytics-stat">
         <span class="label">Weekly (Sonnet):</span>
