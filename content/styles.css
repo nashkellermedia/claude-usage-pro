@@ -1,20 +1,22 @@
 /**
  * Claude Usage Pro - Content Styles
+ * Colors matched to Claude's dark theme
  */
 
 :root {
-  --cup-bg: #1a1a2e;
-  --cup-bg-secondary: #25253a;
+  --cup-bg: #2b2b2b;
+  --cup-bg-secondary: #353535;
+  --cup-bg-tertiary: #404040;
   --cup-text: #e0e0e0;
   --cup-text-muted: #888;
   --cup-accent: #6b8afd;
   --cup-success: #22c55e;
   --cup-warning: #f59e0b;
   --cup-danger: #ef4444;
-  --cup-border: #3a3a5a;
+  --cup-border: #454545;
 }
 
-/* Sidebar Widget */
+/* ========== SIDEBAR WIDGET ========== */
 #cup-sidebar-widget {
   padding: 12px;
   margin-bottom: 8px;
@@ -132,15 +134,15 @@
 }
 
 .cup-badge-opus {
-  background: linear-gradient(135deg, #f59e0b, #ef4444);
+  background: linear-gradient(135deg, #f59e0b, #ef4444) !important;
 }
 
 .cup-badge-haiku {
-  background: linear-gradient(135deg, #22c55e, #10b981);
+  background: linear-gradient(135deg, #22c55e, #10b981) !important;
 }
 
 .cup-badge-sonnet {
-  background: var(--cup-accent);
+  background: var(--cup-accent) !important;
 }
 
 .cup-usage-link {
@@ -167,7 +169,7 @@
   width: 220px;
 }
 
-/* Chat UI - Top Bar */
+/* ========== TOP BAR ========== */
 #cup-top-bar {
   position: fixed;
   top: 0;
@@ -178,38 +180,60 @@
   border-top: none;
   border-radius: 0 0 10px 10px;
   padding: 6px 16px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
   z-index: 9998;
   font-size: 12px;
   color: var(--cup-text);
 }
 
-.cup-top-stat {
+#cup-top-bar .cup-top-bar-inner {
   display: flex;
+  flex-direction: row;
   align-items: center;
-  gap: 6px;
+  gap: 16px;
+  white-space: nowrap;
 }
 
-.cup-top-label {
+#cup-top-bar .cup-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+#cup-top-bar .cup-icon {
+  font-size: 12px;
+}
+
+#cup-top-bar .cup-label {
+  color: var(--cup-text-muted);
+  font-size: 11px;
+}
+
+#cup-top-bar .cup-value {
+  font-weight: 600;
+  color: var(--cup-text);
+}
+
+#cup-top-bar .cup-unit {
+  color: var(--cup-text-muted);
+  font-size: 10px;
+}
+
+#cup-top-bar .cup-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--cup-accent);
+  color: white;
+}
+
+#cup-top-bar .cup-multiplier {
+  font-size: 10px;
   color: var(--cup-text-muted);
 }
 
-.cup-top-value {
-  font-weight: 600;
-  color: var(--cup-success);
-}
-
-.cup-top-value.warning {
-  color: var(--cup-warning);
-}
-
-.cup-top-value.danger {
-  color: var(--cup-danger);
-}
-
-/* Chat UI - Input Stats */
+/* ========== INPUT STATS (Bottom Bar) ========== */
 #cup-input-stats {
   position: fixed;
   bottom: 0;
@@ -220,29 +244,73 @@
   border-bottom: none;
   border-radius: 10px 10px 0 0;
   padding: 6px 16px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
   z-index: 9998;
   font-size: 12px;
   color: var(--cup-text);
 }
 
-.cup-input-stat {
+#cup-input-stats .cup-input-stats-inner {
   display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 16px;
+  white-space: nowrap;
+}
+
+#cup-input-stats .cup-input-stat {
+  display: inline-flex;
   align-items: center;
   gap: 4px;
+  white-space: nowrap;
 }
 
-.cup-input-icon {
-  font-size: 14px;
+#cup-input-stats .cup-input-icon {
+  font-size: 12px;
 }
 
-.cup-input-value {
-  font-weight: 500;
+#cup-input-stats .cup-input-label {
+  color: var(--cup-text-muted);
+  font-size: 11px;
 }
 
-/* Voice Input Button */
+#cup-input-stats .cup-input-value {
+  font-weight: 600;
+  color: var(--cup-text);
+}
+
+#cup-input-stats .cup-input-unit {
+  color: var(--cup-text-muted);
+  font-size: 10px;
+}
+
+#cup-input-stats .cup-input-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#cup-input-stats .cup-input-progress-bg {
+  width: 60px;
+  height: 4px;
+  background: var(--cup-bg-tertiary);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+#cup-input-stats .cup-input-progress-bar {
+  height: 100%;
+  background: var(--cup-accent);
+  border-radius: 2px;
+  transition: width 0.3s;
+}
+
+#cup-input-stats .cup-input-percent {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--cup-success);
+}
+
+/* ========== VOICE INPUT ========== */
 .cup-voice-btn {
   background: transparent;
   border: none;
@@ -269,7 +337,7 @@
   50% { transform: scale(1.1); }
 }
 
-/* Hide elements based on settings */
+/* ========== UTILITY ========== */
 #cup-sidebar-widget.cup-hidden,
 #cup-top-bar.cup-hidden,
 #cup-input-stats.cup-hidden {
