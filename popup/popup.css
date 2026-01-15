@@ -177,6 +177,28 @@ body {
   transition: background 0.15s;
 }
 
+/* Tracking Status */
+.tracking-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  margin-top: 8px;
+  background: var(--bg-secondary);
+  border-radius: 6px;
+  font-size: 11px;
+}
+
+.tracking-indicator {
+  font-size: 8px;
+  color: #888;
+}
+
+.tracking-text {
+  color: var(--text-secondary);
+  flex: 1;
+}
+
 .usage-link:hover {
   background: var(--bg-tertiary);
 }

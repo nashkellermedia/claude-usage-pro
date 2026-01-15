@@ -31,6 +31,14 @@ class UsageScraper {
   async scrapeUsage() {
     window.CUP.log('UsageScraper: Starting scrape...');
     
+    // First, try to fetch from API endpoints (most accurate)
+    const apiData = await this.tryFetchFromAPI();
+    if (apiData) {
+      this.lastScrapedData = apiData;
+      return apiData;
+    }
+    
+    // Fall back to page scraping if on usage page
     if (window.location.pathname.includes('/settings/usage')) {
       const data = this.scrapeFromMainContent();
       if (data) {
@@ -39,7 +47,7 @@ class UsageScraper {
       }
     }
     
-    // Background fetch
+    // Background fetch as last resort
     try {
       const response = await fetch('https://claude.ai/settings/usage', {
         credentials: 'include',
@@ -66,6 +74,142 @@ class UsageScraper {
     }
     
     return this.lastScrapedData;
+  }
+  
+  /**
+   * Try to fetch usage data directly from Claude's API endpoints
+   * This is more reliable than scraping HTML
+   */
+  async tryFetchFromAPI() {
+    const endpoints = [
+      'https://claude.ai/api/usage',
+      'https://claude.ai/api/account/usage',
+      'https://claude.ai/api/billing/usage',
+      'https://claude.ai/api/rate_limit_status',
+      'https://claude.ai/api/settings'
+    ];
+    
+    for (const endpoint of endpoints) {
+      try {
+        const response = await fetch(endpoint, {
+          method: 'GET',
+          credentials: 'include',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          const parsed = this.parseAPIResponse(data, endpoint);
+          if (parsed) {
+            window.CUP.log('UsageScraper: Got data from API endpoint:', endpoint);
+            return parsed;
+          }
+        }
+      } catch (e) {
+        // Endpoint didn't work, try next
+      }
+    }
+    
+    return null;
+  }
+  
+  /**
+   * Parse API response to extract usage data
+   */
+  parseAPIResponse(data, endpoint) {
+    const result = {
+      currentSession: null,
+      weeklyAllModels: null,
+      weeklySonnet: null,
+      source: 'api-fetch',
+      endpoint: endpoint,
+      scrapedAt: Date.now()
+    };
+    
+    // Try various possible response formats
+    
+    // Format: Direct percent fields
+    if (data.session_percent !== undefined || data.sessionPercent !== undefined) {
+      result.currentSession = {
+        percent: data.session_percent || data.sessionPercent || 0,
+        resetsIn: data.session_resets_in || data.sessionResetsIn || '--'
+      };
+    }
+    
+    if (data.weekly_percent !== undefined || data.weeklyPercent !== undefined) {
+      result.weeklyAllModels = {
+        percent: data.weekly_percent || data.weeklyPercent || 0,
+        resetsAt: data.weekly_resets_at || data.weeklyResetsAt || '--'
+      };
+    }
+    
+    // Format: Nested usage object
+    if (data.usage) {
+      if (data.usage.session) {
+        result.currentSession = {
+          percent: data.usage.session.percent || Math.round((data.usage.session.used / data.usage.session.limit) * 100) || 0,
+          resetsIn: data.usage.session.resets_in || '--'
+        };
+      }
+      if (data.usage.weekly) {
+        result.weeklyAllModels = {
+          percent: data.usage.weekly.percent || Math.round((data.usage.weekly.used / data.usage.weekly.limit) * 100) || 0,
+          resetsAt: data.usage.weekly.resets_at || '--'
+        };
+      }
+    }
+    
+    // Format: Rate limit style
+    if (data.rate_limit || data.rateLimit) {
+      const rl = data.rate_limit || data.rateLimit;
+      const used = rl.messages_used || rl.messagesUsed || rl.used || 0;
+      const limit = rl.message_limit || rl.messageLimit || rl.limit || 100;
+      const percent = limit > 0 ? Math.round((used / limit) * 100) : 0;
+      
+      result.currentSession = {
+        percent: percent,
+        resetsIn: rl.resets_in || rl.resetsIn || '--'
+      };
+    }
+    
+    // Format: Message limits
+    if (data.message_limit !== undefined || data.messageLimit !== undefined) {
+      const limit = data.message_limit || data.messageLimit;
+      const used = data.messages_used || data.messagesUsed || 0;
+      if (limit > 0) {
+        result.currentSession = {
+          percent: Math.round((used / limit) * 100),
+          resetsIn: data.resets_in || '--'
+        };
+      }
+    }
+    
+    // Format: Plan limits (nested)
+    if (data.plan_limits || data.planLimits) {
+      const pl = data.plan_limits || data.planLimits;
+      if (pl.hourly) {
+        result.currentSession = {
+          percent: pl.hourly.percent || Math.round((pl.hourly.used / pl.hourly.limit) * 100),
+          resetsIn: pl.hourly.resets_in || '--'
+        };
+      }
+      if (pl.weekly) {
+        result.weeklyAllModels = {
+          percent: pl.weekly.percent || Math.round((pl.weekly.used / pl.weekly.limit) * 100),
+          resetsAt: pl.weekly.resets_at || '--'
+        };
+      }
+    }
+    
+    // Check if we got any data
+    if (result.currentSession || result.weeklyAllModels) {
+      return result;
+    }
+    
+    return null;
   }
   
   /**

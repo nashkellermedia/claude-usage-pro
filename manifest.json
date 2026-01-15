@@ -1,12 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Claude Usage Pro",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "description": "Track and visualize your Claude.ai usage with real-time stats, accurate token counting, voice input, and cross-device sync",
   "permissions": [
     "storage",
     "alarms",
-    "tabs"
+    "tabs",
+    "cookies",
+    "webRequest"
   ],
   "host_permissions": [
     "https://claude.ai/*",

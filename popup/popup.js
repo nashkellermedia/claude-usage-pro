@@ -21,6 +21,11 @@ const els = {
   weeklySonnetBar: document.getElementById('weeklySonnetBar'),
   weeklySonnetMeta: document.getElementById('weeklySonnetMeta'),
   
+  // Tracking Status
+  trackingStatus: document.getElementById('trackingStatus'),
+  trackingIndicator: document.getElementById('trackingIndicator'),
+  trackingText: document.getElementById('trackingText'),
+  
   // Settings
   badgeDisplay: document.getElementById('badgeDisplay'),
   showSidebar: document.getElementById('showSidebar'),
@@ -103,9 +108,60 @@ async function loadUsageData() {
     if (response?.usageData) {
       updateUI(response.usageData);
     }
+    
+    // Also load hybrid tracker status
+    await loadTrackingStatus();
   } catch (e) {
     console.error('[CUP Popup] Load error:', e);
   }
+}
+
+async function loadTrackingStatus() {
+  try {
+    const hybridStatus = await chrome.runtime.sendMessage({ type: 'GET_HYBRID_STATUS' });
+    const firebaseStatus = await chrome.runtime.sendMessage({ type: 'GET_FIREBASE_STATUS' });
+    
+    updateTrackingStatus(hybridStatus, firebaseStatus);
+  } catch (e) {
+    console.error('[CUP Popup] Status error:', e);
+  }
+}
+
+function updateTrackingStatus(hybrid, firebase) {
+  if (!els.trackingIndicator || !els.trackingText) return;
+  
+  let statusText = '';
+  let statusColor = '#888'; // gray
+  
+  if (!hybrid || !hybrid.initialized) {
+    statusText = 'Initializing...';
+    statusColor = '#888';
+  } else if (!hybrid.hasBaseline) {
+    statusText = 'No baseline - visit Usage page to sync';
+    statusColor = '#f59e0b'; // yellow
+  } else if (hybrid.isStale) {
+    const ageMin = Math.floor((hybrid.baselineAge || 0) / 60000);
+    statusText = `Baseline stale (${ageMin}m old) - using estimates`;
+    statusColor = '#f59e0b'; // yellow
+  } else {
+    const ageMin = Math.floor((hybrid.baselineAge || 0) / 60000);
+    const deltaTokens = hybrid.deltaTokens || 0;
+    
+    if (deltaTokens > 0) {
+      statusText = `Tracking: +${deltaTokens.toLocaleString()} tokens since sync (${ageMin}m ago)`;
+    } else {
+      statusText = `Synced ${ageMin}m ago`;
+    }
+    statusColor = '#22c55e'; // green
+  }
+  
+  // Add Firebase status
+  if (firebase?.enabled) {
+    statusText += ' • Firebase: ✓';
+  }
+  
+  els.trackingIndicator.style.color = statusColor;
+  els.trackingText.textContent = statusText;
 }
 
 async function triggerRefresh() {

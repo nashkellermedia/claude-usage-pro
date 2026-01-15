@@ -174,6 +174,15 @@ class APIInterceptorClass {
         });
       }
       
+      // Send token delta to background for hybrid tracking
+      try {
+        chrome.runtime.sendMessage({
+          type: 'TOKEN_DELTA',
+          inputTokens: tokens,
+          outputTokens: 0
+        }).catch(() => {});
+      } catch (e) {}
+      
     } catch (error) {
       window.CUP.logError('Error processing outgoing request:', error);
     }
@@ -328,6 +337,15 @@ class APIInterceptorClass {
           totalTokens: textTokens + thinkingTokens
         });
       }
+      
+      // Send token delta to background for hybrid tracking
+      try {
+        chrome.runtime.sendMessage({
+          type: 'TOKEN_DELTA',
+          inputTokens: 0,  // Input tokens already tracked in outgoing
+          outputTokens: textTokens + thinkingTokens
+        }).catch(() => {});
+      } catch (e) {}
       
     } catch (error) {
       window.CUP.logError('Error processing streaming response:', error);
