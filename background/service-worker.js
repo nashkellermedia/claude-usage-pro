@@ -62,8 +62,10 @@ class FirebaseSync {
    */
   async testConnection() {
     try {
-      const response = await fetch(`${this.firebaseUrl}/test.json`);
-      return response.ok;
+      // Test by reading from /usage path (which is allowed by our rules)
+      const response = await fetch(`${this.firebaseUrl}/usage.json`);
+      // Any response (even empty) means connection works
+      return response.ok || response.status === 200;
     } catch (e) {
       console.error('[Firebase] Connection error:', e.message);
       return false;
