@@ -1,221 +1,197 @@
 /**
- * Claude Usage Pro - Sidebar UI
- * 
- * DOM Structure (from analysis):
- * Level 0: H3 "Starred"
- * Level 1: DIV.flex.flex-col.mb-4 (2 children: H3, UL)
- * Level 2: DIV.px-2.mt-4 (2 children: DIV.flex, DIV.flex) <-- Starred section container
- * Level 3: DIV.opacity-100
- * 
- * We need to insert BEFORE the DIV.px-2.mt-4 at Level 2
+ * Claude Usage Pro - Sidebar Widget
+ * Collapsible usage display in Claude's sidebar
  */
 
 class SidebarUI {
   constructor() {
-    this.container = null;
-    this.isExpanded = true;
-    this.initialized = false;
+    this.widget = null;
+    this.expanded = true;
   }
   
   async initialize() {
     window.CUP.log('SidebarUI: Initializing...');
-    
-    await this.waitForSidebar();
-    this.buildUI();
-    await this.injectIntoSidebar();
-    
-    this.initialized = true;
+    await this.injectWidget();
     window.CUP.log('SidebarUI: Initialized');
   }
   
-  async waitForSidebar() {
-    for (let i = 0; i < 30; i++) {
-      const starred = this.findStarredH3();
-      if (starred) return true;
-      await new Promise(r => setTimeout(r, 200));
-    }
-    return false;
-  }
-  
-  findStarredH3() {
-    const h3s = document.querySelectorAll('h3');
-    for (const h3 of h3s) {
-      if (h3.textContent?.trim() === 'Starred') {
-        return h3;
-      }
-    }
-    return null;
-  }
-  
-  buildUI() {
-    // Match Claude's sidebar structure: DIV.px-2.mt-4 containing our content
-    this.container = document.createElement('div');
-    this.container.id = 'cup-sidebar-widget';
-    this.container.className = 'px-2 mt-4'; // Match Claude's styling
-    this.container.innerHTML = `
-      <div class="cup-widget-inner">
-        <div class="cup-widget-header" id="cup-widget-toggle">
-          <span class="cup-widget-icon">📊</span>
-          <span class="cup-widget-title">Usage</span>
-          <span class="cup-widget-expand" id="cup-expand-icon">▲</span>
-        </div>
+  async injectWidget() {
+    // Wait for sidebar to be ready
+    for (let i = 0; i < 20; i++) {
+      // Look for Claude's sidebar navigation area
+      const sidebar = document.querySelector('nav') || 
+                     document.querySelector('[class*="sidebar"]') ||
+                     document.querySelector('[class*="Sidebar"]');
+      
+      if (sidebar && !document.getElementById('cup-sidebar-widget')) {
+        // Find a good insertion point - look for "Starred" or similar section
+        const starredSection = Array.from(sidebar.querySelectorAll('div')).find(div => {
+          return div.textContent?.includes('Starred') && div.children.length < 5;
+        });
         
-        <div class="cup-widget-details expanded" id="cup-widget-details">
-          <div class="cup-usage-section">
-            <div class="cup-usage-header">
-              <span class="cup-usage-label">Current Session</span>
-              <span class="cup-usage-percent" id="cup-session-percent">--%</span>
+        // Create widget
+        this.widget = document.createElement('div');
+        this.widget.id = 'cup-sidebar-widget';
+        this.widget.innerHTML = `
+          <div class="cup-widget-inner">
+            <div class="cup-widget-header" id="cup-widget-toggle">
+              <span class="cup-widget-icon">📊</span>
+              <span class="cup-widget-title">Usage</span>
+              <span class="cup-widget-expand">▼</span>
             </div>
-            <div class="cup-usage-bar-bg">
-              <div class="cup-usage-bar" id="cup-session-bar"></div>
+            <div class="cup-widget-details expanded" id="cup-widget-details">
+              <div class="cup-usage-section">
+                <div class="cup-usage-header">
+                  <span class="cup-usage-label">Current Session</span>
+                  <span class="cup-usage-percent" id="cup-sidebar-session">--%</span>
+                </div>
+                <div class="cup-usage-bar-bg">
+                  <div class="cup-usage-bar" id="cup-sidebar-session-bar" style="width: 0%"></div>
+                </div>
+                <div class="cup-usage-meta" id="cup-sidebar-session-reset">Resets in --</div>
+              </div>
+              
+              <div class="cup-usage-section">
+                <div class="cup-usage-header">
+                  <span class="cup-usage-label">Weekly (All Models)</span>
+                  <span class="cup-usage-percent" id="cup-sidebar-weekly">--%</span>
+                </div>
+                <div class="cup-usage-bar-bg">
+                  <div class="cup-usage-bar" id="cup-sidebar-weekly-bar" style="width: 0%"></div>
+                </div>
+                <div class="cup-usage-meta" id="cup-sidebar-weekly-reset">Resets --</div>
+              </div>
+              
+              <div class="cup-usage-section">
+                <div class="cup-usage-header">
+                  <span class="cup-usage-label">Weekly (Sonnet)</span>
+                  <span class="cup-usage-percent" id="cup-sidebar-sonnet">--%</span>
+                </div>
+                <div class="cup-usage-bar-bg">
+                  <div class="cup-usage-bar cup-bar-sonnet" id="cup-sidebar-sonnet-bar" style="width: 0%"></div>
+                </div>
+                <div class="cup-usage-meta" id="cup-sidebar-sonnet-reset">Resets in --</div>
+              </div>
+              
+              <a href="https://claude.ai/settings/usage" class="cup-usage-link">View full usage details →</a>
             </div>
-            <div class="cup-usage-meta" id="cup-session-meta">Resets in --</div>
           </div>
-          
-          <div class="cup-usage-section">
-            <div class="cup-usage-header">
-              <span class="cup-usage-label">Weekly (All Models)</span>
-              <span class="cup-usage-percent" id="cup-weekly-all-percent">--%</span>
-            </div>
-            <div class="cup-usage-bar-bg">
-              <div class="cup-usage-bar" id="cup-weekly-all-bar"></div>
-            </div>
-            <div class="cup-usage-meta" id="cup-weekly-all-meta">Resets --</div>
-          </div>
-          
-          <div class="cup-usage-section">
-            <div class="cup-usage-header">
-              <span class="cup-usage-label">Weekly (Sonnet)</span>
-              <span class="cup-usage-percent" id="cup-weekly-sonnet-percent">--%</span>
-            </div>
-            <div class="cup-usage-bar-bg">
-              <div class="cup-usage-bar" id="cup-weekly-sonnet-bar"></div>
-            </div>
-            <div class="cup-usage-meta" id="cup-weekly-sonnet-meta">Resets in --</div>
-          </div>
-          
-          <div class="cup-model-indicator">
-            <span class="cup-model-label">Current:</span>
-            <span class="cup-model-badge" id="cup-current-model">Sonnet 4.5</span>
-          </div>
-          
-          <a href="https://claude.ai/settings/usage" class="cup-usage-link" target="_self">
-            View full usage details →
-          </a>
-        </div>
-      </div>
-    `;
-    
-    this.container.querySelector('#cup-widget-toggle').addEventListener('click', () => {
-      this.toggleExpand();
-    });
-  }
-  
-  async injectIntoSidebar() {
-    const starredH3 = this.findStarredH3();
-    
-    if (!starredH3) {
-      window.CUP.log('SidebarUI: Starred H3 not found');
-      this.container.classList.add('cup-floating');
-      document.body.appendChild(this.container);
-      return;
-    }
-    
-    // Navigate up the DOM:
-    // H3 (Level 0) → DIV.flex.flex-col.mb-4 (Level 1) → DIV.px-2.mt-4 (Level 2)
-    const level1 = starredH3.parentElement; // DIV.flex.flex-col.mb-4
-    const level2 = level1?.parentElement;   // DIV.px-2.mt-4
-    
-    if (level2 && level2.classList.contains('px-2')) {
-      // Insert our widget BEFORE level2 (the Starred section container)
-      // into level2's parent (DIV.opacity-100)
-      const level3 = level2.parentElement;
-      if (level3) {
-        level3.insertBefore(this.container, level2);
-        window.CUP.log('SidebarUI: Inserted before DIV.px-2.mt-4 (Starred container)');
+        `;
+        
+        // Insert widget
+        if (starredSection) {
+          starredSection.parentElement.insertBefore(this.widget, starredSection);
+          window.CUP.log('SidebarUI: Inserted before', starredSection.textContent?.substring(0, 30));
+        } else {
+          // Fallback: insert at top of sidebar
+          sidebar.insertBefore(this.widget, sidebar.firstChild);
+          window.CUP.log('SidebarUI: Inserted at top of sidebar');
+        }
+        
+        // Add toggle handler
+        document.getElementById('cup-widget-toggle')?.addEventListener('click', () => {
+          this.toggleExpand();
+        });
+        
         return;
       }
+      
+      await new Promise(r => setTimeout(r, 500));
     }
     
-    // Fallback
-    window.CUP.log('SidebarUI: Fallback - could not find correct insertion point');
-    this.container.classList.add('cup-floating');
-    document.body.appendChild(this.container);
+    window.CUP.log('SidebarUI: Could not find sidebar');
   }
   
   toggleExpand() {
-    this.isExpanded = !this.isExpanded;
     const details = document.getElementById('cup-widget-details');
-    const icon = document.getElementById('cup-expand-icon');
+    const expand = this.widget?.querySelector('.cup-widget-expand');
     
-    if (details) details.classList.toggle('expanded', this.isExpanded);
-    if (icon) icon.textContent = this.isExpanded ? '▲' : '▼';
+    if (details) {
+      this.expanded = !this.expanded;
+      details.classList.toggle('expanded', this.expanded);
+      if (expand) {
+        expand.textContent = this.expanded ? '▼' : '▶';
+      }
+    }
   }
   
   update(usageData) {
     if (!usageData) return;
     
+    // Update current session
     if (usageData.currentSession) {
-      this.updateSection('session', usageData.currentSession.percent, usageData.currentSession.resetsIn, 'in');
+      const pct = usageData.currentSession.percent || 0;
+      this.updateElement('cup-sidebar-session', pct + '%');
+      this.updateBar('cup-sidebar-session-bar', pct);
+      this.colorizePercent('cup-sidebar-session', pct);
+      
+      if (usageData.currentSession.resetsIn) {
+        this.updateElement('cup-sidebar-session-reset', 'Resets in ' + usageData.currentSession.resetsIn);
+      }
     }
     
+    // Update weekly all models
     if (usageData.weeklyAllModels) {
-      this.updateSection('weekly-all', usageData.weeklyAllModels.percent, usageData.weeklyAllModels.resetsAt, 'at');
+      const pct = usageData.weeklyAllModels.percent || 0;
+      this.updateElement('cup-sidebar-weekly', pct + '%');
+      this.updateBar('cup-sidebar-weekly-bar', pct);
+      this.colorizePercent('cup-sidebar-weekly', pct);
+      
+      if (usageData.weeklyAllModels.resetsAt) {
+        this.updateElement('cup-sidebar-weekly-reset', 'Resets ' + usageData.weeklyAllModels.resetsAt);
+      }
     }
     
+    // Update weekly sonnet
     if (usageData.weeklySonnet) {
-      this.updateSection('weekly-sonnet', usageData.weeklySonnet.percent, usageData.weeklySonnet.resetsIn, 'in');
-    }
-    
-    this.updateCurrentModel(usageData.currentModel);
-  }
-  
-  updateSection(section, percent, resetTime, resetType) {
-    const percentEl = document.getElementById(`cup-${section}-percent`);
-    const barEl = document.getElementById(`cup-${section}-bar`);
-    const metaEl = document.getElementById(`cup-${section}-meta`);
-    
-    if (percentEl) {
-      percentEl.textContent = percent + '%';
-      percentEl.style.color = percent >= 90 ? 'var(--cup-danger)' : 
-                              percent >= 70 ? 'var(--cup-warning)' : 
-                              'var(--cup-success)';
-    }
-    
-    if (barEl) {
-      barEl.style.width = Math.min(percent, 100) + '%';
-      barEl.style.background = percent >= 90 ? 'var(--cup-danger)' : 
-                               percent >= 70 ? 'var(--cup-warning)' : 
-                               'var(--cup-accent)';
-    }
-    
-    if (metaEl && resetTime) {
-      metaEl.textContent = resetType === 'in' ? `Resets in ${resetTime}` : `Resets ${resetTime}`;
+      const pct = usageData.weeklySonnet.percent || 0;
+      this.updateElement('cup-sidebar-sonnet', pct + '%');
+      this.updateBar('cup-sidebar-sonnet-bar', pct);
+      this.colorizePercent('cup-sidebar-sonnet', pct);
+      
+      if (usageData.weeklySonnet.resetsIn) {
+        this.updateElement('cup-sidebar-sonnet-reset', 'Resets in ' + usageData.weeklySonnet.resetsIn);
+      }
     }
   }
   
-  updateCurrentModel(model) {
-    const badge = document.getElementById('cup-current-model');
-    if (!badge) return;
+  updateElement(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
+  }
+  
+  updateBar(id, percent) {
+    const el = document.getElementById(id);
+    if (el) {
+      el.style.width = Math.min(percent, 100) + '%';
+      
+      // Color the bar based on percentage
+      if (percent >= 90) {
+        el.style.background = '#ef4444';
+      } else if (percent >= 70) {
+        el.style.background = '#f59e0b';
+      } else {
+        el.style.background = id.includes('sonnet') ? '#a855f7' : '#6b8afd';
+      }
+    }
+  }
+  
+  colorizePercent(id, percent) {
+    const el = document.getElementById(id);
+    if (!el) return;
     
-    const m = (model || 'sonnet').toLowerCase();
-    badge.className = 'cup-model-badge';
-    
-    if (m.includes('opus')) {
-      badge.textContent = 'Opus 4.5';
-      badge.classList.add('cup-badge-opus');
-    } else if (m.includes('haiku')) {
-      badge.textContent = 'Haiku 4.5';
-      badge.classList.add('cup-badge-haiku');
+    if (percent >= 90) {
+      el.style.color = '#ef4444';
+    } else if (percent >= 70) {
+      el.style.color = '#f59e0b';
     } else {
-      badge.textContent = 'Sonnet 4.5';
-      badge.classList.add('cup-badge-sonnet');
+      el.style.color = '#22c55e';
     }
   }
   
   checkAndReinject() {
     if (!document.getElementById('cup-sidebar-widget')) {
-      this.injectIntoSidebar();
+      this.injectWidget();
     }
   }
 }

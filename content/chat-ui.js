@@ -23,69 +23,96 @@ class ChatUI {
   }
   
   async injectInputStats() {
-    // Wait for the native Claude stats bar to appear
-    // We want to integrate with it or place ours similarly
+    if (document.getElementById('cup-input-stats')) {
+      window.CUP.log('ChatUI: Input stats already exists');
+      return;
+    }
     
-    for (let i = 0; i < 20; i++) {
-      // Look for Claude's native bottom bar area
-      const nativeBar = document.querySelector('[class*="text-text-500"]');
-      const composer = document.querySelector('[contenteditable="true"]');
+    // Wait and retry to find the composer area
+    for (let attempt = 0; attempt < 20; attempt++) {
+      window.CUP.log('ChatUI: Looking for injection point, attempt', attempt);
       
-      if (composer && !document.getElementById('cup-input-stats')) {
-        // Find the container that holds the draft info
-        // Claude shows: "Draft: X tokens" and timer on the right
+      // Find the contenteditable input
+      const contentEditable = document.querySelector('[contenteditable="true"]');
+      if (!contentEditable) {
+        await new Promise(r => setTimeout(r, 500));
+        continue;
+      }
+      
+      // Walk up to find a good container - look for the main chat area
+      // Claude's structure: main > div > ... > form area
+      let target = contentEditable;
+      let container = null;
+      
+      // Go up until we find a reasonable container
+      for (let i = 0; i < 10; i++) {
+        target = target.parentElement;
+        if (!target) break;
         
-        // Look for the area below the composer
-        const composerParent = composer.closest('form') || composer.closest('[class*="flex"]');
-        
-        if (composerParent) {
-          // Create our stats bar
-          this.inputStats = document.createElement('div');
-          this.inputStats.id = 'cup-input-stats';
-          this.inputStats.innerHTML = `
-            <span class="cup-stat-item">
-              <span class="cup-stat-icon">✏️</span>
-              <span class="cup-stat-label">Draft:</span>
-              <span class="cup-stat-value" id="cup-draft-tokens">0</span>
-              <span class="cup-stat-unit">tokens</span>
-            </span>
-            <span class="cup-stat-divider">│</span>
-            <span class="cup-stat-item">
-              <span class="cup-stat-label">Session:</span>
-              <span class="cup-stat-value" id="cup-session-pct">--%</span>
-            </span>
-            <span class="cup-stat-divider">│</span>
-            <span class="cup-stat-item">
-              <span class="cup-stat-label">Weekly:</span>
-              <span class="cup-stat-value" id="cup-weekly-all-pct">--%</span>
-            </span>
-            <span class="cup-stat-divider">│</span>
-            <span class="cup-stat-item">
-              <span class="cup-stat-label">Sonnet:</span>
-              <span class="cup-stat-value" id="cup-weekly-sonnet-pct">--%</span>
-            </span>
-            <span class="cup-stat-divider">│</span>
-            <span class="cup-stat-item">
-              <span class="cup-stat-icon">⏱️</span>
-              <span class="cup-stat-value" id="cup-reset-timer">--</span>
-            </span>
-          `;
-          
-          // Try to find the right place to insert
-          // Look for where Claude puts its native stats
-          const formArea = composer.closest('form');
-          if (formArea && formArea.parentElement) {
-            formArea.parentElement.appendChild(this.inputStats);
-            window.CUP.log('ChatUI: Input stats injected after form');
-            return;
-          }
+        // Look for a container that has the send button area
+        // This is typically the grandparent of the form
+        if (target.tagName === 'FORM' || target.querySelector('button[type="submit"]')) {
+          container = target.parentElement;
+          break;
         }
+      }
+      
+      if (!container) {
+        // Fallback: just use the form's parent
+        const form = contentEditable.closest('form');
+        if (form && form.parentElement) {
+          container = form.parentElement;
+        }
+      }
+      
+      if (container) {
+        // Create our stats bar
+        this.inputStats = document.createElement('div');
+        this.inputStats.id = 'cup-input-stats';
+        this.inputStats.innerHTML = `
+          <span class="cup-stat-item">
+            <span class="cup-stat-icon">✏️</span>
+            <span class="cup-stat-label">Draft:</span>
+            <span class="cup-stat-value" id="cup-draft-tokens">0</span>
+            <span class="cup-stat-unit">tokens</span>
+          </span>
+          <span class="cup-stat-divider">│</span>
+          <span class="cup-stat-item">
+            <span class="cup-stat-label">Session:</span>
+            <span class="cup-stat-value" id="cup-session-pct">--%</span>
+          </span>
+          <span class="cup-stat-divider">│</span>
+          <span class="cup-stat-item">
+            <span class="cup-stat-label">Weekly:</span>
+            <span class="cup-stat-value" id="cup-weekly-all-pct">--%</span>
+          </span>
+          <span class="cup-stat-divider">│</span>
+          <span class="cup-stat-item">
+            <span class="cup-stat-label">Sonnet:</span>
+            <span class="cup-stat-value" id="cup-weekly-sonnet-pct">--%</span>
+          </span>
+          <span class="cup-stat-divider">│</span>
+          <span class="cup-stat-item">
+            <span class="cup-stat-icon">⏱️</span>
+            <span class="cup-stat-value" id="cup-reset-timer">--</span>
+          </span>
+        `;
+        
+        // Append to the container
+        container.appendChild(this.inputStats);
+        window.CUP.log('ChatUI: Input stats injected into', container.tagName, container.className?.substring(0, 50));
+        
+        // Apply any cached usage data
+        if (this.currentUsageData) {
+          this.updateUsage(this.currentUsageData);
+        }
+        return;
       }
       
       await new Promise(r => setTimeout(r, 500));
     }
     
-    window.CUP.log('ChatUI: Could not find injection point for input stats');
+    window.CUP.log('ChatUI: Failed to find injection point after all attempts');
   }
   
   startDraftMonitor() {
@@ -158,9 +185,6 @@ class ChatUI {
   checkAndReinject() {
     if (!document.getElementById('cup-input-stats')) {
       this.injectInputStats();
-      if (this.currentUsageData) {
-        this.updateUsage(this.currentUsageData);
-      }
     }
   }
 }
