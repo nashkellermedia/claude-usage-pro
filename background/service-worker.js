@@ -1,6 +1,298 @@
 /**
- * Claude Usage Pro - Background Service Worker
+ * Claude Usage Pro - Background Service Worker with Firebase Sync
  */
+
+// === FIREBASE SYNC (INLINED) ===
+/**
+ * Claude Usage Pro - Firebase Realtime Database Sync
+ * Simple REST API approach - no SDK needed
+ */
+
+class FirebaseSync {
+  constructor() {
+    this.firebaseUrl = null;
+    this.deviceId = this.getOrCreateDeviceId();
+    this.syncEnabled = false;
+    this.lastSync = null;
+    this.syncInterval = null;
+  }
+  
+  /**
+   * Initialize with Firebase URL from settings
+   */
+  async initialize(firebaseUrl) {
+    if (!firebaseUrl || firebaseUrl.trim() === '') {
+      console.log('[Firebase] No URL provided, sync disabled');
+      this.syncEnabled = false;
+      this.stopAutoSync();
+      return false;
+    }
+    
+    // Clean up URL - remove trailing slash, ensure it's the database URL
+    this.firebaseUrl = firebaseUrl.trim().replace(/\/$/, '');
+    
+    // Validate it looks like a Firebase URL
+    if (!this.firebaseUrl.includes('firebaseio.com') && 
+        !this.firebaseUrl.includes('firebasedatabase.app')) {
+      console.error('[Firebase] Invalid Firebase URL format');
+      return false;
+    }
+    
+    // Test connection
+    const connected = await this.testConnection();
+    if (connected) {
+      this.syncEnabled = true;
+      this.startAutoSync();
+      console.log('[Firebase] Initialized successfully');
+      return true;
+    }
+    
+    console.error('[Firebase] Connection test failed');
+    return false;
+  }
+  
+  /**
+   * Test Firebase connection
+   */
+  async testConnection() {
+    try {
+      const response = await fetch(`${this.firebaseUrl}/test.json`);
+      return response.ok;
+    } catch (e) {
+      console.error('[Firebase] Connection error:', e.message);
+      return false;
+    }
+  }
+  
+  /**
+   * Get or create unique device ID
+   */
+  getOrCreateDeviceId() {
+    let deviceId = localStorage.getItem('cup_device_id');
+    if (!deviceId) {
+      deviceId = 'device_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+      localStorage.setItem('cup_device_id', deviceId);
+    }
+    return deviceId;
+  }
+  
+  /**
+   * Sync usage data TO Firebase
+   */
+  async syncToFirebase(usageData) {
+    if (!this.syncEnabled || !this.firebaseUrl) {
+      return { success: false, error: 'Sync not enabled' };
+    }
+    
+    try {
+      const syncData = {
+        ...usageData,
+        deviceId: this.deviceId,
+        deviceName: this.getDeviceName(),
+        syncedAt: Date.now(),
+        timestamp: new Date().toISOString()
+      };
+      
+      // Write to Firebase: /usage/{deviceId}
+      const url = `${this.firebaseUrl}/usage/${this.deviceId}.json`;
+      const response = await fetch(url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(syncData)
+      });
+      
+      if (response.ok) {
+        this.lastSync = Date.now();
+        console.log('[Firebase] Synced to cloud');
+        return { success: true };
+      }
+      
+      return { success: false, error: 'Upload failed' };
+      
+    } catch (e) {
+      console.error('[Firebase] Sync error:', e.message);
+      return { success: false, error: e.message };
+    }
+  }
+  
+  /**
+   * Get usage data FROM Firebase (all devices)
+   */
+  async syncFromFirebase() {
+    if (!this.syncEnabled || !this.firebaseUrl) {
+      return { success: false, error: 'Sync not enabled' };
+    }
+    
+    try {
+      const url = `${this.firebaseUrl}/usage.json`;
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        return { success: false, error: 'Download failed' };
+      }
+      
+      const data = await response.json();
+      
+      if (!data) {
+        return { success: true, devices: [] };
+      }
+      
+      // Convert object to array of devices
+      const devices = Object.entries(data).map(([deviceId, deviceData]) => ({
+        deviceId,
+        ...deviceData
+      }));
+      
+      // Sort by most recent first
+      devices.sort((a, b) => (b.syncedAt || 0) - (a.syncedAt || 0));
+      
+      console.log(`[Firebase] Retrieved data from ${devices.length} device(s)`);
+      return { success: true, devices };
+      
+    } catch (e) {
+      console.error('[Firebase] Download error:', e.message);
+      return { success: false, error: e.message };
+    }
+  }
+  
+  /**
+   * Get merged usage data (combine all devices)
+   */
+  async getMergedUsage() {
+    const result = await this.syncFromFirebase();
+    
+    if (!result.success || !result.devices || result.devices.length === 0) {
+      return null;
+    }
+    
+    // Use the most recent data
+    const mostRecent = result.devices[0];
+    
+    // Could add logic here to merge/aggregate across devices
+    // For now, just return most recent
+    return {
+      currentSession: mostRecent.currentSession,
+      weeklyAllModels: mostRecent.weeklyAllModels,
+      weeklySonnet: mostRecent.weeklySonnet,
+      lastUpdated: mostRecent.timestamp,
+      deviceCount: result.devices.length,
+      devices: result.devices.map(d => ({
+        id: d.deviceId,
+        name: d.deviceName,
+        lastSync: d.timestamp
+      }))
+    };
+  }
+  
+  /**
+   * Start auto-sync every 30 seconds
+   */
+  startAutoSync() {
+    this.stopAutoSync(); // Clear any existing
+    
+    this.syncInterval = setInterval(async () => {
+      // Get current usage data from storage
+      const result = await chrome.storage.local.get(['usageData']);
+      if (result.usageData) {
+        await this.syncToFirebase(result.usageData);
+      }
+    }, 30000); // 30 seconds
+    
+    console.log('[Firebase] Auto-sync started (every 30s)');
+  }
+  
+  /**
+   * Stop auto-sync
+   */
+  stopAutoSync() {
+    if (this.syncInterval) {
+      clearInterval(this.syncInterval);
+      this.syncInterval = null;
+      console.log('[Firebase] Auto-sync stopped');
+    }
+  }
+  
+  /**
+   * Get device name for identification
+   */
+  getDeviceName() {
+    // Try to get Chrome profile name or generate one
+    const ua = navigator.userAgent;
+    let os = 'Unknown';
+    
+    if (ua.includes('Mac')) os = 'Mac';
+    else if (ua.includes('Windows')) os = 'Windows';
+    else if (ua.includes('Linux')) os = 'Linux';
+    
+    const browser = 'Chrome';
+    const profile = this.getProfileName();
+    
+    return `${os} - ${browser}${profile ? ' - ' + profile : ''}`;
+  }
+  
+  /**
+   * Try to get Chrome profile name
+   */
+  getProfileName() {
+    // Chrome profile name is hard to get from extension
+    // Use a stored name if user sets one, otherwise use device ID
+    const savedName = localStorage.getItem('cup_profile_name');
+    if (savedName) return savedName;
+    
+    // Default to shortened device ID
+    return this.deviceId.substring(7, 15);
+  }
+  
+  /**
+   * Set custom profile name
+   */
+  setProfileName(name) {
+    localStorage.setItem('cup_profile_name', name);
+  }
+  
+  /**
+   * Get sync status
+   */
+  getStatus() {
+    return {
+      enabled: this.syncEnabled,
+      firebaseUrl: this.firebaseUrl,
+      deviceId: this.deviceId,
+      deviceName: this.getDeviceName(),
+      lastSync: this.lastSync,
+      lastSyncTime: this.lastSync ? new Date(this.lastSync).toLocaleString() : 'Never'
+    };
+  }
+  
+  /**
+   * Disable sync
+   */
+  disable() {
+    this.syncEnabled = false;
+    this.firebaseUrl = null;
+    this.stopAutoSync();
+    console.log('[Firebase] Sync disabled');
+  }
+}
+
+// Create singleton instance
+if (typeof window !== 'undefined') {
+  window.FirebaseSync = FirebaseSync;
+}
+
+// For service worker
+if (typeof self !== 'undefined' && self.FirebaseSync === undefined) {
+  self.FirebaseSync = FirebaseSync;
+}
+
+
+
+
+// === SERVICE WORKER CODE ===
+
+
+// Initialize Firebase sync instance
+let firebaseSync = null;
 
 const DEFAULT_USAGE = {
   currentSession: { percent: 0, resetsIn: '--' },
@@ -14,7 +306,8 @@ const DEFAULT_SETTINGS = {
   badgeDisplay: 'session',
   showSidebar: true,
   showChatOverlay: true,
-  enableVoice: false
+  enableVoice: false,
+  firebaseUrl: ''
 };
 
 async function getUsageData() {
@@ -41,10 +334,53 @@ async function saveUsageData(data) {
     data.lastSynced = Date.now();
     await chrome.storage.local.set({ usageData: data });
     await updateBadge(data);
+    
+    // Sync to Firebase if enabled
+    if (firebaseSync && firebaseSync.syncEnabled) {
+      await firebaseSync.syncToFirebase(data);
+    }
+    
     return data;
   } catch (e) {
     console.error('[CUP BG] Save error:', e);
     return data;
+  }
+}
+
+async function initializeFirebaseSync() {
+  try {
+    const settings = await getSettings();
+    
+    if (!firebaseSync) {
+      firebaseSync = new self.FirebaseSync();
+    }
+    
+    if (settings.firebaseUrl && settings.firebaseUrl.trim() !== '') {
+      console.log('[CUP BG] Initializing Firebase sync...');
+      const success = await firebaseSync.initialize(settings.firebaseUrl);
+      
+      if (success) {
+        console.log('[CUP BG] Firebase sync enabled');
+        // Try to get data from Firebase
+        const mergedData = await firebaseSync.getMergedUsage();
+        if (mergedData) {
+          console.log('[CUP BG] Retrieved data from Firebase');
+          // Update local storage with Firebase data
+          await chrome.storage.local.set({ usageData: mergedData });
+          await updateBadge(mergedData);
+          notifyAllTabs(mergedData);
+        }
+      } else {
+        console.log('[CUP BG] Firebase sync initialization failed');
+      }
+    } else {
+      console.log('[CUP BG] No Firebase URL configured');
+      if (firebaseSync) {
+        firebaseSync.disable();
+      }
+    }
+  } catch (e) {
+    console.error('[CUP BG] Firebase init error:', e);
   }
 }
 
@@ -72,7 +408,6 @@ async function updateBadge(usageData) {
         break;
     }
     
-    // Always show the badge with percentage
     const text = percent >= 100 ? '!' : percent + '%';
     chrome.action.setBadgeText({ text });
     
@@ -81,7 +416,6 @@ async function updateBadge(usageData) {
     else if (percent >= 70) color = '#f59e0b'; // yellow
     
     chrome.action.setBadgeBackgroundColor({ color });
-    console.log('[CUP BG] Badge updated:', text, 'display:', display);
     
   } catch (e) {
     console.error('[CUP BG] Badge update error:', e);
@@ -111,7 +445,7 @@ async function handleMessage(message, sender) {
     }
     
     case 'SYNC_SCRAPED_DATA': {
-      console.log('[CUP BG] Received scraped data:', message.data);
+      console.log('[CUP BG] Received scraped data');
       
       const scraped = message.data;
       if (!scraped) {
@@ -161,6 +495,12 @@ async function handleMessage(message, sender) {
       const updated = { ...current, ...message.settings };
       await chrome.storage.local.set({ settings: updated });
       
+      // If Firebase URL changed, reinitialize
+      if (updated.firebaseUrl !== current.firebaseUrl) {
+        console.log('[CUP BG] Firebase URL changed, reinitializing...');
+        await initializeFirebaseSync();
+      }
+      
       // Update badge if display setting changed
       const usageData = await getUsageData();
       await updateBadge(usageData);
@@ -175,6 +515,32 @@ async function handleMessage(message, sender) {
       return { success: true };
     }
     
+    case 'SYNC_FROM_FIREBASE': {
+      if (!firebaseSync || !firebaseSync.syncEnabled) {
+        return { success: false, error: 'Firebase not enabled' };
+      }
+      
+      try {
+        const mergedData = await firebaseSync.getMergedUsage();
+        if (mergedData) {
+          await chrome.storage.local.set({ usageData: mergedData });
+          await updateBadge(mergedData);
+          notifyAllTabs(mergedData);
+          return { success: true, usageData: mergedData };
+        }
+        return { success: false, error: 'No data found' };
+      } catch (e) {
+        return { success: false, error: e.message };
+      }
+    }
+    
+    case 'GET_FIREBASE_STATUS': {
+      if (!firebaseSync) {
+        return { enabled: false };
+      }
+      return firebaseSync.getStatus();
+    }
+    
     case 'RESET_USAGE': {
       const freshData = { ...DEFAULT_USAGE, lastSynced: Date.now() };
       await saveUsageData(freshData);
@@ -187,7 +553,7 @@ async function handleMessage(message, sender) {
   }
 }
 
-// On install/update, initialize badge
+// On install/update
 chrome.runtime.onInstalled.addListener(async () => {
   console.log('[CUP BG] Extension installed/updated');
   
@@ -199,22 +565,48 @@ chrome.runtime.onInstalled.addListener(async () => {
     await chrome.storage.local.set({ settings: { ...DEFAULT_SETTINGS } });
   }
   
-  // Update badge with current data
+  // Initialize Firebase sync
+  await initializeFirebaseSync();
+  
+  // Update badge
   const usageData = await getUsageData();
   await updateBadge(usageData);
 });
 
-// Also update badge on startup
+// On startup
 chrome.runtime.onStartup.addListener(async () => {
   console.log('[CUP BG] Browser started');
+  
+  // Initialize Firebase sync
+  await initializeFirebaseSync();
+  
   const usageData = await getUsageData();
   await updateBadge(usageData);
 });
 
-// Periodic sync
-chrome.alarms.create('syncUsage', { periodInMinutes: 5 });
+// Periodic sync - check Firebase every 2 minutes
+chrome.alarms.create('syncUsage', { periodInMinutes: 2 });
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === 'syncUsage') {
+    // Try to sync from Firebase
+    if (firebaseSync && firebaseSync.syncEnabled) {
+      try {
+        const mergedData = await firebaseSync.getMergedUsage();
+        if (mergedData) {
+          const current = await getUsageData();
+          // Only update if Firebase data is newer
+          if (!current.lastSynced || mergedData.syncedAt > current.lastSynced) {
+            await chrome.storage.local.set({ usageData: mergedData });
+            await updateBadge(mergedData);
+            notifyAllTabs(mergedData);
+          }
+        }
+      } catch (e) {
+        console.error('[CUP BG] Periodic sync error:', e);
+      }
+    }
+    
+    // Also trigger a scrape if on claude.ai
     try {
       const tabs = await chrome.tabs.query({ url: 'https://claude.ai/*' });
       if (tabs.length > 0) {
@@ -226,5 +618,9 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 
 console.log('[CUP BG] Service worker loaded');
 
-// Initialize badge immediately
-getUsageData().then(updateBadge);
+// Initialize on load
+(async () => {
+  await initializeFirebaseSync();
+  const usageData = await getUsageData();
+  await updateBadge(usageData);
+})();

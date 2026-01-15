@@ -29,6 +29,9 @@ const els = {
   firebaseUrl: document.getElementById('firebaseUrl'),
   firebaseHelp: document.getElementById('firebaseHelp'),
   firebaseInstructions: document.getElementById('firebaseInstructions'),
+  firebaseStatus: document.getElementById('firebaseStatus'),
+  firebaseStatusDot: document.getElementById('firebaseStatusDot'),
+  firebaseStatusText: document.getElementById('firebaseStatusText'),
   saveSettings: document.getElementById('saveSettings')
 };
 
@@ -99,8 +102,31 @@ async function loadSettings() {
     els.showChatOverlay.checked = settings.showChatOverlay !== false;
     els.enableVoice.checked = settings.enableVoice === true;
     els.firebaseUrl.value = settings.firebaseUrl || '';
+    
+    // Update Firebase status
+    await updateFirebaseStatus();
   } catch (e) {
     console.error('[CUP Popup] Settings error:', e);
+  }
+}
+
+async function updateFirebaseStatus() {
+  try {
+    const response = await chrome.runtime.sendMessage({ type: 'GET_FIREBASE_STATUS' });
+    const status = response || { enabled: false };
+    
+    if (status.enabled) {
+      els.firebaseStatusDot.className = 'status-indicator connected';
+      els.firebaseStatusText.textContent = `✓ Connected - ${status.deviceName || 'Unknown device'}`;
+      if (status.lastSyncTime) {
+        els.firebaseStatusText.textContent += ` (Last sync: ${status.lastSyncTime})`;
+      }
+    } else {
+      els.firebaseStatusDot.className = 'status-indicator';
+      els.firebaseStatusText.textContent = 'Not configured';
+    }
+  } catch (e) {
+    console.error('[CUP Popup] Firebase status error:', e);
   }
 }
 
@@ -115,12 +141,21 @@ async function saveSettings() {
   
   await chrome.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings });
   
+  // Update Firebase status after save
+  await updateFirebaseStatus();
+  
   // Notify tabs to update UI visibility
   chrome.tabs.query({ url: 'https://claude.ai/*' }, (tabs) => {
     tabs.forEach(tab => {
       chrome.tabs.sendMessage(tab.id, { type: 'SETTINGS_UPDATED', settings }).catch(() => {});
     });
   });
+  
+  // Show brief success message
+  els.saveSettings.textContent = '✓ Saved!';
+  setTimeout(() => {
+    els.saveSettings.textContent = 'Save Settings';
+  }, 1500);
   
   els.settingsPanel.classList.add('hidden');
 }
