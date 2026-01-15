@@ -15,7 +15,6 @@ class ChatUI {
     
     // Track attachments persistently
     this.trackedAttachments = new Map();
-    this.lastAttachmentCheck = 0;
   }
   
   initialize() {
@@ -31,25 +30,14 @@ class ChatUI {
       });
     }
     
-    // Intercept file selection to track attachments
+    // Intercept file additions
     this.interceptFileInputs();
-    
-    // Watch for paste events (images pasted from clipboard)
     document.addEventListener('paste', (e) => this.handlePaste(e), true);
-    
-    // Watch for drop events (drag and drop files)
     document.addEventListener('drop', (e) => this.handleDrop(e), true);
   }
   
-  /**
-   * Intercept file input changes to track files before they're cleared
-   */
   interceptFileInputs() {
-    // Intercept all current and future file inputs
-    const originalAddEventListener = EventTarget.prototype.addEventListener;
     const self = this;
-    
-    // Also watch for changes using a different approach - check file inputs periodically
     setInterval(() => {
       const fileInputs = document.querySelectorAll('input[type="file"]');
       for (const input of fileInputs) {
@@ -58,7 +46,6 @@ class ChatUI {
           for (const file of input.files) {
             self.trackFile(file);
           }
-          // Watch for when it gets cleared
           const checkCleared = setInterval(() => {
             if (!input.files || input.files.length === 0) {
               clearInterval(checkCleared);
@@ -72,9 +59,6 @@ class ChatUI {
     window.CUP.log('ChatUI: File input interception active');
   }
   
-  /**
-   * Handle paste events for clipboard images
-   */
   handlePaste(e) {
     if (e.clipboardData && e.clipboardData.files) {
       for (const file of e.clipboardData.files) {
@@ -84,9 +68,6 @@ class ChatUI {
     }
   }
   
-  /**
-   * Handle drop events for dragged files
-   */
   handleDrop(e) {
     if (e.dataTransfer && e.dataTransfer.files) {
       for (const file of e.dataTransfer.files) {
@@ -96,48 +77,35 @@ class ChatUI {
     }
   }
   
-  /**
-   * Track a file and estimate its tokens
-   */
   trackFile(file) {
     if (!file) return;
     
     const id = `${file.name}-${file.size}-${file.type}`;
-    
-    // Don't re-track the same file
     if (this.trackedAttachments.has(id)) return;
     
-    let tokens = 1500; // Default
+    let tokens = 1500;
     
     if (file.type.startsWith('image/')) {
-      // Try to get dimensions
-      if (file.type.startsWith('image/')) {
-        const img = new Image();
-        const url = URL.createObjectURL(file);
-        img.onload = () => {
-          const width = img.naturalWidth;
-          const height = img.naturalHeight;
-          URL.revokeObjectURL(url);
-          
-          // Calculate tokens based on actual dimensions
-          tokens = this.estimateImageTokens(width, height);
-          
-          // Update the tracked attachment
-          this.trackedAttachments.set(id, {
-            name: file.name || 'image',
-            size: file.size,
-            type: file.type,
-            tokens: tokens,
-            addedAt: Date.now()
-          });
-          
-          window.CUP.log('ChatUI: Image dimensions:', width, 'x', height, '=', tokens, 'tokens');
-        };
-        img.src = url;
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        const width = img.naturalWidth;
+        const height = img.naturalHeight;
+        URL.revokeObjectURL(url);
         
-        // Set initial estimate while loading
-        tokens = this.estimateImageTokensFromSize(file.size);
-      }
+        tokens = this.estimateImageTokens(width, height);
+        this.trackedAttachments.set(id, {
+          name: file.name || 'image',
+          size: file.size,
+          type: file.type,
+          tokens: tokens,
+          addedAt: Date.now()
+        });
+        
+        window.CUP.log('ChatUI: Image dimensions:', width, 'x', height, '=', tokens, 'tokens');
+      };
+      img.src = url;
+      tokens = this.estimateImageTokensFromSize(file.size);
     } else if (file.type === 'application/pdf') {
       const pages = Math.max(1, Math.ceil(file.size / 100000));
       tokens = pages * 800;
@@ -158,19 +126,11 @@ class ChatUI {
     window.CUP.log('ChatUI: Tracked file:', file.name, tokens, 'tokens');
   }
   
-  /**
-   * Estimate image tokens from file size (rough estimate before we have dimensions)
-   */
   estimateImageTokensFromSize(size) {
-    // Rough estimate: larger files = larger dimensions
-    // 100KB ~= 1000x1000, 500KB ~= 2000x2000
     const estimatedPixels = Math.sqrt(size * 10);
     return this.estimateImageTokens(estimatedPixels, estimatedPixels);
   }
   
-  /**
-   * Estimate image tokens based on dimensions (Claude's tile-based approach)
-   */
   estimateImageTokens(width, height) {
     if (!width || !height) return 1500;
     
@@ -268,69 +228,72 @@ class ChatUI {
   }
   
   /**
-   * Check if attachments are still present in the UI
-   * This helps detect when user removes an attachment
+   * Count attachments visible in the composer area
+   * Uses multiple strategies to find them
    */
-  checkAttachmentsStillPresent() {
-    // Look for any indicators that attachments exist
-    const indicators = [
-      // Remove buttons
-      'button[aria-label*="Remove"]',
-      'button[aria-label*="remove"]', 
-      'button[aria-label*="Delete"]',
-      'button[aria-label*="delete"]',
-      // Close buttons near attachments
-      '[class*="close"][class*="attachment"]',
-      '[class*="remove"][class*="attachment"]',
-      // Attachment containers
-      '[data-testid*="attachment"]',
-      '[data-testid*="file-preview"]',
-      '[data-testid*="image-preview"]',
-      // Thumbnail images
-      'img[src^="blob:"]'
-    ];
+  countVisibleAttachments() {
+    let count = 0;
     
-    for (const selector of indicators) {
-      try {
-        const found = document.querySelector(selector);
-        if (found) {
-          // Check if it's in the composer area, not in the message history
-          const composer = document.querySelector('[contenteditable="true"]');
-          if (composer) {
-            const composerForm = composer.closest('form') || composer.parentElement?.parentElement?.parentElement?.parentElement;
-            if (composerForm && composerForm.contains(found)) {
-              return true;
-            }
-          }
+    // Strategy 1: Look for images with Claude API URLs (uploaded images)
+    const apiImages = document.querySelectorAll('img[src*="/api/"][src*="/files/"]');
+    for (const img of apiImages) {
+      // Make sure it's not in the message history (check if near contenteditable)
+      const composer = document.querySelector('[contenteditable="true"]');
+      if (composer) {
+        // Check if this image is in the same general area as the composer
+        const composerRect = composer.getBoundingClientRect();
+        const imgRect = img.getBoundingClientRect();
+        
+        // Image should be above or at same level as composer (not way below in history)
+        if (imgRect.bottom > composerRect.top - 200 && imgRect.top < composerRect.bottom + 100) {
+          count++;
+          window.CUP.log('ChatUI: Found API image attachment');
         }
-      } catch (e) {}
+      }
     }
     
-    return false;
+    // Strategy 2: Look for blob images (during upload)
+    const blobImages = document.querySelectorAll('img[src^="blob:"]');
+    count += blobImages.length;
+    
+    // Strategy 3: Look for file preview containers with specific data-testid
+    const previews = document.querySelectorAll('[data-testid*="file"], [data-testid*="attachment"], [data-testid*="preview"]');
+    for (const preview of previews) {
+      const composer = document.querySelector('[contenteditable="true"]');
+      if (composer) {
+        const composerRect = composer.getBoundingClientRect();
+        const previewRect = preview.getBoundingClientRect();
+        if (previewRect.bottom > composerRect.top - 200 && previewRect.top < composerRect.bottom + 100) {
+          // Avoid double counting if we already found an image
+          if (!preview.querySelector('img[src*="/api/"]') && !preview.querySelector('img[src^="blob:"]')) {
+            count++;
+          }
+        }
+      }
+    }
+    
+    return count;
   }
   
-  /**
-   * Get attachment tokens
-   */
   getAttachmentTokens() {
     let totalTokens = 0;
     let count = 0;
     
-    // Check if attachments are still in UI
-    const attachmentsPresent = this.checkAttachmentsStillPresent();
+    // Check if visible attachments match our tracked count
+    const visibleCount = this.countVisibleAttachments();
     
-    // If no attachments in UI but we have tracked ones older than 3 seconds, clear them
-    if (!attachmentsPresent && this.trackedAttachments.size > 0) {
+    // If we see no attachments and our tracked ones are old, clear them
+    if (visibleCount === 0 && this.trackedAttachments.size > 0) {
       const now = Date.now();
-      let hasOld = false;
+      let allOld = true;
       for (const [id, data] of this.trackedAttachments) {
-        if (now - data.addedAt > 3000) {
-          hasOld = true;
+        if (now - data.addedAt < 5000) {
+          allOld = false;
           break;
         }
       }
-      if (hasOld) {
-        window.CUP.log('ChatUI: No attachments in UI, clearing tracked');
+      if (allOld) {
+        window.CUP.log('ChatUI: No visible attachments, clearing old tracked ones');
         this.trackedAttachments.clear();
       }
     }
@@ -343,9 +306,6 @@ class ChatUI {
     return { tokens: totalTokens, count: count };
   }
   
-  /**
-   * Clear tracked attachments (called when message is sent)
-   */
   clearTrackedAttachments() {
     this.trackedAttachments.clear();
     window.CUP.log('ChatUI: Cleared tracked attachments (message sent)');

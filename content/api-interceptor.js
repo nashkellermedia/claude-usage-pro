@@ -1,9 +1,10 @@
 /**
  * Claude Usage Pro - API Interceptor
  * 
- * Intercepts fetch/XHR requests to Claude.ai API to track token usage.
- * Note: The Claude.ai web interface doesn't expose token counts directly,
- * so we estimate based on message content.
+ * Intercepts fetch/XHR requests to Claude.ai API to:
+ * 1. Track token usage from conversations
+ * 2. Capture usage/billing data when available
+ * 3. Detect when messages are sent (to clear attachment tracking)
  */
 
 class APIInterceptorClass {
@@ -13,13 +14,12 @@ class APIInterceptorClass {
     this.callbacks = {
       onMessageSent: null,
       onMessageReceived: null,
-      onConversationLoaded: null
+      onConversationLoaded: null,
+      onUsageDataReceived: null
     };
+    this.lastUsageData = null;
   }
   
-  /**
-   * Start intercepting API calls
-   */
   start() {
     if (this.isActive) return;
     
@@ -30,9 +30,6 @@ class APIInterceptorClass {
     window.CUP.log('API interceptor started');
   }
   
-  /**
-   * Set callback functions
-   */
   on(event, callback) {
     if (this.callbacks.hasOwnProperty(event)) {
       this.callbacks[event] = callback;
@@ -40,9 +37,6 @@ class APIInterceptorClass {
     }
   }
   
-  /**
-   * Intercept fetch API
-   */
   interceptFetch() {
     const self = this;
     const originalFetch = window.fetch;
@@ -51,10 +45,8 @@ class APIInterceptorClass {
       const [url, options] = args;
       const urlString = typeof url === 'string' ? url : url.toString();
       
-      // Check if this is a Claude API call we care about
       if (self.isRelevantUrl(urlString)) {
         try {
-          // Track the request
           const requestId = self.generateRequestId();
           self.pendingRequests.set(requestId, {
             url: urlString,
@@ -63,15 +55,11 @@ class APIInterceptorClass {
             timestamp: Date.now()
           });
           
-          // Process request body if it's a message send
           if (self.isCompletionUrl(urlString) && options?.body) {
             self.processOutgoingRequest(urlString, options.body);
           }
           
-          // Execute the fetch
           const response = await originalFetch.apply(this, args);
-          
-          // Clone and process response
           const clonedResponse = response.clone();
           self.processResponse(urlString, clonedResponse, requestId);
           
@@ -88,9 +76,6 @@ class APIInterceptorClass {
     };
   }
   
-  /**
-   * Intercept XMLHttpRequest
-   */
   interceptXHR() {
     const self = this;
     const originalOpen = XMLHttpRequest.prototype.open;
@@ -120,76 +105,68 @@ class APIInterceptorClass {
     };
   }
   
-  /**
-   * Check if URL is relevant for tracking
-   */
   isRelevantUrl(url) {
     return url.includes('claude.ai/api') || 
            url.includes('/api/organizations') ||
-           url.includes('/api/chat_conversations');
+           url.includes('/api/chat_conversations') ||
+           url.includes('/api/usage') ||
+           url.includes('/api/billing') ||
+           url.includes('/api/account') ||
+           url.includes('/settings/usage');
   }
   
-  /**
-   * Check if URL is a completion/message endpoint
-   */
   isCompletionUrl(url) {
     return url.includes('/completion') || 
            url.includes('/chat') ||
            url.includes('/retry_completion');
   }
   
-  /**
-   * Check if URL is a conversation load
-   */
   isConversationUrl(url) {
     return url.includes('/chat_conversations/') && !url.includes('/completion');
   }
   
-  /**
-   * Generate unique request ID
-   */
+  isUsageUrl(url) {
+    return url.includes('/usage') || 
+           url.includes('/billing') || 
+           url.includes('/rate_limit') ||
+           url.includes('/quota');
+  }
+  
   generateRequestId() {
     return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }
   
-  /**
-   * Process outgoing request (user message)
-   */
   processOutgoingRequest(url, body) {
     try {
       let data;
       if (typeof body === 'string') {
         data = JSON.parse(body);
       } else if (body instanceof FormData) {
-        return; // Skip FormData for now
+        return;
       } else {
         data = body;
       }
       
-      // Extract prompt/message
       const prompt = data.prompt || data.content || '';
       const attachments = data.attachments || [];
       
-      // Estimate tokens
       let tokens = 0;
       
       if (prompt) {
-        tokens += window.TokenEstimator ? 
-          window.TokenEstimator.countTokens(prompt) : 
+        tokens += window.TokenCounter ? 
+          window.TokenCounter.estimateTokens(prompt) : 
           Math.ceil(prompt.length / 4);
       }
       
-      // Add attachment token estimates
       for (const att of attachments) {
         if (att.extracted_content) {
-          tokens += window.TokenEstimator ?
-            window.TokenEstimator.countTokens(att.extracted_content) :
+          tokens += window.TokenCounter ?
+            window.TokenCounter.estimateTokens(att.extracted_content) :
             Math.ceil(att.extracted_content.length / 4);
         }
       }
       
-      // Trigger callback
-      if (this.callbacks.onMessageSent && tokens > 0) {
+      if (this.callbacks.onMessageSent) {
         this.callbacks.onMessageSent({
           tokens,
           model: data.model,
@@ -202,12 +179,16 @@ class APIInterceptorClass {
     }
   }
   
-  /**
-   * Process fetch response
-   */
   async processResponse(url, response, requestId) {
     try {
       const contentType = response.headers.get('content-type') || '';
+      
+      // Check for usage data in responses
+      if (this.isUsageUrl(url) && contentType.includes('application/json')) {
+        const data = await response.json();
+        this.processUsageData(url, data);
+        return;
+      }
       
       // Handle conversation load
       if (this.isConversationUrl(url) && contentType.includes('application/json')) {
@@ -221,19 +202,33 @@ class APIInterceptorClass {
         await this.processStreamingResponse(response);
       }
       
+      // Check for usage info in any JSON response
+      if (contentType.includes('application/json')) {
+        try {
+          const data = await response.json();
+          if (data.usage || data.rate_limit || data.quota || data.billing) {
+            this.processUsageData(url, data);
+          }
+        } catch (e) {}
+      }
+      
     } catch (error) {
       window.CUP.logError('Error processing response:', error);
     }
   }
   
-  /**
-   * Process XHR response
-   */
   processXHRResponse(url, xhr) {
     try {
       if (this.isConversationUrl(url)) {
         const data = JSON.parse(xhr.responseText);
         this.processConversationLoad(url, data);
+      }
+      
+      if (this.isUsageUrl(url)) {
+        try {
+          const data = JSON.parse(xhr.responseText);
+          this.processUsageData(url, data);
+        } catch (e) {}
       }
     } catch (error) {
       window.CUP.logError('Error processing XHR response:', error);
@@ -241,8 +236,37 @@ class APIInterceptorClass {
   }
   
   /**
-   * Process streaming response (SSE)
+   * Process usage/billing data from API
    */
+  processUsageData(url, data) {
+    window.CUP.log('API Interceptor: Received potential usage data from', url);
+    
+    // Look for usage information in various formats
+    let usageInfo = null;
+    
+    if (data.usage) {
+      usageInfo = data.usage;
+    } else if (data.rate_limit) {
+      usageInfo = data.rate_limit;
+    } else if (data.quota) {
+      usageInfo = data.quota;
+    } else if (data.messageLimit || data.message_limit) {
+      usageInfo = {
+        messageLimit: data.messageLimit || data.message_limit,
+        messagesUsed: data.messagesUsed || data.messages_used
+      };
+    }
+    
+    if (usageInfo) {
+      window.CUP.log('API Interceptor: Found usage info:', usageInfo);
+      this.lastUsageData = usageInfo;
+      
+      if (this.callbacks.onUsageDataReceived) {
+        this.callbacks.onUsageDataReceived(usageInfo);
+      }
+    }
+  }
+  
   async processStreamingResponse(response) {
     try {
       const reader = response.body?.getReader();
@@ -267,7 +291,6 @@ class APIInterceptorClass {
             try {
               const data = JSON.parse(jsonStr);
               
-              // Handle different response formats
               if (data.completion) {
                 totalText += data.completion;
               } else if (data.delta?.text) {
@@ -276,28 +299,28 @@ class APIInterceptorClass {
                 totalText += data.content[0].text;
               }
               
-              // Handle thinking/reasoning tokens
               if (data.thinking) {
                 thinkingText += data.thinking;
               }
               
-            } catch (e) {
-              // Not valid JSON, skip
-            }
+              // Check for usage info in streaming response
+              if (data.usage || data.rate_limit) {
+                this.processUsageData('streaming', data);
+              }
+              
+            } catch (e) {}
           }
         }
       }
       
-      // Calculate total tokens
-      const textTokens = window.TokenEstimator ?
-        window.TokenEstimator.countTokens(totalText) :
+      const textTokens = window.TokenCounter ?
+        window.TokenCounter.estimateTokens(totalText) :
         Math.ceil(totalText.length / 4);
         
-      const thinkingTokens = window.TokenEstimator ?
-        window.TokenEstimator.countTokens(thinkingText) :
+      const thinkingTokens = window.TokenCounter ?
+        window.TokenCounter.estimateTokens(thinkingText) :
         Math.ceil(thinkingText.length / 4);
       
-      // Trigger callback
       if (this.callbacks.onMessageReceived) {
         this.callbacks.onMessageReceived({
           textTokens,
@@ -311,9 +334,6 @@ class APIInterceptorClass {
     }
   }
   
-  /**
-   * Process conversation load
-   */
   processConversationLoad(url, data) {
     try {
       const conversationId = url.match(/chat_conversations\/([a-f0-9-]+)/)?.[1];
@@ -324,49 +344,43 @@ class APIInterceptorClass {
       let projectTokens = 0;
       let fileTokens = 0;
       
-      // Process all messages
       for (const msg of messages) {
-        // User messages
         if (msg.text) {
-          totalTokens += window.TokenEstimator ?
-            window.TokenEstimator.countTokens(msg.text) :
+          totalTokens += window.TokenCounter ?
+            window.TokenCounter.estimateTokens(msg.text) :
             Math.ceil(msg.text.length / 4);
         }
         
-        // Assistant messages
         if (msg.content) {
           for (const block of msg.content) {
             if (block.text) {
-              totalTokens += window.TokenEstimator ?
-                window.TokenEstimator.countTokens(block.text) :
+              totalTokens += window.TokenCounter ?
+                window.TokenCounter.estimateTokens(block.text) :
                 Math.ceil(block.text.length / 4);
             }
           }
         }
         
-        // Attachments
         if (msg.attachments) {
           for (const att of msg.attachments) {
             if (att.extracted_content) {
-              fileTokens += window.TokenEstimator ?
-                window.TokenEstimator.countTokens(att.extracted_content) :
+              fileTokens += window.TokenCounter ?
+                window.TokenCounter.estimateTokens(att.extracted_content) :
                 Math.ceil(att.extracted_content.length / 4);
             }
           }
         }
       }
       
-      // Add project context if present
       if (data.project) {
         const projectContext = data.project.prompt_template || '';
-        projectTokens = window.TokenEstimator ?
-          window.TokenEstimator.countTokens(projectContext) :
+        projectTokens = window.TokenCounter ?
+          window.TokenCounter.estimateTokens(projectContext) :
           Math.ceil(projectContext.length / 4);
       }
       
       totalTokens += fileTokens + projectTokens;
       
-      // Trigger callback
       if (this.callbacks.onConversationLoaded) {
         this.callbacks.onConversationLoaded({
           conversationId,
@@ -382,9 +396,14 @@ class APIInterceptorClass {
       window.CUP.logError('Error processing conversation load:', error);
     }
   }
+  
+  /**
+   * Get last known usage data
+   */
+  getLastUsageData() {
+    return this.lastUsageData;
+  }
 }
 
-// Create singleton instance and expose globally
 window.APIInterceptor = new APIInterceptorClass();
-
 window.CUP.log('APIInterceptor loaded (singleton instance)');
