@@ -132,36 +132,55 @@ async function loadTrackingStatus() {
 function updateTrackingStatus(hybrid, firebase) {
   if (!els.trackingIndicator || !els.trackingText) return;
   
-  let statusText = '';
+  let parts = [];
   let statusColor = '#888';
   
+  // Baseline status
   if (!hybrid || !hybrid.initialized) {
-    statusText = 'Initializing...';
+    parts.push('Initializing...');
   } else if (!hybrid.hasBaseline) {
-    statusText = 'No baseline - click refresh to sync';
-    statusColor = '#f59e0b';
-  } else if (hybrid.isStale) {
-    const ageMin = Math.floor((hybrid.baselineAge || 0) / 60000);
-    statusText = `Baseline stale (${ageMin}m old)`;
+    parts.push('No baseline - click 🔄');
     statusColor = '#f59e0b';
   } else {
     const ageMin = Math.floor((hybrid.baselineAge || 0) / 60000);
     const deltaTokens = hybrid.deltaTokens || 0;
     
-    if (deltaTokens > 0) {
-      statusText = `+${deltaTokens.toLocaleString()} tokens (${ageMin}m ago)`;
+    // Show baseline age
+    if (hybrid.isStale) {
+      parts.push(`Baseline: ${ageMin}m (stale)`);
+      statusColor = '#f59e0b';
     } else {
-      statusText = `Synced ${ageMin}m ago`;
+      parts.push(`Baseline: ${ageMin}m`);
+      statusColor = '#22c55e';
     }
-    statusColor = '#22c55e';
+    
+    // Show tracked tokens if any
+    if (deltaTokens > 0) {
+      parts.push(`+${deltaTokens.toLocaleString()} tokens`);
+    }
   }
   
+  // Firebase status
   if (firebase?.authenticated) {
-    statusText += ' • Firebase ✓';
+    const pushAge = firebase.lastPush ? Math.floor((Date.now() - firebase.lastPush) / 1000) : null;
+    const pullAge = firebase.lastPull ? Math.floor((Date.now() - firebase.lastPull) / 1000) : null;
+    
+    let fbStatus = 'Firebase';
+    if (pushAge !== null && pullAge !== null) {
+      // Show recent activity
+      const recentSync = Math.min(pushAge, pullAge);
+      if (recentSync < 60) {
+        fbStatus += ` ↕${recentSync}s`;
+      } else {
+        fbStatus += ` ↕${Math.floor(recentSync / 60)}m`;
+      }
+    }
+    fbStatus += ' ✓';
+    parts.push(fbStatus);
   }
   
   els.trackingIndicator.style.color = statusColor;
-  els.trackingText.textContent = statusText;
+  els.trackingText.textContent = parts.join(' • ');
 }
 
 async function triggerRefresh() {

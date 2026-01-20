@@ -233,8 +233,10 @@ class FirebaseSync {
     this.auth = auth;
     this.databaseUrl = null;
     this.syncEnabled = false;
-    this.lastSync = null;
     this.syncInterval = null;
+    this.pullInterval = null;
+    this.lastPush = null;
+    this.lastPull = null;
     this.deviceId = null;
   }
 
@@ -371,7 +373,7 @@ class FirebaseSync {
 
     const result = await this.makeAuthenticatedRequest(`usage/${this.deviceId}`, 'PUT', syncData);
     if (result !== null) {
-      this.lastSync = Date.now();
+      this.lastPush = Date.now();
       return { success: true };
     }
     return { success: false };
@@ -1048,7 +1050,8 @@ async function handleMessage(message, sender) {
         enabled: firebaseSync?.syncEnabled || false,
         authenticated: firebaseAuth?.isAuthenticated() || false,
         uid: firebaseAuth?.getUid() || null,
-        lastSync: firebaseSync?.lastSync || null,
+        lastPush: firebaseSync?.lastPush || null,
+        lastPull: firebaseSync?.lastPull || null,
         syncId: firebaseSync?.syncId || null
       };
     }
@@ -1336,6 +1339,7 @@ async function pullFromFirebase() {
       await chrome.storage.local.set({ settings: mergedSettings });
     }
     
+    firebaseSync.lastPull = Date.now();
     log('[CUP BG] Firebase pull complete');
   } catch (e) {
     console.error('[CUP BG] Firebase pull error:', e.message);
