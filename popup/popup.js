@@ -28,6 +28,7 @@ const els = {
   showSidebar: document.getElementById('showSidebar'),
   showChatOverlay: document.getElementById('showChatOverlay'),
   enableVoice: document.getElementById('enableVoice'),
+  enableResetNotifications: document.getElementById('enableResetNotifications'),
   
   // Anthropic
   anthropicApiKey: document.getElementById('anthropicApiKey'),
@@ -291,6 +292,7 @@ async function loadSettings() {
     els.showSidebar.checked = settings.showSidebar !== false;
     els.showChatOverlay.checked = settings.showChatOverlay !== false;
     els.enableVoice.checked = settings.enableVoice === true;
+    els.enableResetNotifications.checked = settings.enableResetNotifications !== false; // default true
     
     // Anthropic API key
     if (settings.anthropicApiKey) {
@@ -335,6 +337,7 @@ async function saveSettings() {
     showSidebar: els.showSidebar.checked,
     showChatOverlay: els.showChatOverlay.checked,
     enableVoice: els.enableVoice.checked,
+    enableResetNotifications: els.enableResetNotifications.checked,
     firebaseDatabaseUrl: els.firebaseDatabaseUrl.value.trim().replace(/\/+$/, ''),  // Strip trailing slashes
     firebaseSyncId: els.firebaseSyncId.value.trim()
   };

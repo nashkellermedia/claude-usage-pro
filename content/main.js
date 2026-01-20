@@ -140,16 +140,14 @@
   }
   
   function updateTabTitle(usageData) {
-    // Get the higher of session or weekly percentage
+    // Session percentage only
     const sessionPercent = parseInt(usageData?.currentSession?.percent) || 0;
-    const weeklyPercent = parseInt(usageData?.weeklyAllModels?.percent) || 0;
-    const displayPercent = Math.max(sessionPercent, weeklyPercent);
     
     // Get current title without our prefix
     const baseTitle = document.title.replace(/^\d+%\s*-\s*/, '');
     
-    if (displayPercent > 0) {
-      document.title = displayPercent + '% - ' + baseTitle;
+    if (sessionPercent > 0) {
+      document.title = sessionPercent + '% - ' + baseTitle;
     } else {
       document.title = baseTitle;
     }

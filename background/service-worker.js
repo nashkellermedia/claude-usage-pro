@@ -863,6 +863,7 @@ const DEFAULT_SETTINGS = {
   showSidebar: true,
   showChatOverlay: true,
   enableVoice: false,
+  enableResetNotifications: true,
   firebaseDatabaseUrl: '',
   firebaseApiKey: '',
   anthropicApiKey: '',
@@ -905,6 +906,9 @@ async function saveUsageData(data) {
     if (firebaseSync?.syncEnabled) {
       await firebaseSync.syncUsage(data);
     }
+    
+    // Schedule reset notification if usage is high
+    await scheduleResetNotification(data);
   } catch (e) {
     console.error('[CUP BG] Save error:', e.message);
   }
@@ -1407,12 +1411,76 @@ async function initializeExtension() {
 // Run initialization
 initializeExtension().catch(console.error);
 
+// ============================================================================
+// Reset Notifications
+// ============================================================================
+
+// Parse reset time string to minutes (e.g., "4 hours" -> 240, "30 minutes" -> 30)
+function parseResetTimeToMinutes(resetStr) {
+  if (!resetStr || resetStr === '--') return null;
+  
+  const str = resetStr.toLowerCase().trim();
+  let totalMinutes = 0;
+  
+  // Match patterns like "4 hours", "4h 30m", "30 minutes", "2 days"
+  const hourMatch = str.match(/(\d+)\s*(?:hours?|hr?s?)/);
+  const minMatch = str.match(/(\d+)\s*(?:minutes?|mins?|m)(?!o)/); // (?!o) to avoid matching "months"
+  const dayMatch = str.match(/(\d+)\s*(?:days?|d)/);
+  
+  if (dayMatch) totalMinutes += parseInt(dayMatch[1]) * 24 * 60;
+  if (hourMatch) totalMinutes += parseInt(hourMatch[1]) * 60;
+  if (minMatch) totalMinutes += parseInt(minMatch[1]);
+  
+  return totalMinutes > 0 ? totalMinutes : null;
+}
+
+// Schedule a notification for when usage resets
+async function scheduleResetNotification(usageData) {
+  const settings = await getSettings();
+  if (!settings.enableResetNotifications) return;
+  
+  const sessionPercent = usageData?.currentSession?.percent || 0;
+  const resetStr = usageData?.currentSession?.resetsIn;
+  
+  // Only schedule if usage is high (>= 70%)
+  if (sessionPercent < 70) {
+    // Clear any existing alarm if usage dropped
+    chrome.alarms.clear('resetNotification');
+    return;
+  }
+  
+  const resetMinutes = parseResetTimeToMinutes(resetStr);
+  if (!resetMinutes) return;
+  
+  // Schedule alarm
+  chrome.alarms.create('resetNotification', { delayInMinutes: resetMinutes });
+  log('[CUP BG] Scheduled reset notification in', resetMinutes, 'minutes');
+}
+
+// Show the reset notification
+async function showResetNotification() {
+  try {
+    await chrome.notifications.create('usageReset', {
+      type: 'basic',
+      iconUrl: 'icons/icon128.png',
+      title: 'Claude Usage Reset',
+      message: 'Your session usage limit has reset. You can continue chatting!',
+      priority: 2
+    });
+    log('[CUP BG] Reset notification shown');
+  } catch (e) {
+    logError('[CUP BG] Notification error:', e.message);
+  }
+}
+
 // Periodic badge update
 chrome.alarms.create('updateBadge', { periodInMinutes: 1 });
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === 'updateBadge') {
     const usageData = await getUsageData();
     await updateBadge(usageData);
+  } else if (alarm.name === 'resetNotification') {
+    await showResetNotification();
   }
 });
 
