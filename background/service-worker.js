@@ -10,7 +10,7 @@
  */
 
 // Debug mode - set to true for verbose logging
-const DEBUG = false;
+const DEBUG = true;
 const log = (...args) => DEBUG && log('[CUP]', ...args);
 const logError = (...args) => console.error('[CUP]', ...args);
 
@@ -478,39 +478,76 @@ class HybridTracker {
   async initialize() {
     try {
       const stored = await chrome.storage.local.get(['cup_baseline', 'cup_delta', 'cup_token_rates']);
-      if (stored.cup_baseline) this.baseline = stored.cup_baseline;
+      if (stored.cup_baseline) {
+        this.baseline = stored.cup_baseline;
+      } else {
+        // Create default baseline so tracking works immediately
+        this.baseline = {
+          currentSession: { percent: 0, resetsIn: '--' },
+          weeklyAllModels: { percent: 0, resetsAt: '--' },
+          weeklySonnet: { percent: 0, resetsIn: '--' },
+          source: 'default',
+          timestamp: Date.now()
+        };
+        log('[HybridTracker] Created default baseline');
+      }
       if (stored.cup_delta) this.delta = stored.cup_delta;
       if (stored.cup_token_rates) this.tokenRates = stored.cup_token_rates;
       this.updateEstimate();
       return true;
     } catch (e) {
-      console.error('[HybridTracker] Init error:', e.message);
+      logError('[HybridTracker] Init error:', e.message);
       return false;
     }
   }
 
   async setBaseline(usageData, source = 'unknown') {
     const now = Date.now();
+    const oldBaseline = this.baseline;
+    
     this.baseline = {
       currentSession: usageData.currentSession || { percent: 0, resetsIn: '--' },
       weeklyAllModels: usageData.weeklyAllModels || { percent: 0, resetsAt: '--' },
       weeklySonnet: usageData.weeklySonnet || { percent: 0, resetsIn: '--' },
       source, timestamp: now
     };
-    this.delta = { inputTokens: 0, outputTokens: 0, lastReset: now };
+    
+    // Only reset deltas if the new baseline shows higher usage than our estimate
+    // This prevents losing tracked data when baseline is refreshed
+    if (oldBaseline && this.estimatedUsage) {
+      const newSession = this.baseline.currentSession.percent || 0;
+      const estSession = this.estimatedUsage.currentSession?.percent || 0;
+      
+      // If scraped value is close to or higher than estimate, reset deltas
+      // If scraped value is much lower, keep deltas (session probably reset)
+      if (newSession >= estSession - 5) {
+        this.delta = { inputTokens: 0, outputTokens: 0, lastReset: now };
+        log('[HybridTracker] Reset deltas - baseline caught up');
+      } else {
+        log('[HybridTracker] Keeping deltas - baseline lower than estimate');
+      }
+    } else {
+      this.delta = { inputTokens: 0, outputTokens: 0, lastReset: now };
+    }
+    
     await this.save();
     this.updateEstimate();
-    log('[HybridTracker] New baseline from', source);
+    log('[HybridTracker] New baseline from', source, '- Session:', this.baseline.currentSession.percent + '%');
     return this.baseline;
   }
 
   async addTokenDelta(inputTokens = 0, outputTokens = 0) {
+    if (inputTokens > 0 || outputTokens > 0) {
+      log('[HybridTracker] +' + inputTokens + ' input, +' + outputTokens + ' output tokens');
+    }
+    
     this.delta.inputTokens += inputTokens;
     this.delta.outputTokens += outputTokens;
     this.updateEstimate();
     
+    // Save every 500 tokens or immediately if significant
     const total = this.delta.inputTokens + this.delta.outputTokens;
-    if (total % 1000 < (inputTokens + outputTokens)) {
+    if ((inputTokens + outputTokens) > 100 || total % 500 < (inputTokens + outputTokens)) {
       await this.save();
     }
     return this.estimatedUsage;
@@ -526,23 +563,36 @@ class HybridTracker {
     const sessionDelta = totalDeltaTokens / this.tokenRates.sessionTokensPer1Percent;
     const weeklyDelta = totalDeltaTokens / this.tokenRates.weeklyTokensPer1Percent;
 
+    // Calculate precise percentages
+    const sessionPercent = (this.baseline.currentSession.percent || 0) + sessionDelta;
+    const weeklyPercent = (this.baseline.weeklyAllModels.percent || 0) + weeklyDelta;
+    const sonnetPercent = (this.baseline.weeklySonnet.percent || 0) + weeklyDelta;
+
     this.estimatedUsage = {
       currentSession: {
-        percent: Math.min(100, Math.round((this.baseline.currentSession.percent || 0) + sessionDelta)),
+        percent: Math.min(100, Math.round(sessionPercent)),
+        percentExact: Math.min(100, sessionPercent),
         resetsIn: this.baseline.currentSession.resetsIn
       },
       weeklyAllModels: {
-        percent: Math.min(100, Math.round((this.baseline.weeklyAllModels.percent || 0) + weeklyDelta)),
+        percent: Math.min(100, Math.round(weeklyPercent)),
+        percentExact: Math.min(100, weeklyPercent),
         resetsAt: this.baseline.weeklyAllModels.resetsAt
       },
       weeklySonnet: {
-        percent: Math.min(100, Math.round((this.baseline.weeklySonnet.percent || 0) + weeklyDelta)),
+        percent: Math.min(100, Math.round(sonnetPercent)),
+        percentExact: Math.min(100, sonnetPercent),
         resetsIn: this.baseline.weeklySonnet.resetsIn
       },
       isEstimate: true,
       deltaTokens: totalDeltaTokens,
-      baselineTimestamp: this.baseline.timestamp
+      baselineTimestamp: this.baseline.timestamp,
+      baselineSource: this.baseline.source
     };
+    
+    if (totalDeltaTokens > 0) {
+      log('[HybridTracker] Estimate: Session', sessionPercent.toFixed(2) + '%, Delta tokens:', totalDeltaTokens);
+    }
   }
 
   async save() {

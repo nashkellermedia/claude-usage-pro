@@ -27,7 +27,7 @@ class APIInterceptorClass {
     this.interceptXHR();
     this.isActive = true;
     
-    window.CUP.log('API interceptor started');
+    window.CUP.log('API interceptor started - monitoring Claude API calls');
   }
   
   on(event, callback) {
@@ -55,7 +55,10 @@ class APIInterceptorClass {
             timestamp: Date.now()
           });
           
+          window.CUP.log('Intercepted:', options?.method || 'GET', urlString.substring(0, 80));
+          
           if (self.isCompletionUrl(urlString) && options?.body) {
+            window.CUP.log('Processing outgoing message...');
             self.processOutgoingRequest(urlString, options.body);
           }
           
@@ -106,19 +109,26 @@ class APIInterceptorClass {
   }
   
   isRelevantUrl(url) {
-    return url.includes('claude.ai/api') || 
+    // Match any Claude API call
+    return url.includes('claude.ai/api') ||
+           url.includes('claude.ai/api/') ||
            url.includes('/api/organizations') ||
            url.includes('/api/chat_conversations') ||
+           url.includes('/api/append_message') ||
+           url.includes('/api/converstion') ||
            url.includes('/api/usage') ||
            url.includes('/api/billing') ||
            url.includes('/api/account') ||
+           url.includes('/api/') ||
            url.includes('/settings/usage');
   }
   
   isCompletionUrl(url) {
     return url.includes('/completion') || 
-           url.includes('/chat') ||
-           url.includes('/retry_completion');
+           url.includes('/append_message') ||
+           url.includes('/chat_conversations') ||
+           url.includes('/retry_completion') ||
+           url.includes('/retry');
   }
   
   isConversationUrl(url) {
@@ -175,13 +185,16 @@ class APIInterceptorClass {
       }
       
       // Send token delta to background for hybrid tracking
+      window.CUP.log('Sending input tokens to background:', tokens);
       try {
         chrome.runtime.sendMessage({
           type: 'ADD_TOKEN_DELTA',
           inputTokens: tokens,
           outputTokens: 0
         }).catch(() => {});
-      } catch (e) {}
+      } catch (e) {
+        window.CUP.logError('Failed to send input tokens:', e);
+      }
       
     } catch (error) {
       window.CUP.logError('Error processing outgoing request:', error);
@@ -339,13 +352,19 @@ class APIInterceptorClass {
       }
       
       // Send token delta to background for hybrid tracking
+      const outputTotal = textTokens + thinkingTokens;
+      if (outputTotal > 0) {
+        window.CUP.log('Sending output tokens to background:', outputTotal, '(text:', textTokens, 'thinking:', thinkingTokens + ')');
+      }
       try {
         chrome.runtime.sendMessage({
           type: 'ADD_TOKEN_DELTA',
           inputTokens: 0,  // Input tokens already tracked in outgoing
-          outputTokens: textTokens + thinkingTokens
+          outputTokens: outputTotal
         }).catch(() => {});
-      } catch (e) {}
+      } catch (e) {
+        window.CUP.logError('Failed to send output tokens:', e);
+      }
       
     } catch (error) {
       window.CUP.logError('Error processing streaming response:', error);
