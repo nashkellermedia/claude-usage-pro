@@ -126,11 +126,9 @@
   setInterval(() => {
     if (window.cupSidebar && settings.showSidebar) {
       window.cupSidebar.checkAndReinject();
-      }
     }
     if (window.cupChatUI && settings.showChatOverlay) {
       window.cupChatUI.checkAndReinject();
-      }
     }
     // Check voice button
     if (settings.enableVoice) {
