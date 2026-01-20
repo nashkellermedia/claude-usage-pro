@@ -31,15 +31,10 @@ class UsageScraper {
   async scrapeUsage() {
     window.CUP.log('UsageScraper: Starting scrape...');
     
-    // First, try to fetch from API endpoints (most accurate)
-    const apiData = await this.tryFetchFromAPI();
-    if (apiData) {
-      this.lastScrapedData = apiData;
-      return apiData;
-    }
-    
-    // Fall back to page scraping if on usage page
+    // If on usage page, scrape directly from DOM
     if (window.location.pathname.includes('/settings/usage')) {
+      // Wait for content to load
+      await this.waitForContent();
       const data = this.scrapeFromMainContent();
       if (data) {
         this.lastScrapedData = data;
@@ -47,169 +42,32 @@ class UsageScraper {
       }
     }
     
-    // Background fetch as last resort
-    try {
-      const response = await fetch('https://claude.ai/settings/usage', {
-        credentials: 'include',
-        headers: { 'Accept': 'text/html' }
-      });
-      
-      if (response.ok) {
-        const html = await response.text();
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, 'text/html');
-        
-        // Get text from main content only (not sidebar)
-        const main = doc.querySelector('main') || doc.querySelector('[class*="settings"]') || doc.body;
-        const text = main?.innerText || '';
-        
-        const data = this.scrapePageText(text);
-        if (data) {
-          this.lastScrapedData = data;
-          return data;
-        }
-      }
-    } catch (e) {
-      window.CUP.log('UsageScraper: Fetch error:', e.message);
+    // Not on usage page - return cached data
+    // Note: Background HTML fetch doesn't work because Claude uses client-side rendering
+    // The user needs to visit the usage page to refresh data
+    if (this.lastScrapedData) {
+      window.CUP.log('UsageScraper: Returning cached data (visit /settings/usage to refresh)');
+      return this.lastScrapedData;
     }
     
-    return this.lastScrapedData;
-  }
-  
-  /**
-   * Try to fetch usage data directly from Claude's API endpoints
-   * This is more reliable than scraping HTML
-   */
-  async tryFetchFromAPI() {
-    const endpoints = [
-      'https://claude.ai/api/usage',
-      'https://claude.ai/api/account/usage',
-      'https://claude.ai/api/billing/usage',
-      'https://claude.ai/api/rate_limit_status',
-      'https://claude.ai/api/settings'
-    ];
-    
-    for (const endpoint of endpoints) {
-      try {
-        const response = await fetch(endpoint, {
-          method: 'GET',
-          credentials: 'include',
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-          }
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          const parsed = this.parseAPIResponse(data, endpoint);
-          if (parsed) {
-            window.CUP.log('UsageScraper: Got data from API endpoint:', endpoint);
-            return parsed;
-          }
-        }
-      } catch (e) {
-        // Endpoint didn't work, try next
-      }
-    }
-    
+    window.CUP.log('UsageScraper: No cached data - please visit Settings > Usage to sync');
     return null;
   }
   
-  /**
-   * Parse API response to extract usage data
-   */
-  parseAPIResponse(data, endpoint) {
-    const result = {
-      currentSession: null,
-      weeklyAllModels: null,
-      weeklySonnet: null,
-      source: 'api-fetch',
-      endpoint: endpoint,
-      scrapedAt: Date.now()
-    };
-    
-    // Try various possible response formats
-    
-    // Format: Direct percent fields
-    if (data.session_percent !== undefined || data.sessionPercent !== undefined) {
-      result.currentSession = {
-        percent: data.session_percent || data.sessionPercent || 0,
-        resetsIn: data.session_resets_in || data.sessionResetsIn || '--'
-      };
-    }
-    
-    if (data.weekly_percent !== undefined || data.weeklyPercent !== undefined) {
-      result.weeklyAllModels = {
-        percent: data.weekly_percent || data.weeklyPercent || 0,
-        resetsAt: data.weekly_resets_at || data.weeklyResetsAt || '--'
-      };
-    }
-    
-    // Format: Nested usage object
-    if (data.usage) {
-      if (data.usage.session) {
-        result.currentSession = {
-          percent: data.usage.session.percent || Math.round((data.usage.session.used / data.usage.session.limit) * 100) || 0,
-          resetsIn: data.usage.session.resets_in || '--'
-        };
+  async waitForContent(maxAttempts = 10) {
+    for (let i = 0; i < maxAttempts; i++) {
+      const pageText = document.body?.innerText || '';
+      if (pageText.includes('Plan usage limits') || pageText.includes('Current session')) {
+        return true;
       }
-      if (data.usage.weekly) {
-        result.weeklyAllModels = {
-          percent: data.usage.weekly.percent || Math.round((data.usage.weekly.used / data.usage.weekly.limit) * 100) || 0,
-          resetsAt: data.usage.weekly.resets_at || '--'
-        };
+      if (pageText.includes('Loading...')) {
+        window.CUP.log('UsageScraper: Waiting for content... (attempt', i + 1 + ')');
+        await new Promise(r => setTimeout(r, 1000));
+        continue;
       }
+      await new Promise(r => setTimeout(r, 500));
     }
-    
-    // Format: Rate limit style
-    if (data.rate_limit || data.rateLimit) {
-      const rl = data.rate_limit || data.rateLimit;
-      const used = rl.messages_used || rl.messagesUsed || rl.used || 0;
-      const limit = rl.message_limit || rl.messageLimit || rl.limit || 100;
-      const percent = limit > 0 ? Math.round((used / limit) * 100) : 0;
-      
-      result.currentSession = {
-        percent: percent,
-        resetsIn: rl.resets_in || rl.resetsIn || '--'
-      };
-    }
-    
-    // Format: Message limits
-    if (data.message_limit !== undefined || data.messageLimit !== undefined) {
-      const limit = data.message_limit || data.messageLimit;
-      const used = data.messages_used || data.messagesUsed || 0;
-      if (limit > 0) {
-        result.currentSession = {
-          percent: Math.round((used / limit) * 100),
-          resetsIn: data.resets_in || '--'
-        };
-      }
-    }
-    
-    // Format: Plan limits (nested)
-    if (data.plan_limits || data.planLimits) {
-      const pl = data.plan_limits || data.planLimits;
-      if (pl.hourly) {
-        result.currentSession = {
-          percent: pl.hourly.percent || Math.round((pl.hourly.used / pl.hourly.limit) * 100),
-          resetsIn: pl.hourly.resets_in || '--'
-        };
-      }
-      if (pl.weekly) {
-        result.weeklyAllModels = {
-          percent: pl.weekly.percent || Math.round((pl.weekly.used / pl.weekly.limit) * 100),
-          resetsAt: pl.weekly.resets_at || '--'
-        };
-      }
-    }
-    
-    // Check if we got any data
-    if (result.currentSession || result.weeklyAllModels) {
-      return result;
-    }
-    
-    return null;
+    return false;
   }
   
   /**
@@ -340,31 +198,8 @@ class UsageScraper {
     
     window.CUP.log('UsageScraper: Scraping current page...');
     
-    // Wait for content to actually load (not just "Loading...")
-    let attempts = 0;
-    const maxAttempts = 10;
-    
-    while (attempts < maxAttempts) {
-      const pageText = document.body?.innerText || '';
-      
-      // Check if page is still loading
-      if (pageText.includes('Loading...') && !pageText.includes('Plan usage limits')) {
-        window.CUP.log('UsageScraper: Page still loading, waiting... (attempt', attempts + 1 + ')');
-        await new Promise(r => setTimeout(r, 1000));
-        attempts++;
-        continue;
-      }
-      
-      // Check if we have actual content
-      if (pageText.includes('Plan usage limits') || pageText.includes('Current session')) {
-        window.CUP.log('UsageScraper: Content loaded, scraping...');
-        break;
-      }
-      
-      // Neither loading nor content found, wait a bit
-      await new Promise(r => setTimeout(r, 1000));
-      attempts++;
-    }
+    // Wait for content to load
+    await this.waitForContent();
     
     const data = this.scrapeFromMainContent();
     
@@ -373,7 +208,7 @@ class UsageScraper {
       window.CUP.sendToBackground({ type: 'SYNC_SCRAPED_DATA', data });
       window.CUP.log('UsageScraper: Data synced to background');
     } else {
-      window.CUP.log('UsageScraper: Failed to scrape after', attempts, 'attempts');
+      window.CUP.log('UsageScraper: Failed to scrape - content may not have loaded');
     }
   }
   
