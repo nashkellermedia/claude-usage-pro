@@ -5,7 +5,7 @@
 (async function() {
   // Initialize CUP namespace
   window.CUP = {
-    debug: false,
+    debug: true,
     log: (...args) => {
       if (window.CUP.debug) console.log('[Claude Usage Pro]', ...args);
     },
@@ -139,15 +139,20 @@
     updateTabTitle(usageData);
   }
   
-  // Store original title (strip any existing percentage prefix)
-  const originalTitle = document.title.replace(/^\d+%\s*-\s*/, '');
-  
   function updateTabTitle(usageData) {
-    const sessionPercent = usageData?.currentSession?.percent || 0;
-    // Get current title without our prefix (in case it changed)
+    // Get session percent from various possible locations
+    let sessionPercent = 0;
+    if (usageData?.currentSession?.percent) {
+      sessionPercent = parseInt(usageData.currentSession.percent) || 0;
+    }
+    
+    // Get current title without our prefix
     const baseTitle = document.title.replace(/^\d+%\s*-\s*/, '');
+    
+    window.CUP.log('Tab title update:', sessionPercent + '%', baseTitle);
+    
     if (sessionPercent > 0) {
-      document.title = `${sessionPercent}% - ${baseTitle}`;
+      document.title = sessionPercent + '% - ' + baseTitle;
     } else {
       document.title = baseTitle;
     }
