@@ -126,9 +126,22 @@ class SidebarUI {
       this.updateElement('cup-sidebar-session', pct + '%');
       this.updateBar('cup-sidebar-session-bar', pct);
       this.colorizePercent('cup-sidebar-session', pct);
-      
-      if (usageData.currentSession.resetsIn) {
-        this.updateElement('cup-sidebar-session-reset', 'Resets in ' + usageData.currentSession.resetsIn);
+    }
+    
+    // Always update session reset time
+    const resetEl = document.getElementById('cup-sidebar-session-reset');
+    if (resetEl) {
+      const resetTime = usageData.currentSession?.resetsIn || '--';
+      if (resetTime && resetTime !== '--') {
+        resetEl.textContent = 'Resets in ' + resetTime;
+        resetEl.style.cursor = 'default';
+        resetEl.style.textDecoration = 'none';
+        resetEl.onclick = null;
+      } else {
+        resetEl.textContent = 'Resets in -- (click to sync)';
+        resetEl.style.cursor = 'pointer';
+        resetEl.style.textDecoration = 'underline';
+        resetEl.onclick = () => window.open('https://claude.ai/settings/usage', '_blank');
       }
     }
     
