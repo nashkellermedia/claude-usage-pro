@@ -61,7 +61,7 @@ class VoiceInput {
     
     document.addEventListener('keydown', (e) => {
       // Only X key, not in an input field, not repeating
-      if (e.key.toLowerCase() !== 'x' || e.repeat) return;
+      if (e.key.toLowerCase() !== 'v' || e.repeat) return;
       if (this.isTypingInInput()) return;
       
       e.preventDefault();
@@ -73,7 +73,7 @@ class VoiceInput {
     });
     
     document.addEventListener('keyup', (e) => {
-      if (e.key.toLowerCase() !== 'x') return;
+      if (e.key.toLowerCase() !== 'v') return;
       
       if (this.holdToTalkActive) {
         this.holdToTalkActive = false;
@@ -160,7 +160,7 @@ class VoiceInput {
     btn.className = 'cup-voice-btn';
     btn.type = 'button';
     btn.innerHTML = this.isListening ? '🔴' : '🎤';
-    btn.title = this.isListening ? 'Listening... (Ctrl+Shift+V to stop)' : 'Voice Input (hold X or Ctrl+Shift+V)';
+    btn.title = this.isListening ? 'Listening... (Ctrl+Shift+V to stop)' : 'Voice Input (hold V or Ctrl+Shift+V)';
     if (this.isListening) btn.classList.add('listening');
     
     btn.addEventListener('click', (e) => {
@@ -277,7 +277,7 @@ class VoiceInput {
     } else {
       btn.innerHTML = '🎤';
       btn.classList.remove('listening');
-      btn.title = 'Voice Input (hold X or Ctrl+Shift+V)';
+      btn.title = 'Voice Input (hold V or Ctrl+Shift+V)';
     }
   }
 }
