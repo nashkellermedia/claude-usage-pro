@@ -63,7 +63,7 @@
     await window.cupChatUI.injectUI();
   }
   
-  // Initialize voice if enabled
+  // Initialize voice if enabled (voice-input.js handles its own re-injection)
   if (window.VoiceInput && settings.enableVoice) {
     window.CUP.log('Voice enabled, initializing...');
     window.cupVoice = new VoiceInput();
@@ -115,27 +115,13 @@
     return true;
   });
   
-  // Periodic UI check
+  // Periodic UI check (sidebar and chat overlay only - voice handles itself)
   setInterval(() => {
     if (window.cupSidebar && settings.showSidebar) {
       window.cupSidebar.checkAndReinject();
     }
     if (window.cupChatUI && settings.showChatOverlay) {
       window.cupChatUI.checkAndReinject();
-    }
-    // Check voice button
-    if (settings.enableVoice) {
-      const voiceBtns = document.querySelectorAll('.cup-voice-btn, #cup-voice-btn');
-      if (voiceBtns.length === 0) {
-        if (window.cupVoice) {
-          window.cupVoice.injectButton();
-        }
-      } else if (voiceBtns.length > 1) {
-        window.CUP.log('Removing duplicate voice buttons:', voiceBtns.length);
-        for (let i = 1; i < voiceBtns.length; i++) {
-          voiceBtns[i].remove();
-        }
-      }
     }
   }, 5000);
   
@@ -167,19 +153,19 @@
     }
     
     // Toggle voice
-    const voiceBtn = document.querySelector('.cup-voice-btn');
     if (settings.enableVoice) {
-      if (!voiceBtn && window.VoiceInput) {
+      if (!window.cupVoice && window.VoiceInput) {
         window.CUP.log('Enabling voice input...');
         window.cupVoice = new VoiceInput();
         window.cupVoice.initialize();
       }
     } else {
+      const voiceBtn = document.querySelector('.cup-voice-btn');
       if (voiceBtn) {
         window.CUP.log('Disabling voice input...');
         voiceBtn.remove();
-        window.cupVoice = null;
       }
+      window.cupVoice = null;
     }
   }
   

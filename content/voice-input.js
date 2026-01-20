@@ -1,6 +1,7 @@
 /**
  * Claude Usage Pro - Voice Input
  * Adds voice-to-text capability to Claude's chat input
+ * Keyboard shortcut: Ctrl+Shift+V (or Cmd+Shift+V on Mac)
  */
 
 class VoiceInput {
@@ -9,7 +10,7 @@ class VoiceInput {
     this.isListening = false;
     this.button = null;
     this.supported = 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window;
-    this.lastContainerCheck = 0;
+    this.reinjecting = false;
   }
   
   initialize() {
@@ -31,13 +32,53 @@ class VoiceInput {
     this.recognition.onend = () => this.handleEnd();
     
     this.injectButton();
+    this.setupKeyboardShortcut();
     
-    // Periodically check button is in correct position
-    setInterval(() => this.ensureButtonPosition(), 2000);
+    // Check button position frequently (every 500ms) to catch UI re-renders
+    setInterval(() => this.ensureButtonExists(), 500);
+    
+    // Also watch for DOM changes near the composer
+    this.setupMutationObserver();
+  }
+  
+  setupKeyboardShortcut() {
+    document.addEventListener('keydown', (e) => {
+      // Ctrl+Shift+V (Windows/Linux) or Cmd+Shift+V (Mac)
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'v') {
+        e.preventDefault();
+        e.stopPropagation();
+        this.toggle();
+        window.CUP.log('VoiceInput: Toggled via keyboard shortcut');
+      }
+    });
+    window.CUP.log('VoiceInput: Keyboard shortcut registered (Ctrl/Cmd+Shift+V)');
+  }
+  
+  setupMutationObserver() {
+    // Watch for changes to the composer area that might remove our button
+    const observer = new MutationObserver((mutations) => {
+      // Debounce - only check if button is missing
+      if (!this.button || !this.button.isConnected) {
+        if (!this.reinjecting) {
+          this.reinjecting = true;
+          setTimeout(() => {
+            this.injectButton();
+            this.reinjecting = false;
+          }, 100);
+        }
+      }
+    });
+    
+    // Start observing once body is ready
+    setTimeout(() => {
+      observer.observe(document.body, { 
+        childList: true, 
+        subtree: true 
+      });
+    }, 2000);
   }
   
   findButtonContainer() {
-    // Find the contenteditable input
     const contentEditable = document.querySelector('[contenteditable="true"]');
     if (!contentEditable) return null;
     
@@ -49,11 +90,11 @@ class VoiceInput {
       if (container.tagName === 'FORM') break;
     }
     
-    // Find the button toolbar - usually a div with multiple buttons including send
+    // Find the send button
     const allButtons = container.querySelectorAll('button');
-    
-    // Find the send button (usually has an arrow SVG or specific aria-label)
     let sendButton = null;
+    
+    // Try aria-label first
     for (const btn of allButtons) {
       const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
       if (ariaLabel.includes('send')) {
@@ -62,12 +103,12 @@ class VoiceInput {
       }
     }
     
-    // If no aria-label, look for the orange/accent button
+    // Fallback: look for orange/accent button
     if (!sendButton) {
       for (const btn of allButtons) {
         const style = window.getComputedStyle(btn);
-        if (style.backgroundColor.includes('232, 121, 83') || 
-            style.backgroundColor.includes('217, 119, 87')) {
+        const bg = style.backgroundColor;
+        if (bg.includes('232, 121, 83') || bg.includes('217, 119, 87') || bg.includes('249, 115, 22')) {
           sendButton = btn;
           break;
         }
@@ -75,10 +116,7 @@ class VoiceInput {
     }
     
     if (sendButton && sendButton.parentElement) {
-      return {
-        toolbar: sendButton.parentElement,
-        sendButton: sendButton
-      };
+      return { toolbar: sendButton.parentElement, sendButton };
     }
     
     return null;
@@ -86,63 +124,42 @@ class VoiceInput {
   
   injectButton() {
     // Remove any existing buttons first
-    const existing = document.querySelectorAll('.cup-voice-btn');
-    existing.forEach(el => el.remove());
+    document.querySelectorAll('.cup-voice-btn').forEach(el => el.remove());
     
-    const tryInject = (attempt = 0) => {
-      if (attempt > 15) {
-        window.CUP.log('VoiceInput: Failed to inject after 15 attempts');
-        return;
-      }
-      
-      const result = this.findButtonContainer();
-      if (!result) {
-        setTimeout(() => tryInject(attempt + 1), 1000);
-        return;
-      }
-      
-      const { toolbar, sendButton } = result;
-      
-      // Create voice button
-      this.button = document.createElement('button');
-      this.button.className = 'cup-voice-btn';
-      this.button.type = 'button';
-      this.button.innerHTML = '🎤';
-      this.button.title = 'Voice Input (click to start/stop)';
-      
-      this.button.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        this.toggle();
-      });
-      
-      // Always insert RIGHT BEFORE the send button (which should be last)
-      toolbar.insertBefore(this.button, sendButton);
-      
-      window.CUP.log('VoiceInput: Button injected before send button');
-    };
-    
-    tryInject();
-  }
-  
-  ensureButtonPosition() {
-    // Check if button exists and is in DOM
-    if (!this.button || !this.button.isConnected) {
-      window.CUP.log('VoiceInput: Button missing, re-injecting');
-      this.injectButton();
+    const result = this.findButtonContainer();
+    if (!result) {
+      // Retry in a moment
+      setTimeout(() => this.injectButton(), 500);
       return;
     }
     
-    // Check if button is in the right position (right before send button)
-    const result = this.findButtonContainer();
-    if (!result) return;
+    const { toolbar, sendButton } = result;
     
-    const { sendButton } = result;
+    // Create voice button
+    this.button = document.createElement('button');
+    this.button.className = 'cup-voice-btn';
+    this.button.type = 'button';
+    this.button.innerHTML = '🎤';
+    this.button.title = 'Voice Input (Ctrl+Shift+V)';
     
-    // Button should be immediately before send button
-    if (this.button.nextElementSibling !== sendButton) {
-      window.CUP.log('VoiceInput: Button in wrong position, moving');
-      sendButton.parentElement.insertBefore(this.button, sendButton);
+    this.button.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.toggle();
+    });
+    
+    // Insert before send button
+    toolbar.insertBefore(this.button, sendButton);
+    window.CUP.log('VoiceInput: Button injected');
+  }
+  
+  ensureButtonExists() {
+    if (!this.button || !this.button.isConnected) {
+      if (!this.reinjecting) {
+        this.reinjecting = true;
+        this.injectButton();
+        setTimeout(() => { this.reinjecting = false; }, 200);
+      }
     }
   }
   
@@ -156,6 +173,9 @@ class VoiceInput {
   
   start() {
     if (!this.recognition) return;
+    
+    // Ensure button exists before starting
+    this.ensureButtonExists();
     
     try {
       this.recognition.start();
@@ -181,9 +201,7 @@ class VoiceInput {
   }
   
   handleResult(event) {
-    const input = document.querySelector('[contenteditable="true"]') ||
-                 document.querySelector('textarea');
-    
+    const input = document.querySelector('[contenteditable="true"]');
     if (!input) return;
     
     let finalTranscript = '';
@@ -196,25 +214,23 @@ class VoiceInput {
     }
     
     if (finalTranscript) {
-      if (input.contentEditable === 'true') {
-        const p = input.querySelector('p') || input;
-        const currentText = p.innerText || '';
-        const newText = currentText + (currentText ? ' ' : '') + finalTranscript;
-        p.innerText = newText;
-        
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-        
-        const range = document.createRange();
-        const sel = window.getSelection();
-        range.selectNodeContents(p);
-        range.collapse(false);
-        sel.removeAllRanges();
-        sel.addRange(range);
-      } else {
-        const currentText = input.value || '';
-        input.value = currentText + (currentText ? ' ' : '') + finalTranscript;
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-      }
+      const p = input.querySelector('p') || input;
+      const currentText = p.innerText || '';
+      
+      // Don't append to placeholder text
+      const isPlaceholder = currentText.match(/^(Reply to|Type a message|Ask Claude|Message Claude)/i);
+      const newText = isPlaceholder ? finalTranscript : currentText + (currentText ? ' ' : '') + finalTranscript;
+      
+      p.innerText = newText;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      
+      // Move cursor to end
+      const range = document.createRange();
+      const sel = window.getSelection();
+      range.selectNodeContents(p);
+      range.collapse(false);
+      sel.removeAllRanges();
+      sel.addRange(range);
       
       window.CUP.log('VoiceInput: Transcribed:', finalTranscript);
     }
@@ -233,6 +249,7 @@ class VoiceInput {
   
   handleEnd() {
     if (this.isListening) {
+      // Auto-restart if still supposed to be listening
       try {
         this.recognition.start();
       } catch (e) {
@@ -243,16 +260,18 @@ class VoiceInput {
   }
   
   updateButtonState() {
-    if (!this.button) return;
+    // Find button fresh in case it was re-injected
+    const btn = document.querySelector('.cup-voice-btn');
+    if (!btn) return;
     
     if (this.isListening) {
-      this.button.innerHTML = '🔴';
-      this.button.classList.add('listening');
-      this.button.title = 'Listening... (click to stop)';
+      btn.innerHTML = '🔴';
+      btn.classList.add('listening');
+      btn.title = 'Listening... (click or Ctrl+Shift+V to stop)';
     } else {
-      this.button.innerHTML = '🎤';
-      this.button.classList.remove('listening');
-      this.button.title = 'Voice Input (click to start)';
+      btn.innerHTML = '🎤';
+      btn.classList.remove('listening');
+      btn.title = 'Voice Input (Ctrl+Shift+V)';
     }
   }
 }

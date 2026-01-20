@@ -37,7 +37,8 @@ class ChatUI {
   }
   
   /**
-   * Find attachments in the composer area by scanning DOM
+   * Find attachments in the composer area
+   * CONSERVATIVE approach - only detect things we're very sure are attachments
    */
   findAttachments() {
     const attachments = [];
@@ -46,33 +47,31 @@ class ChatUI {
     const composer = document.querySelector('[contenteditable="true"]');
     if (!composer) return attachments;
     
-    // Get composer's bounding area
     const composerRect = composer.getBoundingClientRect();
     
-    // Find the form or main input container
+    // Find the form or input container
     let inputContainer = composer;
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 8; i++) {
       if (inputContainer.parentElement) {
         inputContainer = inputContainer.parentElement;
-        // Stop at form or main container
-        if (inputContainer.tagName === 'FORM' || inputContainer.classList.contains('composer')) {
-          break;
-        }
+        if (inputContainer.tagName === 'FORM') break;
       }
     }
     
-    // Helper: is element in the input area (above or within composer)
+    // Helper: is element in the input area
     const isInInputArea = (el) => {
+      if (!el) return false;
       const rect = el.getBoundingClientRect();
-      // Must be above the composer text area but within the same horizontal bounds
-      // and within 300px above
-      return rect.width > 20 && 
-             rect.height > 20 &&
-             rect.bottom <= composerRect.bottom + 50 &&
-             rect.top >= composerRect.top - 300;
+      // Must be reasonably sized and above/within composer area
+      return rect.width > 30 && 
+             rect.height > 30 &&
+             rect.bottom <= composerRect.bottom + 100 &&
+             rect.top >= composerRect.top - 250;
     };
     
-    // Strategy 1: Look for images with Claude API URLs (uploaded files)
+    // ONLY detect via these reliable methods:
+    
+    // 1. Images with Claude API file URLs (definitely uploaded)
     const apiImages = document.querySelectorAll('img[src*="/api/"][src*="/files/"]');
     for (const img of apiImages) {
       if (isInInputArea(img)) {
@@ -83,66 +82,49 @@ class ChatUI {
           type: 'image',
           tokens
         });
+        window.CUP.log('ChatUI: Found API image attachment');
       }
     }
     
-    // Strategy 2: Look for blob URLs (pasted/dropped images)
-    const blobImages = document.querySelectorAll('img[src^="blob:"]');
+    // 2. Blob URLs (pasted/dropped images) - but only if they have a remove button nearby
+    const blobImages = inputContainer.querySelectorAll('img[src^="blob:"]');
     for (const img of blobImages) {
-      if (isInInputArea(img)) {
-        const tokens = this.estimateImageTokens(img.naturalWidth || img.width || 400, img.naturalHeight || img.height || 400);
-        attachments.push({
-          id: img.src,
-          name: 'image',
-          type: 'image',
-          tokens
-        });
+      if (!isInInputArea(img)) continue;
+      
+      // Verify this looks like an attachment preview (has close/remove button nearby)
+      const parent = img.closest('div');
+      if (parent) {
+        const hasRemoveBtn = parent.querySelector('button[aria-label*="emove"], button[aria-label*="elete"], button svg');
+        if (hasRemoveBtn) {
+          const tokens = this.estimateImageTokens(img.naturalWidth || img.width || 400, img.naturalHeight || img.height || 400);
+          attachments.push({
+            id: img.src,
+            name: 'pasted image',
+            type: 'image',
+            tokens
+          });
+          window.CUP.log('ChatUI: Found blob image attachment with remove button');
+        }
       }
     }
     
-    // Strategy 3: Look for file attachment indicators
-    // Claude shows file names with remove buttons
-    const buttons = inputContainer.querySelectorAll('button');
-    for (const btn of buttons) {
-      // Look for buttons that might be remove/close buttons for attachments
-      const ariaLabel = btn.getAttribute('aria-label') || '';
-      const text = btn.textContent || '';
+    // 3. File attachment chips - Look for specific Claude UI patterns
+    // Claude shows attachments as chips with filename and X button
+    const allElements = inputContainer.querySelectorAll('[data-testid*="attachment"], [class*="attachment"], [class*="file-preview"]');
+    for (const el of allElements) {
+      if (!isInInputArea(el)) continue;
       
-      // Skip if it's clearly not an attachment-related button
-      if (ariaLabel.toLowerCase().includes('send') || 
-          ariaLabel.toLowerCase().includes('model') ||
-          ariaLabel.toLowerCase().includes('menu')) {
-        continue;
-      }
-      
-      // Find parent that might be an attachment container
-      let container = btn.parentElement;
-      for (let i = 0; i < 3; i++) {
-        if (!container) break;
-        
-        const containerText = container.textContent || '';
-        // Look for file extension patterns
-        const fileMatch = containerText.match(/([^\s<>]+\.(pdf|txt|md|csv|json|doc|docx|png|jpg|jpeg|gif|webp|py|js|ts|html|css))/i);
-        
-        if (fileMatch && isInInputArea(container)) {
-          const fileName = fileMatch[1];
+      const text = el.textContent || '';
+      // Must have a filename with extension
+      const fileMatch = text.match(/([^\s\/\\]+\.(pdf|txt|md|csv|json|doc|docx|xlsx|py|js|ts|html|css|xml))/i);
+      if (fileMatch) {
+        const fileName = fileMatch[1];
+        if (!attachments.some(a => a.name === fileName)) {
           const ext = fileMatch[2].toLowerCase();
-          
-          // Don't double count if we already have this
-          if (attachments.some(a => a.name === fileName)) break;
-          
           let tokens = 1500;
-          if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext)) {
-            tokens = 1500; // Default image estimate
-          } else if (ext === 'pdf') {
-            tokens = 3000;
-          } else if (['txt', 'md', 'csv', 'json'].includes(ext)) {
-            tokens = 1000;
-          } else if (['doc', 'docx'].includes(ext)) {
-            tokens = 2000;
-          } else {
-            tokens = 1500;
-          }
+          if (ext === 'pdf') tokens = 3000;
+          else if (['txt', 'md', 'csv', 'json'].includes(ext)) tokens = 1000;
+          else if (['doc', 'docx'].includes(ext)) tokens = 2000;
           
           attachments.push({
             id: `file-${fileName}`,
@@ -150,28 +132,8 @@ class ChatUI {
             type: 'file',
             tokens
           });
-          break;
+          window.CUP.log('ChatUI: Found file attachment:', fileName);
         }
-        
-        container = container.parentElement;
-      }
-    }
-    
-    // Strategy 4: Look for any thumbnail containers near composer
-    const thumbnailContainers = inputContainer.querySelectorAll('[class*="thumbnail"], [class*="preview"], [class*="attachment"]');
-    for (const container of thumbnailContainers) {
-      if (!isInInputArea(container)) continue;
-      
-      // Check if it contains an image we haven't counted
-      const img = container.querySelector('img');
-      if (img && !attachments.some(a => a.id === img.src)) {
-        const tokens = this.estimateImageTokens(img.naturalWidth || img.width || 400, img.naturalHeight || img.height || 400);
-        attachments.push({
-          id: img.src || `thumb-${Date.now()}`,
-          name: 'image',
-          type: 'image',
-          tokens
-        });
       }
     }
     
