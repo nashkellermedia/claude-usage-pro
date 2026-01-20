@@ -56,21 +56,37 @@ class VoiceInput {
       }
     });
     
-    // Hold-to-talk with X key (when not typing in an input)
+    // Hold-to-talk with V key (when not typing in an input)
     this.holdToTalkActive = false;
     
     document.addEventListener('keydown', (e) => {
-      // Only X key, not in an input field, not repeating
+      // Only plain V key (no modifiers), not repeating
       if (e.key.toLowerCase() !== 'v' || e.repeat) return;
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      
+      // Skip if actively typing in an input field
       if (this.isTypingInInput()) return;
       
+      // Prevent the V character from being typed
       e.preventDefault();
-      if (!this.holdToTalkActive && !this.isListening) {
+      e.stopPropagation();
+      
+      // Start recording if not already in hold-to-talk mode
+      if (!this.holdToTalkActive) {
         this.holdToTalkActive = true;
-        this.start();
+        this.isListening = false;
+        
+        // Force stop any existing session, then start fresh
+        if (this.recognition) {
+          try { this.recognition.stop(); } catch(err) {}
+        }
+        
+        setTimeout(() => {
+          this.start();
+        }, 100);
         window.CUP.log('VoiceInput: Hold-to-talk started');
       }
-    });
+    }, true);  // Capture phase to intercept before page
     
     document.addEventListener('keyup', (e) => {
       if (e.key.toLowerCase() !== 'v') return;
@@ -78,9 +94,12 @@ class VoiceInput {
       if (this.holdToTalkActive) {
         this.holdToTalkActive = false;
         this.stop();
+        // Blur the input so next V press works
+        const input = document.querySelector('[contenteditable="true"]');
+        if (input) input.blur();
         window.CUP.log('VoiceInput: Hold-to-talk ended');
       }
-    });
+    }, true);
   }
   
   isTypingInInput() {
