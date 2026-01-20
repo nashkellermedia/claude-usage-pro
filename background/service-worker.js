@@ -1071,8 +1071,9 @@ async function pullFromFirebase() {
     
     // Pull settings (including anthropicApiKey)
     const syncedSettings = await firebaseSync.getSettings();
+    console.log('[CUP BG] Synced settings from Firebase:', JSON.stringify(syncedSettings));
     if (syncedSettings) {
-      console.log('[CUP BG] Pulled settings from Firebase');
+      console.log('[CUP BG] Pulled settings from Firebase, has anthropicApiKey:', !!syncedSettings.anthropicApiKey);
       const currentSettings = await getSettings();
       
       // Merge synced settings, but don't overwrite Firebase credentials
@@ -1084,8 +1085,8 @@ async function pullFromFirebase() {
         enableVoice: syncedSettings.enableVoice ?? currentSettings.enableVoice,
       };
       
-      // Only pull anthropicApiKey if we don't have one locally
-      if (!currentSettings.anthropicApiKey && syncedSettings.anthropicApiKey) {
+      // Always sync anthropicApiKey from Firebase if available
+      if (syncedSettings.anthropicApiKey) {
         mergedSettings.anthropicApiKey = syncedSettings.anthropicApiKey;
         console.log('[CUP BG] Pulled Anthropic API key from Firebase');
         
