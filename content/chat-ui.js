@@ -184,8 +184,8 @@ class ChatUI {
       }
     }
     
-    // Strategy 4: Look for file preview containers
-    const previewContainers = document.querySelectorAll('[data-testid*="file"], [data-testid*="attachment"], [class*="preview"], [class*="Preview"]');
+    // Strategy 4: Look for file preview containers (specific selectors only)
+    const previewContainers = document.querySelectorAll('[data-testid*="file"], [data-testid*="attachment"], [data-testid*="upload"]');
     for (const container of previewContainers) {
       if (!isNearComposer(container)) continue;
       
@@ -197,7 +197,9 @@ class ChatUI {
       const textContent = container.textContent || '';
       const fileName = textContent.trim().substring(0, 50);
       
-      if (fileName && !fileName.includes('Add content') && fileName.length > 2) {
+      // Must look like a filename (has extension) or be a known file type indicator
+      const looksLikeFile = fileName.match(/\.\w{2,5}$/i) || fileName.match(/^(PDF|Document|Image|File)/i);
+      if (fileName && !fileName.includes('Add content') && fileName.length > 2 && looksLikeFile) {
         const id = `file-${fileName.replace(/\s+/g, '-').substring(0, 30)}`;
         
         // Estimate tokens based on file type
@@ -396,6 +398,11 @@ class ChatUI {
           </span>
           <span class="cup-stat-divider">│</span>
           <span class="cup-stat-item">
+            <span class="cup-stat-label">Sonnet:</span>
+            <span class="cup-stat-value" id="cup-weekly-sonnet-pct">--%</span>
+          </span>
+          <span class="cup-stat-divider">│</span>
+          <span class="cup-stat-item">
             <span class="cup-stat-icon">⏱️</span>
             <span class="cup-stat-value" id="cup-reset-timer">--</span>
           </span>
@@ -551,6 +558,16 @@ class ChatUI {
       if (pct >= 90) weeklyAllEl.style.color = '#ef4444';
       else if (pct >= 70) weeklyAllEl.style.color = '#f59e0b';
       else weeklyAllEl.style.color = '#22c55e';
+    }
+    
+    // Weekly Sonnet
+    const weeklySonnetEl = document.getElementById('cup-weekly-sonnet-pct');
+    if (weeklySonnetEl && usageData.weeklySonnet) {
+      weeklySonnetEl.textContent = usageData.weeklySonnet.percent + '%';
+      const pct = usageData.weeklySonnet.percent;
+      if (pct >= 90) weeklySonnetEl.style.color = '#ef4444';
+      else if (pct >= 70) weeklySonnetEl.style.color = '#f59e0b';
+      else weeklySonnetEl.style.color = '#a855f7';  // Purple for Sonnet
     }
   }
   

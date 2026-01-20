@@ -73,16 +73,7 @@ class SidebarUI {
                 <div class="cup-usage-meta" id="cup-sidebar-sonnet-reset">Resets in --</div>
               </div>
               
-              <div class="cup-usage-section cup-context-section">
-                <div class="cup-usage-header">
-                  <span class="cup-usage-label">💬 Context Usage</span>
-                  <span class="cup-usage-percent" id="cup-sidebar-context">--%</span>
-                </div>
-                <div class="cup-usage-bar-bg">
-                  <div class="cup-usage-bar" id="cup-sidebar-context-bar" style="width: 0%"></div>
-                </div>
-                <div class="cup-usage-meta" id="cup-sidebar-context-hint">Estimating...</div>
-              </div>
+
               
               <a href="https://claude.ai/settings/usage" class="cup-usage-link">View full usage details →</a>
             </div>
@@ -165,45 +156,9 @@ class SidebarUI {
       }
     }
     
-    // Update context usage
-    this.updateContextUsage();
   }
   
-  async updateContextUsage() {
-    try {
-      const messages = document.querySelectorAll('[data-testid*="message"], .font-claude-message, [class*="Message"]');
-      const messageCount = messages.length;
-      
-      if (messageCount === 0) {
-        this.updateElement('cup-sidebar-context', '0%');
-        this.updateBar('cup-sidebar-context-bar', 0);
-        this.updateElement('cup-sidebar-context-hint', '✓ New conversation');
-        return;
-      }
-      
-      const estimatedTokensPerMessage = 800;
-      const systemPromptTokens = 5000;
-      const estimatedUsed = systemPromptTokens + (messageCount * estimatedTokensPerMessage);
-      const total = 200000;
-      const percent = Math.min(Math.round((estimatedUsed / total) * 100), 100);
-      
-      this.updateElement('cup-sidebar-context', percent + '%');
-      this.updateBar('cup-sidebar-context-bar', percent);
-      this.colorizePercent('cup-sidebar-context', percent);
-      
-      // Update hint based on percentage
-      if (percent < 60) {
-        this.updateElement('cup-sidebar-context-hint', '✓ Good - plenty available');
-      } else if (percent < 85) {
-        this.updateElement('cup-sidebar-context-hint', '⚠️ Getting full');
-      } else {
-        this.updateElement('cup-sidebar-context-hint', '🔴 Start new session');
-      }
-    } catch (e) {
-      window.CUP.log('Sidebar context update error:', e);
-    }
-  }
-  
+
   updateElement(id, value) {
     const el = document.getElementById(id);
     if (el) el.textContent = value;
