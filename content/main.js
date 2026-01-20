@@ -139,15 +139,17 @@
     updateTabTitle(usageData);
   }
   
-  // Store original title
-  const originalTitle = document.title.replace(/^\(\d+%\)\s*/, '');
+  // Store original title (strip any existing percentage prefix)
+  const originalTitle = document.title.replace(/^\d+%\s*-\s*/, '');
   
   function updateTabTitle(usageData) {
     const sessionPercent = usageData?.currentSession?.percent || 0;
+    // Get current title without our prefix (in case it changed)
+    const baseTitle = document.title.replace(/^\d+%\s*-\s*/, '');
     if (sessionPercent > 0) {
-      document.title = `(${sessionPercent}%) ${originalTitle}`;
+      document.title = `${sessionPercent}% - ${baseTitle}`;
     } else {
-      document.title = originalTitle;
+      document.title = baseTitle;
     }
   }
   
