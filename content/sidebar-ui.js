@@ -191,7 +191,7 @@ class SidebarUI {
       } else if (percent >= 70) {
         el.style.background = '#f59e0b';
       } else {
-        el.style.background = id.includes('sonnet') ? '#a855f7' : '#6b8afd';
+        el.style.background = '#22c55e';
       }
     }
   }

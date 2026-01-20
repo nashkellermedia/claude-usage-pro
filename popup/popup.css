@@ -116,14 +116,13 @@ body {
 
 .usage-bar {
   height: 100%;
-  background: var(--accent);
+  background: var(--success);
   border-radius: 3px;
   transition: width 0.3s ease;
 }
 
 .usage-bar.warning { background: var(--warning); }
 .usage-bar.danger { background: var(--danger); }
-.usage-bar.sonnet { background: #a855f7; }
 
 .usage-meta {
   font-size: 11px;

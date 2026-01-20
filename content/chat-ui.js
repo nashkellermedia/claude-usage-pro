@@ -499,7 +499,7 @@ class ChatUI {
       const pct = usageData.weeklySonnet.percent;
       if (pct >= 90) weeklySonnetEl.style.color = '#ef4444';
       else if (pct >= 70) weeklySonnetEl.style.color = '#f59e0b';
-      else weeklySonnetEl.style.color = '#a855f7';
+      else weeklySonnetEl.style.color = '#22c55e';
     }
   }
   
