@@ -140,16 +140,33 @@
     settings = { ...settings, ...newSettings };
     window.CUP.log('Applied settings:', settings);
     
-    // Toggle sidebar
+    // Toggle sidebar - create if needed and enabled
     const sidebarEl = document.getElementById('cup-sidebar-widget');
-    if (sidebarEl) {
-      sidebarEl.style.display = settings.showSidebar ? '' : 'none';
+    if (settings.showSidebar) {
+      if (!sidebarEl && window.SidebarUI && !window.cupSidebar) {
+        window.CUP.log('Creating sidebar (was missing)...');
+        window.cupSidebar = new SidebarUI();
+        window.cupSidebar.initialize();
+      } else if (sidebarEl) {
+        sidebarEl.style.display = '';
+      }
+    } else if (sidebarEl) {
+      sidebarEl.style.display = 'none';
     }
     
-    // Toggle chat overlay
+    // Toggle chat overlay - create if needed and enabled
     const inputStats = document.getElementById('cup-input-stats');
-    if (inputStats) {
-      inputStats.style.display = settings.showChatOverlay ? '' : 'none';
+    if (settings.showChatOverlay) {
+      if (!inputStats && window.ChatUI && !window.cupChatUI) {
+        window.CUP.log('Creating chat overlay (was missing)...');
+        window.cupChatUI = new ChatUI();
+        window.cupChatUI.initialize();
+        window.cupChatUI.injectUI();
+      } else if (inputStats) {
+        inputStats.style.display = '';
+      }
+    } else if (inputStats) {
+      inputStats.style.display = 'none';
     }
     
     // Toggle voice

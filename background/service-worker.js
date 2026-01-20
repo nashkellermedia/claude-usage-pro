@@ -400,10 +400,22 @@ class FirebaseSync {
     
     // Push local changes every 30 seconds
     this.syncInterval = setInterval(async () => {
+      // Push both tracker state AND formatted usage data
+      const syncData = {};
+      
       if (hybridTracker) {
-        const syncData = hybridTracker.exportForSync();
-        await this.syncUsage(syncData);
+        // Include tracker state for delta merging
+        Object.assign(syncData, hybridTracker.exportForSync());
       }
+      
+      // Also include the formatted usage data the UI expects
+      const usageData = await getUsageData();
+      if (usageData.currentSession) syncData.currentSession = usageData.currentSession;
+      if (usageData.weeklyAllModels) syncData.weeklyAllModels = usageData.weeklyAllModels;
+      if (usageData.weeklySonnet) syncData.weeklySonnet = usageData.weeklySonnet;
+      
+      await this.syncUsage(syncData);
+      
       if (usageAnalytics) {
         const analyticsData = await usageAnalytics.export();
         await this.syncAnalytics(analyticsData);
@@ -860,9 +872,25 @@ async function handleMessage(message, sender) {
       const usageData = await getUsageData();
       
       // Merge with estimates if available
-      const merged = hybridTracker?.estimatedUsage 
-        ? { ...usageData, ...hybridTracker.estimatedUsage }
-        : usageData;
+      // Note: spread order means later values override earlier
+      // We want stored data as base, then estimates can add delta tracking
+      let merged = { ...usageData };
+      
+      if (hybridTracker?.estimatedUsage) {
+        // Only use estimates if they're newer or have valid data
+        const est = hybridTracker.estimatedUsage;
+        if (est.currentSession?.percent > 0 || !usageData.currentSession?.percent) {
+          merged.currentSession = est.currentSession;
+        }
+        if (est.weeklyAllModels?.percent > 0 || !usageData.weeklyAllModels?.percent) {
+          merged.weeklyAllModels = est.weeklyAllModels;
+        }
+        if (est.weeklySonnet?.percent > 0 || !usageData.weeklySonnet?.percent) {
+          merged.weeklySonnet = est.weeklySonnet;
+        }
+        merged.isEstimate = est.isEstimate;
+        merged.deltaTokens = est.deltaTokens;
+      }
       
       // Record analytics snapshot if requested and we have valid data
       if (message.recordSnapshot && usageAnalytics) {
@@ -975,7 +1003,17 @@ async function handleMessage(message, sender) {
               if (syncIdChanged && updated.firebaseSyncId && hasExistingData) {
                 // Profile with data adding sync ID -> push to new path
                 console.log('[CUP BG] Sync ID changed with existing data, pushing to new path...');
-                await firebaseSync.syncUsage(existingData);
+                
+                // Combine tracker state and usage data
+                const syncData = {};
+                if (hybridTracker) {
+                  Object.assign(syncData, hybridTracker.exportForSync());
+                }
+                if (existingData.currentSession) syncData.currentSession = existingData.currentSession;
+                if (existingData.weeklyAllModels) syncData.weeklyAllModels = existingData.weeklyAllModels;
+                if (existingData.weeklySonnet) syncData.weeklySonnet = existingData.weeklySonnet;
+                
+                await firebaseSync.syncUsage(syncData);
                 if (usageAnalytics) {
                   await firebaseSync.syncAnalytics(await usageAnalytics.export());
                 }
@@ -1030,10 +1068,20 @@ async function handleMessage(message, sender) {
       }
 
       try {
-        // Push all data to Firebase
+        // Push all data to Firebase - combine tracker state and usage data
+        const syncData = {};
+        
+        if (hybridTracker) {
+          Object.assign(syncData, hybridTracker.exportForSync());
+        }
+        
         const usageData = await getUsageData();
-        await firebaseSync.syncUsage(usageData);
-        console.log('[CUP BG] Pushed usage data');
+        if (usageData.currentSession) syncData.currentSession = usageData.currentSession;
+        if (usageData.weeklyAllModels) syncData.weeklyAllModels = usageData.weeklyAllModels;
+        if (usageData.weeklySonnet) syncData.weeklySonnet = usageData.weeklySonnet;
+        
+        await firebaseSync.syncUsage(syncData);
+        console.log('[CUP BG] Pushed usage data:', syncData.currentSession?.percent, syncData.weeklyAllModels?.percent);
         
         if (usageAnalytics) {
           const analyticsData = await usageAnalytics.export();
@@ -1121,18 +1169,36 @@ async function pullFromFirebase() {
   console.log('[CUP BG] pullFromFirebase: starting pull from path:', firebaseSync.getBasePath());
   
   try {
-    // Pull usage data
-    const mergedUsage = await firebaseSync.getMergedUsage();
-    console.log('[CUP BG] Pulled usage data:', mergedUsage ? 'got data' : 'empty/null');
-    if (mergedUsage) {
-      console.log('[CUP BG] Usage data keys:', Object.keys(mergedUsage));
-      if (mergedUsage.baseline && hybridTracker) {
-        await hybridTracker.mergeFromFirebase(mergedUsage);
+    // Pull usage data (hybrid tracker state)
+    const syncedData = await firebaseSync.getMergedUsage();
+    console.log('[CUP BG] Pulled usage data:', syncedData ? 'got data' : 'empty/null');
+    if (syncedData) {
+      console.log('[CUP BG] Usage data keys:', Object.keys(syncedData));
+      
+      // Merge into hybrid tracker
+      if (syncedData.baseline && hybridTracker) {
+        await hybridTracker.mergeFromFirebase(syncedData);
       }
-      const current = await getUsageData();
-      const merged = { ...current, ...mergedUsage };
-      await chrome.storage.local.set({ usageData: merged });
-      await updateBadge(merged);
+      
+      // Extract the actual usage percentages for storage
+      // The UI expects { currentSession, weeklyAllModels, weeklySonnet }
+      const usageForStorage = {};
+      
+      // Prefer estimatedUsage (has deltas applied), fall back to baseline
+      const source = syncedData.estimatedUsage || syncedData.baseline;
+      if (source) {
+        if (source.currentSession) usageForStorage.currentSession = source.currentSession;
+        if (source.weeklyAllModels) usageForStorage.weeklyAllModels = source.weeklyAllModels;
+        if (source.weeklySonnet) usageForStorage.weeklySonnet = source.weeklySonnet;
+      }
+      
+      if (Object.keys(usageForStorage).length > 0) {
+        const current = await getUsageData();
+        const merged = { ...current, ...usageForStorage, lastUpdated: Date.now() };
+        await chrome.storage.local.set({ usageData: merged });
+        await updateBadge(merged);
+        console.log('[CUP BG] Stored usage:', merged.currentSession?.percent, merged.weeklyAllModels?.percent);
+      }
     }
     
     // Pull analytics
