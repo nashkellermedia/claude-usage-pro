@@ -129,18 +129,31 @@ class UsageScraper {
     // Parse Current Session
     if (currentSessionSection) {
       const section = currentSessionSection[1];
-      const percentMatch = section.match(/(\d+)%\s*used/i);
-      // Try multiple reset time formats - capture number AND units
+      window.CUP.log('UsageScraper: Current Session section:', section.substring(0, 200));
+      
+      // Try to find percentage - multiple formats
+      let percentMatch = section.match(/(\d+)%\s*used/i);
+      if (!percentMatch) percentMatch = section.match(/(\d+)%/);
+      
+      // Try multiple reset time formats
       let resetMatch = section.match(/Resets?\s+in\s+(\d+\s*(?:hours?|hr?|h)\s*(?:\d+\s*(?:minutes?|min|m))?)/i);
       if (!resetMatch) resetMatch = section.match(/Resets?\s+in\s+(\d+\s*(?:minutes?|min|m))/i);
       if (!resetMatch) resetMatch = section.match(/Resets?\s+in\s+(\d+\s*(?:days?|d))/i);
       if (!resetMatch) resetMatch = section.match(/(\d+\s*(?:hours?|hr?|h|minutes?|min|m))\s*(?:left|remaining)/i);
+      // Try to capture "in X days" or "in X hours" format
+      if (!resetMatch) resetMatch = section.match(/in\s+(\d+\s*(?:days?|hours?|minutes?|d|h|m))/i);
       
-      data.currentSession = {
-        percent: percentMatch ? parseInt(percentMatch[1]) : 0,
-        resetsIn: resetMatch ? resetMatch[1].trim() : '--'
-      };
-      window.CUP.log('UsageScraper: Current Session:', data.currentSession.percent + '%, resets in', data.currentSession.resetsIn);
+      if (percentMatch) {
+        data.currentSession = {
+          percent: parseInt(percentMatch[1]),
+          resetsIn: resetMatch ? resetMatch[1].trim() : '--'
+        };
+        window.CUP.log('UsageScraper: Current Session:', data.currentSession.percent + '%, resets in', data.currentSession.resetsIn);
+      } else {
+        window.CUP.log('UsageScraper: Could not find Current Session percentage');
+      }
+    } else {
+      window.CUP.log('UsageScraper: Current Session section not found');
     }
     
     // Parse All Models

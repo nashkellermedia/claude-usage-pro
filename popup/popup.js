@@ -78,8 +78,10 @@ function updateUI(usageData) {
   
   if (usageData.currentSession) {
     updateUsageDisplay(els.sessionPercent, els.sessionBar, usageData.currentSession.percent || 0);
-    if (usageData.currentSession.resetsIn) {
-      els.sessionMeta.textContent = `Resets in ${usageData.currentSession.resetsIn}`;
+    if (usageData.currentSession.resetsIn && usageData.currentSession.resetsIn !== '--') {
+      const val = usageData.currentSession.resetsIn;
+      const startsWithIn = /^in\s/i.test(val);
+      els.sessionMeta.textContent = startsWithIn ? `Resets ${val}` : `Resets in ${val}`;
     }
   }
   
@@ -87,8 +89,10 @@ function updateUI(usageData) {
     updateUsageDisplay(els.weeklyAllPercent, els.weeklyAllBar, usageData.weeklyAllModels.percent || 0);
     if (usageData.weeklyAllModels.resetsAt) {
       const val = usageData.weeklyAllModels.resetsAt;
+      // Check if already contains "in" or starts with day name
+      const startsWithIn = /^in\s/i.test(val);
       const isDayTime = /^[A-Za-z]{3,}/.test(val);
-      els.weeklyAllMeta.textContent = isDayTime ? `Resets ${val}` : `Resets in ${val}`;
+      els.weeklyAllMeta.textContent = (isDayTime || startsWithIn) ? `Resets ${val}` : `Resets in ${val}`;
     }
   }
   
@@ -96,8 +100,9 @@ function updateUI(usageData) {
     updateUsageDisplay(els.weeklySonnetPercent, els.weeklySonnetBar, usageData.weeklySonnet.percent || 0);
     if (usageData.weeklySonnet.resetsIn) {
       const val = usageData.weeklySonnet.resetsIn;
+      const startsWithIn = /^in\s/i.test(val);
       const isDayTime = /^[A-Za-z]{3,}/.test(val);
-      els.weeklySonnetMeta.textContent = isDayTime ? `Resets ${val}` : `Resets in ${val}`;
+      els.weeklySonnetMeta.textContent = (isDayTime || startsWithIn) ? `Resets ${val}` : `Resets in ${val}`;
     }
   }
 }
