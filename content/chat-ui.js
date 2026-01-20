@@ -526,8 +526,21 @@ class ChatUI {
     
     // Reset timer
     const resetEl = document.getElementById('cup-reset-timer');
-    if (resetEl && usageData.currentSession?.resetsIn) {
-      resetEl.textContent = usageData.currentSession.resetsIn;
+    if (resetEl) {
+      const resetTime = usageData.currentSession?.resetsIn || '--';
+      resetEl.textContent = resetTime;
+      
+      if (resetTime === '--') {
+        resetEl.title = 'Visit Settings > Usage to sync reset time';
+        resetEl.style.cursor = 'pointer';
+        resetEl.style.textDecoration = 'underline';
+        resetEl.onclick = () => window.open('https://claude.ai/settings/usage', '_blank');
+      } else {
+        resetEl.title = 'Session resets in ' + resetTime;
+        resetEl.style.cursor = 'default';
+        resetEl.style.textDecoration = 'none';
+        resetEl.onclick = null;
+      }
     }
     
     // Weekly All Models

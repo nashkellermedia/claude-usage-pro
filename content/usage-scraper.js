@@ -272,7 +272,11 @@ class UsageScraper {
     if (currentSessionSection) {
       const section = currentSessionSection[1];
       const percentMatch = section.match(/(\d+)%\s*used/i);
-      const resetMatch = section.match(/Resets\s+in\s+([\d]+\s*hr?\s*[\d]*\s*min?)/i);
+      // Try multiple reset time formats
+      let resetMatch = section.match(/Resets?\s+in\s+([\d]+\s*h(?:r|our)?s?\s*(?:[\d]+\s*m(?:in)?s?)?)/i);
+      if (!resetMatch) resetMatch = section.match(/Resets?\s+in\s+([\d:]+)/i);
+      if (!resetMatch) resetMatch = section.match(/([\d]+\s*h(?:r|our)?s?\s*(?:\d+\s*m(?:in)?s?)?)\s*(?:left|remaining)/i);
+      if (!resetMatch) resetMatch = section.match(/in\s+(\d+\s*(?:hours?|hr?|minutes?|min?|m|h)[^\n]*)/i);
       
       data.currentSession = {
         percent: percentMatch ? parseInt(percentMatch[1]) : 0,
@@ -300,7 +304,11 @@ class UsageScraper {
     if (sonnetSection) {
       const section = sonnetSection[1];
       const percentMatch = section.match(/(\d+)%\s*used/i);
-      const resetMatch = section.match(/Resets\s+in\s+([\d]+\s*hr?\s*[\d]*\s*min?)/i);
+      // Try multiple reset time formats
+      let resetMatch = section.match(/Resets?\s+in\s+([\d]+\s*h(?:r|our)?s?\s*(?:[\d]+\s*m(?:in)?s?)?)/i);
+      if (!resetMatch) resetMatch = section.match(/Resets?\s+in\s+([\d:]+)/i);
+      if (!resetMatch) resetMatch = section.match(/([\d]+\s*h(?:r|our)?s?\s*(?:\d+\s*m(?:in)?s?)?)\s*(?:left|remaining)/i);
+      if (!resetMatch) resetMatch = section.match(/in\s+(\d+\s*(?:hours?|hr?|minutes?|min?|m|h)[^\n]*)/i);
       
       if (percentMatch) {
         data.weeklySonnet = {
