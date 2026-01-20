@@ -5,7 +5,7 @@
 (async function() {
   // Initialize CUP namespace
   window.CUP = {
-    debug: true,
+    debug: false,
     log: (...args) => {
       if (window.CUP.debug) console.log('[Claude Usage Pro]', ...args);
     },
