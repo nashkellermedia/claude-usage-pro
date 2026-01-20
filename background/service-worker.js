@@ -297,12 +297,15 @@ class FirebaseSync {
       const response = await fetch(url, options);
       if (!response.ok) {
         const error = await response.text();
-        console.error('[FirebaseSync] Request failed:', error);
+        log('[FirebaseSync] Request failed:', response.status, error.substring(0, 100));
         return null;
       }
       return await response.json();
     } catch (e) {
-      console.error('[FirebaseSync] Request error:', e.message);
+      // Network errors are common (offline, wrong URL, etc) - don't spam console
+      if (e.message !== 'Failed to fetch') {
+        log('[FirebaseSync] Request error:', e.message);
+      }
       return null;
     }
   }
