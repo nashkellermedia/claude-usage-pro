@@ -212,13 +212,24 @@ class HybridTracker {
 class FirebaseSync {
   constructor() {
     this.firebaseUrl = null;
+    this.firebaseSecret = null;
     this.deviceId = null;
     this.syncEnabled = false;
     this.lastSync = null;
     this.syncInterval = null;
   }
 
-  async initialize(firebaseUrl) {
+  getBasePath() {
+    // If secret is set, use it as a path segment for security
+    // Data stored at: {firebaseUrl}/users/{secret}/...
+    // Without secret: {firebaseUrl}/usage/... (legacy/insecure)
+    if (this.firebaseSecret) {
+      return `${this.firebaseUrl}/users/${this.firebaseSecret}`;
+    }
+    return this.firebaseUrl;
+  }
+
+  async initialize(firebaseUrl, firebaseSecret = null) {
     if (!this.deviceId) {
       this.deviceId = await this.getOrCreateDeviceId();
     }
@@ -230,6 +241,7 @@ class FirebaseSync {
     }
 
     this.firebaseUrl = firebaseUrl.trim().replace(/\/$/, '');
+    this.firebaseSecret = firebaseSecret?.trim() || null;
 
     if (!this.firebaseUrl.includes('firebaseio.com') && !this.firebaseUrl.includes('firebasedatabase.app')) {
       console.error('[Firebase] Invalid URL format');
@@ -240,11 +252,7 @@ class FirebaseSync {
     if (connected) {
       this.syncEnabled = true;
       this.startAutoSync();
-      console.log('[Firebase] Initialized');
-      
-      // Try to get shared settings (including API key) from Firebase
-      await this.syncSharedSettingsFromFirebase();
-      
+      console.log('[Firebase] Initialized' + (this.firebaseSecret ? ' with secret protection' : ' (no secret - unprotected!)'));
       return true;
     }
 
@@ -252,9 +260,15 @@ class FirebaseSync {
     return false;
   }
 
+  disable() {
+    this.syncEnabled = false;
+    this.stopAutoSync();
+    console.log('[Firebase] Disabled');
+  }
+
   async testConnection() {
     try {
-      const response = await fetch(`${this.firebaseUrl}/usage.json`);
+      const response = await fetch(`${this.getBasePath()}/test.json`);
       return response.ok;
     } catch (e) {
       return false;
@@ -283,7 +297,7 @@ class FirebaseSync {
         timestamp: new Date().toISOString()
       };
 
-      const response = await fetch(`${this.firebaseUrl}/usage/${this.deviceId}.json`, {
+      const response = await fetch(`${this.getBasePath()}/usage/${this.deviceId}.json`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(syncData)
@@ -303,15 +317,13 @@ class FirebaseSync {
     if (!this.syncEnabled || !this.firebaseUrl) return { success: false };
 
     try {
-      const response = await fetch(`${this.firebaseUrl}/usage.json`);
+      const response = await fetch(`${this.getBasePath()}/usage.json`);
       if (!response.ok) return { success: false };
 
       const data = await response.json();
       if (!data) return { success: true, devices: [] };
 
       const devices = Object.entries(data).map(([deviceId, d]) => ({ deviceId, ...d }));
-      devices.sort((a, b) => (b.syncedAt || 0) - (a.syncedAt || 0));
-
       return { success: true, devices };
     } catch (e) {
       return { success: false, error: e.message };
@@ -322,29 +334,60 @@ class FirebaseSync {
     const result = await this.syncFromFirebase();
     if (!result.success || !result.devices?.length) return null;
 
-    const mostRecent = result.devices[0];
-    return {
-      currentSession: mostRecent.currentSession,
-      weeklyAllModels: mostRecent.weeklyAllModels,
-      weeklySonnet: mostRecent.weeklySonnet,
-      baseline: mostRecent.baseline,
-      delta: mostRecent.delta,
-      lastUpdated: mostRecent.timestamp,
-      deviceCount: result.devices.length,
-      devices: result.devices.map(d => ({ id: d.deviceId, name: d.deviceName, lastSync: d.timestamp }))
-    };
+    // Find freshest data across all devices
+    const sorted = result.devices.sort((a, b) => (b.syncedAt || 0) - (a.syncedAt || 0));
+    return sorted[0];
+  }
+
+  async syncAnalytics(analytics) {
+    if (!this.syncEnabled || !this.firebaseUrl) return { success: false };
+
+    try {
+      const response = await fetch(`${this.getBasePath()}/analytics/${this.deviceId}.json`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...analytics,
+          deviceId: this.deviceId,
+          syncedAt: Date.now()
+        })
+      });
+      return { success: response.ok };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  }
+
+  async syncSettings(settings) {
+    if (!this.syncEnabled || !this.firebaseUrl) return { success: false };
+
+    try {
+      // Sync settings (excluding sensitive data that shouldn't be shared)
+      const safeSettings = {
+        badgeDisplay: settings.badgeDisplay,
+        showSidebar: settings.showSidebar,
+        showChatOverlay: settings.showChatOverlay,
+        enableVoice: settings.enableVoice,
+        syncedAt: Date.now(),
+        syncedBy: this.deviceId
+      };
+
+      const response = await fetch(`${this.getBasePath()}/settings.json`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(safeSettings)
+      });
+      return { success: response.ok };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
   }
 
   startAutoSync() {
     this.stopAutoSync();
     this.syncInterval = setInterval(async () => {
-      const result = await chrome.storage.local.get(['usageData']);
-      if (result.usageData) {
-        // Include hybrid tracker data in auto-sync
-        const syncData = hybridTracker ? {
-          ...result.usageData,
-          ...hybridTracker.exportForSync()
-        } : result.usageData;
+      if (hybridTracker) {
+        const syncData = hybridTracker.exportForSync();
         await this.syncToFirebase(syncData);
       }
     }, 30000);
@@ -364,90 +407,8 @@ class FirebaseSync {
     const profile = result.cup_profile_name || (this.deviceId?.substring(7, 15) || 'unknown');
     return `${os} - Chrome - ${profile}`;
   }
-
-  getStatus() {
-    return {
-      enabled: this.syncEnabled,
-      firebaseUrl: this.firebaseUrl,
-      deviceId: this.deviceId,
-      lastSync: this.lastSync,
-      lastSyncTime: this.lastSync ? new Date(this.lastSync).toLocaleString() : 'Never'
-    };
-  }
-
-  /**
-   * Sync shared settings (like API key) TO Firebase
-   * This allows other devices to retrieve settings without manual entry
-   */
-  async syncSharedSettingsToFirebase(settings) {
-    if (!this.syncEnabled || !this.firebaseUrl) return { success: false };
-
-    try {
-      const sharedSettings = {
-        anthropicApiKey: settings.anthropicApiKey || null,
-        updatedAt: Date.now(),
-        updatedBy: this.deviceId
-      };
-
-      const response = await fetch(`${this.firebaseUrl}/shared_settings.json`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(sharedSettings)
-      });
-
-      if (response.ok) {
-        console.log('[Firebase] Shared settings synced (API key)');
-        return { success: true };
-      }
-      return { success: false };
-    } catch (e) {
-      console.error('[Firebase] Shared settings sync error:', e.message);
-      return { success: false, error: e.message };
-    }
-  }
-
-  /**
-   * Get shared settings FROM Firebase
-   * Called on init to retrieve API key from other devices
-   */
-  async syncSharedSettingsFromFirebase() {
-    if (!this.syncEnabled || !this.firebaseUrl) return { success: false };
-
-    try {
-      const response = await fetch(`${this.firebaseUrl}/shared_settings.json`);
-      if (!response.ok) return { success: false };
-
-      const sharedSettings = await response.json();
-      if (!sharedSettings) return { success: true, settings: null };
-
-      // If we got an API key from Firebase, save it locally
-      if (sharedSettings.anthropicApiKey) {
-        const currentSettings = await chrome.storage.local.get('settings');
-        const settings = currentSettings.settings || {};
-        
-        // Only update if we don't have one locally
-        if (!settings.anthropicApiKey) {
-          settings.anthropicApiKey = sharedSettings.anthropicApiKey;
-          await chrome.storage.local.set({ settings });
-          console.log('[Firebase] Retrieved API key from shared settings');
-        }
-      }
-
-      return { success: true, settings: sharedSettings };
-    } catch (e) {
-      console.error('[Firebase] Get shared settings error:', e.message);
-      return { success: false, error: e.message };
-    }
-  }
-
-  disable() {
-    this.syncEnabled = false;
-    this.firebaseUrl = null;
-    this.stopAutoSync();
-  }
 }
 
-// ============================================================================
 // INLINE: UsageAnalytics Class (full version from lib/usage-analytics.js)
 // ============================================================================
 
@@ -770,7 +731,8 @@ const DEFAULT_SETTINGS = {
   showSidebar: true,
   showChatOverlay: true,
   enableVoice: false,
-  firebaseUrl: ''
+  firebaseUrl: '',
+  firebaseSecret: ''
 };
 
 // ============================================================================
@@ -846,7 +808,7 @@ async function initializeAll() {
   firebaseSync = new FirebaseSync();
 
   if (settings.firebaseUrl?.trim()) {
-    const success = await firebaseSync.initialize(settings.firebaseUrl);
+    const success = await firebaseSync.initialize(settings.firebaseUrl, settings.firebaseSecret);
     if (success) {
       console.log('[CUP BG] Firebase enabled');
       
@@ -994,24 +956,32 @@ async function handleMessage(message, sender) {
 
     case 'SAVE_SETTINGS': {
       const current = await getSettings();
-      const updated = { ...current, ...message.settings };
+      
+      // Preserve firebaseSecret if not provided (popup shows masked value)
+      const incoming = { ...message.settings };
+      if (!incoming.firebaseSecret && current.firebaseSecret) {
+        incoming.firebaseSecret = current.firebaseSecret;
+      }
+      
+      const updated = { ...current, ...incoming };
       await chrome.storage.local.set({ settings: updated });
 
-      if (updated.firebaseUrl !== current.firebaseUrl) {
-        console.log('[CUP BG] Firebase URL changed');
+      // Re-initialize Firebase if URL or secret changed
+      const urlChanged = updated.firebaseUrl !== current.firebaseUrl;
+      const secretChanged = updated.firebaseSecret !== current.firebaseSecret;
+      
+      if (urlChanged || secretChanged) {
+        console.log('[CUP BG] Firebase config changed');
         if (firebaseSync) firebaseSync.disable();
         firebaseSync = new FirebaseSync();
         if (updated.firebaseUrl?.trim()) {
-          await firebaseSync.initialize(updated.firebaseUrl);
+          await firebaseSync.initialize(updated.firebaseUrl, updated.firebaseSecret);
         }
       }
 
-      // Sync API key to Firebase if it changed
-      if (updated.anthropicApiKey && updated.anthropicApiKey !== current.anthropicApiKey) {
-        if (firebaseSync?.syncEnabled) {
-          await firebaseSync.syncSharedSettingsToFirebase(updated);
-          console.log('[CUP BG] API key synced to Firebase');
-        }
+      // Sync settings to Firebase (excluding sensitive data)
+      if (firebaseSync?.syncEnabled) {
+        await firebaseSync.syncSettings(updated);
       }
 
       const usageData = await getUsageData();

@@ -31,15 +31,9 @@ const els = {
   showChatOverlay: document.getElementById('showChatOverlay'),
   enableVoice: document.getElementById('enableVoice'),
   
-  // API Key
-  anthropicApiKey: document.getElementById('anthropicApiKey'),
-  apiKeyStatus: document.getElementById('apiKeyStatus'),
-  apiKeyStatusDot: document.getElementById('apiKeyStatusDot'),
-  apiKeyStatusText: document.getElementById('apiKeyStatusText'),
-  validateApiKey: document.getElementById('validateApiKey'),
-  
   // Firebase
   firebaseUrl: document.getElementById('firebaseUrl'),
+  firebaseSecret: document.getElementById('firebaseSecret'),
   firebaseHelp: document.getElementById('firebaseHelp'),
   firebaseInstructions: document.getElementById('firebaseInstructions'),
   firebaseStatus: document.getElementById('firebaseStatus'),
@@ -171,28 +165,21 @@ async function triggerRefresh() {
   els.refreshBtn.disabled = true;
   
   try {
-    // Open usage page in background tab
     const tab = await chrome.tabs.create({ 
       url: 'https://claude.ai/settings/usage',
-      active: false  // Background tab
+      active: false
     });
     
-    // Wait for page to load and scrape, then close
     setTimeout(async () => {
       try {
-        // Try to trigger scrape
         await chrome.tabs.sendMessage(tab.id, { type: 'SCRAPE_USAGE' });
-      } catch (e) {
-        // Tab might not have content script ready yet
-      }
+      } catch (e) {}
       
-      // Wait a bit more for scrape to complete, then close
       setTimeout(async () => {
         try {
           await chrome.tabs.remove(tab.id);
         } catch (e) {}
         
-        // Refresh our display
         await loadUsageData();
         
         els.refreshBtn.textContent = '✓';
@@ -213,7 +200,6 @@ async function triggerRefresh() {
   }
 }
 
-// FIX: Use chrome.storage.local (same as background) instead of sync
 async function loadSettings() {
   try {
     const response = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
@@ -226,18 +212,19 @@ async function loadSettings() {
     
     if (settings.firebaseUrl) {
       els.firebaseUrl.value = settings.firebaseUrl;
-      updateFirebaseStatus(true);
     }
-    if (settings.anthropicApiKey) {
-      els.anthropicApiKey.value = '••••••••' + settings.anthropicApiKey.slice(-8);
-      updateApiKeyStatus(true);
+    if (settings.firebaseSecret) {
+      // Show masked secret
+      els.firebaseSecret.value = '••••••••' + settings.firebaseSecret.slice(-4);
+      updateFirebaseStatus(true);
+    } else if (settings.firebaseUrl) {
+      updateFirebaseStatus(true, 'Connected (no secret - data unprotected!)');
     }
   } catch (e) {
     console.error('[CUP Popup] Load settings error:', e);
   }
 }
 
-// FIX: Use SAVE_SETTINGS message to save to chrome.storage.local via background
 async function saveSettings() {
   const settings = {
     badgeDisplay: els.badgeDisplay.value,
@@ -247,21 +234,23 @@ async function saveSettings() {
     firebaseUrl: els.firebaseUrl.value.trim()
   };
   
-  // Handle API key
-  const apiKeyValue = els.anthropicApiKey.value.trim();
-  if (apiKeyValue && apiKeyValue.startsWith('sk-ant-')) {
-    settings.anthropicApiKey = apiKeyValue;
+  // Handle Firebase secret - don't overwrite with masked value
+  const secretValue = els.firebaseSecret.value.trim();
+  if (secretValue && !secretValue.startsWith('••••')) {
+    settings.firebaseSecret = secretValue;
   }
+  // If masked, we need to preserve the existing secret
+  // The background will handle this by merging with existing settings
   
   try {
-    // Send to background to save and broadcast
     await chrome.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings });
     
     els.saveSettings.textContent = '✓ Saved!';
     setTimeout(() => els.saveSettings.textContent = 'Save Settings', 1500);
     
     if (settings.firebaseUrl) {
-      updateFirebaseStatus(true);
+      const hasSecret = secretValue && !secretValue.startsWith('••••');
+      updateFirebaseStatus(true, hasSecret ? null : 'Connected (no secret - add one for security)');
     } else {
       updateFirebaseStatus(false);
     }
@@ -273,69 +262,14 @@ async function saveSettings() {
   }
 }
 
-function updateFirebaseStatus(connected) {
+function updateFirebaseStatus(connected, customMessage) {
   if (connected) {
     els.firebaseStatusDot.style.background = '#22c55e';
-    els.firebaseStatusText.textContent = 'Connected';
+    els.firebaseStatusText.textContent = customMessage || 'Connected & Protected';
   } else {
     els.firebaseStatusDot.style.background = '#6b7280';
     els.firebaseStatusText.textContent = 'Not configured';
   }
-}
-
-function updateApiKeyStatus(valid, message) {
-  if (valid) {
-    els.apiKeyStatusDot.style.background = '#22c55e';
-    els.apiKeyStatusText.textContent = message || 'API key configured';
-  } else {
-    els.apiKeyStatusDot.style.background = '#6b7280';
-    els.apiKeyStatusText.textContent = message || 'Not configured (using estimates)';
-  }
-}
-
-async function validateAnthropicApiKey() {
-  const apiKey = els.anthropicApiKey.value.trim();
-  
-  if (!apiKey) {
-    updateApiKeyStatus(false, 'No API key entered');
-    return;
-  }
-  
-  if (!apiKey.startsWith('sk-ant-')) {
-    updateApiKeyStatus(false, 'Invalid key format');
-    return;
-  }
-  
-  els.validateApiKey.textContent = 'Validating...';
-  
-  try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
-        model: 'claude-3-haiku-20240307',
-        max_tokens: 1,
-        messages: [{ role: 'user', content: 'Hi' }]
-      })
-    });
-    
-    if (response.ok || response.status === 400) {
-      updateApiKeyStatus(true, 'API key valid ✓');
-    } else if (response.status === 401) {
-      updateApiKeyStatus(false, 'Invalid API key');
-    } else {
-      updateApiKeyStatus(false, `Error: ${response.status}`);
-    }
-  } catch (e) {
-    updateApiKeyStatus(false, 'Connection error');
-  }
-  
-  els.validateApiKey.textContent = 'Validate';
 }
 
 async function loadAnalytics(days = 30) {
@@ -470,10 +404,6 @@ els.closeSettings.addEventListener('click', () => {
 
 els.refreshBtn.addEventListener('click', triggerRefresh);
 els.saveSettings.addEventListener('click', saveSettings);
-
-if (els.validateApiKey) {
-  els.validateApiKey.addEventListener('click', validateAnthropicApiKey);
-}
 
 if (els.firebaseHelp) {
   els.firebaseHelp.addEventListener('click', () => {

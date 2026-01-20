@@ -14,7 +14,7 @@
         <h1>Claude Usage Pro</h1>
       </div>
       <div class="header-right">
-        <button id="refreshBtn" class="icon-btn" title="Refresh">🔄</button>
+        <button id="refreshBtn" class="icon-btn" title="Sync Usage Data">🔄</button>
         <button id="settingsBtn" class="icon-btn" title="Settings">⚙️</button>
       </div>
     </header>
@@ -114,37 +114,11 @@
           <p class="setting-hint">Adds a microphone button to the chat input</p>
         </div>
         
-        <!-- Anthropic API Key (for accurate token counting) -->
-        <div class="setting-group">
-          <label class="setting-label">
-            Anthropic API Key (Optional)
-            <span class="badge badge-free">FREE</span>
-          </label>
-          
-          <input 
-            type="password" 
-            id="anthropicApiKey" 
-            class="setting-input" 
-            placeholder="sk-ant-..."
-          >
-          <p class="setting-hint">
-            For 100% accurate token counting. The token counting API is free - no charges.
-            <a href="https://console.anthropic.com/settings/keys" target="_blank">Get API key</a>
-          </p>
-          
-          <div class="api-key-status" id="apiKeyStatus">
-            <span class="status-indicator" id="apiKeyStatusDot"></span>
-            <span id="apiKeyStatusText">Not configured (using estimates)</span>
-          </div>
-          
-          <button id="validateApiKey" class="btn btn-small">Test API Key</button>
-        </div>
-        
-        <!-- Firebase Sync (Optional) -->
+        <!-- Firebase Sync -->
         <div class="setting-group">
           <label class="setting-label">
             Firebase Sync (Optional)
-            <button class="help-icon" id="firebaseHelp" title="View Setup Instructions">ℹ️</button>
+            <button id="firebaseHelp" class="btn-help">?</button>
           </label>
           
           <input 
@@ -153,40 +127,42 @@
             class="setting-input" 
             placeholder="https://your-project.firebaseio.com"
           >
-          <p class="setting-hint">Firebase Realtime Database URL for cross-device sync</p>
+          
+          <input 
+            type="password" 
+            id="firebaseSecret" 
+            class="setting-input" 
+            placeholder="Secret key (any string you choose)"
+            style="margin-top: 6px;"
+          >
+          <p class="setting-hint">
+            Firebase URL syncs data across devices. The secret key protects your data - 
+            use the same secret on all devices. <strong>Keep your secret private!</strong>
+          </p>
           
           <div class="firebase-status" id="firebaseStatus">
             <span class="status-indicator" id="firebaseStatusDot"></span>
             <span id="firebaseStatusText">Not configured</span>
           </div>
           
-          <textarea 
-            id="firebaseInstructions" 
-            class="setting-textarea hidden"
-            readonly
-          >Firebase Setup Instructions:
-
-1. Go to https://console.firebase.google.com
-2. Create a new project (or use existing)
-3. Enable Realtime Database
-4. Set security rules to:
-   {
-     "rules": {
-       ".read": true,
-       ".write": true
-     }
-   }
-5. Copy the database URL (format: https://your-project.firebaseio.com)
-6. Paste it in the field above
-
-Optional: Create a custom path like /usage/your-name for personal tracking</textarea>
+          <div id="firebaseInstructions" class="hidden instructions">
+            <h4>Firebase Setup:</h4>
+            <ol>
+              <li>Go to <a href="https://console.firebase.google.com" target="_blank">Firebase Console</a></li>
+              <li>Create a new project (or use existing)</li>
+              <li>Go to Realtime Database → Create Database</li>
+              <li>Copy your database URL (ends with .firebaseio.com)</li>
+              <li>Set security rules to allow read/write</li>
+              <li>Choose a secret key (like a password) - use the same on all your devices</li>
+            </ol>
+          </div>
         </div>
         
         <button id="saveSettings" class="btn btn-primary">Save Settings</button>
       </div>
       
       <div class="settings-footer">
-        <span class="version">v1.9.0</span>
+        <span class="version">v2.0.1</span>
         <a href="https://github.com/NashKellerMedia/claude-usage-pro" target="_blank" class="github-link">GitHub</a>
       </div>
     </div>
