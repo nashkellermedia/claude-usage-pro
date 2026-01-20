@@ -351,6 +351,7 @@ class FirebaseSync {
       showSidebar: settings.showSidebar,
       showChatOverlay: settings.showChatOverlay,
       enableVoice: settings.enableVoice,
+      anthropicApiKey: settings.anthropicApiKey || '',  // Sync for cross-device token counting
       syncedAt: Date.now()
     };
 
@@ -932,7 +933,13 @@ async function handleMessage(message, sender) {
           
           if (authSuccess && updated.firebaseDatabaseUrl) {
             firebaseSync = new FirebaseSync(firebaseAuth);
-            await firebaseSync.initialize(updated.firebaseDatabaseUrl);
+            const syncInitialized = await firebaseSync.initialize(updated.firebaseDatabaseUrl);
+            
+            // Auto-pull from Firebase when newly configured
+            if (syncInitialized) {
+              console.log('[CUP BG] Firebase newly configured, pulling data...');
+              await pullFromFirebase();
+            }
           }
         } else {
           firebaseAuth = null;
@@ -976,22 +983,11 @@ async function handleMessage(message, sender) {
       }
 
       try {
-        const merged = await firebaseSync.getMergedUsage();
-        if (merged) {
-          if (merged.baseline && hybridTracker) {
-            await hybridTracker.mergeFromFirebase(merged);
-          }
-          await chrome.storage.local.set({ usageData: merged });
-          await updateBadge(merged);
-          notifyAllTabs(merged);
-        }
+        await pullFromFirebase();
         
-        // Also sync analytics
-        const analytics = await firebaseSync.getAnalytics();
-        if (analytics && usageAnalytics) {
-          usageAnalytics.data = { ...usageAnalytics.data, ...analytics };
-          await usageAnalytics.save();
-        }
+        // Notify all tabs of updated data
+        const usageData = await getUsageData();
+        notifyAllTabs(usageData);
         
         return { success: true };
       } catch (e) {
@@ -1039,6 +1035,77 @@ async function handleMessage(message, sender) {
 }
 
 // ============================================================================
+// Firebase Pull (for cross-device sync)
+// ============================================================================
+
+async function pullFromFirebase() {
+  if (!firebaseSync?.syncEnabled) return;
+  
+  try {
+    // Pull usage data
+    const mergedUsage = await firebaseSync.getMergedUsage();
+    if (mergedUsage) {
+      console.log('[CUP BG] Pulled usage data from Firebase');
+      if (mergedUsage.baseline && hybridTracker) {
+        await hybridTracker.mergeFromFirebase(mergedUsage);
+      }
+      const current = await getUsageData();
+      const merged = { ...current, ...mergedUsage };
+      await chrome.storage.local.set({ usageData: merged });
+      await updateBadge(merged);
+    }
+    
+    // Pull analytics
+    const analytics = await firebaseSync.getAnalytics();
+    if (analytics && usageAnalytics) {
+      console.log('[CUP BG] Pulled analytics from Firebase');
+      usageAnalytics.data = { 
+        ...usageAnalytics.data, 
+        ...analytics,
+        // Ensure arrays are arrays
+        dailySnapshots: analytics.dailySnapshots || {},
+        thresholdEvents: Array.isArray(analytics.thresholdEvents) ? analytics.thresholdEvents : [],
+      };
+      await usageAnalytics.save();
+    }
+    
+    // Pull settings (including anthropicApiKey)
+    const syncedSettings = await firebaseSync.getSettings();
+    if (syncedSettings) {
+      console.log('[CUP BG] Pulled settings from Firebase');
+      const currentSettings = await getSettings();
+      
+      // Merge synced settings, but don't overwrite Firebase credentials
+      const mergedSettings = {
+        ...currentSettings,
+        badgeDisplay: syncedSettings.badgeDisplay || currentSettings.badgeDisplay,
+        showSidebar: syncedSettings.showSidebar ?? currentSettings.showSidebar,
+        showChatOverlay: syncedSettings.showChatOverlay ?? currentSettings.showChatOverlay,
+        enableVoice: syncedSettings.enableVoice ?? currentSettings.enableVoice,
+      };
+      
+      // Only pull anthropicApiKey if we don't have one locally
+      if (!currentSettings.anthropicApiKey && syncedSettings.anthropicApiKey) {
+        mergedSettings.anthropicApiKey = syncedSettings.anthropicApiKey;
+        console.log('[CUP BG] Pulled Anthropic API key from Firebase');
+        
+        // Initialize token counter with pulled key
+        if (!tokenCounter) {
+          tokenCounter = new AnthropicTokenCounter();
+        }
+        tokenCounter.setApiKey(syncedSettings.anthropicApiKey);
+      }
+      
+      await chrome.storage.local.set({ settings: mergedSettings });
+    }
+    
+    console.log('[CUP BG] Firebase pull complete');
+  } catch (e) {
+    console.error('[CUP BG] Firebase pull error:', e.message);
+  }
+}
+
+// ============================================================================
 // Initialization
 // ============================================================================
 
@@ -1070,7 +1137,13 @@ async function initializeExtension() {
     
     if (authSuccess && settings.firebaseDatabaseUrl) {
       firebaseSync = new FirebaseSync(firebaseAuth);
-      await firebaseSync.initialize(settings.firebaseDatabaseUrl);
+      const syncInitialized = await firebaseSync.initialize(settings.firebaseDatabaseUrl);
+      
+      // Auto-pull data from Firebase on startup
+      if (syncInitialized) {
+        console.log('[CUP BG] Firebase connected, pulling data from cloud...');
+        await pullFromFirebase();
+      }
     }
   }
 

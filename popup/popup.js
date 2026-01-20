@@ -471,6 +471,31 @@ els.closeSettings.addEventListener('click', () => els.settingsPanel.classList.ad
 els.refreshBtn.addEventListener('click', triggerRefresh);
 els.saveSettings.addEventListener('click', saveSettings);
 
+els.pullFromCloud = document.getElementById('pullFromCloud');
+
+if (els.pullFromCloud) {
+  els.pullFromCloud.addEventListener('click', async () => {
+    els.pullFromCloud.textContent = '⏳ Pulling...';
+    els.pullFromCloud.disabled = true;
+    try {
+      const result = await chrome.runtime.sendMessage({ type: 'SYNC_FROM_FIREBASE' });
+      if (result?.success) {
+        els.pullFromCloud.textContent = '✓ Pulled!';
+        await loadUsageData();
+        await loadSettings();
+      } else {
+        els.pullFromCloud.textContent = '❌ ' + (result?.error || 'Failed');
+      }
+    } catch (e) {
+      els.pullFromCloud.textContent = '❌ Error';
+    }
+    setTimeout(() => {
+      els.pullFromCloud.textContent = '⬇️ Pull from Cloud';
+      els.pullFromCloud.disabled = false;
+    }, 2000);
+  });
+}
+
 if (els.firebaseHelp) {
   els.firebaseHelp.addEventListener('click', () => els.firebaseInstructions.classList.toggle('hidden'));
 }
