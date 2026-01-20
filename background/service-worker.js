@@ -10,9 +10,25 @@
  */
 
 // Debug mode - set to true for verbose logging
-const DEBUG = true;
-const log = (...args) => DEBUG && console.log('[CUP]', ...args);
-const logError = (...args) => console.error('[CUP]', ...args);
+const DEBUG = false;
+
+function log(...args) {
+  if (DEBUG) {
+    try {
+      console.log('[CUP]', ...args);
+    } catch (e) {
+      // Ignore logging errors
+    }
+  }
+}
+
+function logError(...args) {
+  try {
+    console.error('[CUP]', ...args);
+  } catch (e) {
+    // Ignore logging errors
+  }
+}
 
 // ============================================================================
 // Firebase Auth Class - Anonymous Authentication via REST API

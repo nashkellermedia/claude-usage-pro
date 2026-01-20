@@ -556,10 +556,11 @@ setInterval(loadUsageData, 5000);
 
 // Auto-normalize Firebase URL on blur
 if (els.firebaseDatabaseUrl) {
-  els.firebaseDatabaseUrl.addEventListener('blur', () => {
-    const url = els.firebaseDatabaseUrl.value.trim().replace(/\/+$/, '');
-    if (url !== els.firebaseDatabaseUrl.value) {
-      els.firebaseDatabaseUrl.value = url;
+  els.firebaseDatabaseUrl.addEventListener('blur', function() {
+    const currentVal = this.value;
+    const cleanedVal = currentVal.trim().replace(/\/+$/, '');
+    if (cleanedVal !== currentVal) {
+      this.value = cleanedVal;
     }
   });
 }
