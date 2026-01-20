@@ -142,11 +142,14 @@
     
     // Toggle sidebar - create if needed and enabled
     const sidebarEl = document.getElementById('cup-sidebar-widget');
+    let needsDataRefresh = false;
+    
     if (settings.showSidebar) {
       if (!sidebarEl && window.SidebarUI && !window.cupSidebar) {
         window.CUP.log('Creating sidebar (was missing)...');
         window.cupSidebar = new SidebarUI();
         window.cupSidebar.initialize();
+        needsDataRefresh = true;
       } else if (sidebarEl) {
         sidebarEl.style.display = '';
       }
@@ -162,11 +165,23 @@
         window.cupChatUI = new ChatUI();
         window.cupChatUI.initialize();
         window.cupChatUI.injectUI();
+        needsDataRefresh = true;
       } else if (inputStats) {
         inputStats.style.display = '';
       }
     } else if (inputStats) {
       inputStats.style.display = 'none';
+    }
+    
+    // If we created new UI elements, fetch and display current data
+    if (needsDataRefresh) {
+      chrome.runtime.sendMessage({ type: 'GET_USAGE_DATA' }).then(response => {
+        if (response?.usageData) {
+          if (window.cupSidebar) window.cupSidebar.update(response.usageData);
+          if (window.cupChatUI) window.cupChatUI.updateUsage(response.usageData);
+          window.CUP.log('Populated new UI with current data');
+        }
+      }).catch(() => {});
     }
     
     // Toggle voice
