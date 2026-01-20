@@ -1,7 +1,6 @@
 /**
  * Claude Usage Pro - Chat UI
  * Stats bar below chat input with attachment tracking and color coding
- * Now with accurate Anthropic API token counting!
  */
 
 class ChatUI {
@@ -13,25 +12,23 @@ class ChatUI {
     this.typingInterval = null;
     this.currentUsageData = null;
     
-    // Track attachments via events only
+    // Track attachments via events
     this.trackedAttachments = new Map();
     
     // Token counting state
     this.lastText = '';
-    this.pendingTokenCount = null;
     this.tokenCountDebounce = null;
-    this.useAccurateCount = false; // Will be set based on API key availability
+    this.useAccurateCount = false;
+    this.lastAccurateTextTokens = 0;
   }
   
   initialize() {
     window.CUP.log('ChatUI: Initializing...');
     this.initialized = true;
     
-    // Check if accurate token counting is available
     this.checkTokenCountingAvailable();
     
     if (window.APIInterceptor) {
-      // Clear attachments when message sent
       window.APIInterceptor.on('onMessageSent', () => {
         this.clearTrackedAttachments();
       });
@@ -47,7 +44,7 @@ class ChatUI {
     try {
       const response = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
       this.useAccurateCount = !!(response?.settings?.anthropicApiKey);
-      window.CUP.log('ChatUI: Accurate token counting:', this.useAccurateCount ? 'ENABLED' : 'disabled (no API key)');
+      window.CUP.log('ChatUI: Accurate token counting:', this.useAccurateCount ? 'ENABLED' : 'disabled');
     } catch (e) {
       this.useAccurateCount = false;
     }
@@ -66,8 +63,6 @@ class ChatUI {
         }
       }
     }, 500);
-    
-    window.CUP.log('ChatUI: File input interception active');
   }
   
   handlePaste(e) {
@@ -91,8 +86,7 @@ class ChatUI {
   trackFile(file) {
     if (!file) return;
     
-    const id = `file-${file.name}-${file.size}`;
-    if (this.trackedAttachments.has(id)) return;
+    const id = `file-${file.name}-${file.size}-${Date.now()}`;
     
     let tokens = 1500;
     
@@ -162,15 +156,49 @@ class ChatUI {
     return tilesX * tilesY * 765;
   }
   
+  /**
+   * Check if there are visible attachment previews in the composer
+   * Used to detect when user removes attachments
+   */
+  countVisibleAttachments() {
+    const composer = document.querySelector('[contenteditable="true"]');
+    if (!composer) return 0;
+    
+    // Find composer container
+    let container = composer;
+    for (let i = 0; i < 8; i++) {
+      if (container.parentElement) container = container.parentElement;
+    }
+    
+    let count = 0;
+    
+    // Look for image thumbnails in composer area
+    const images = container.querySelectorAll('img[src^="blob:"], img[src*="/api/"][src*="/files/"]');
+    count += images.length;
+    
+    // Look for file attachment buttons/previews (x buttons, file icons)
+    // These typically have aria-label or specific classes
+    const removeButtons = container.querySelectorAll('[aria-label*="Remove"], [aria-label*="Delete"], button[class*="remove"], button[class*="delete"]');
+    // Count unique parent containers
+    const seen = new Set();
+    for (const btn of removeButtons) {
+      const parent = btn.closest('[class*="attachment"], [class*="preview"], [class*="file"]');
+      if (parent && !seen.has(parent)) {
+        seen.add(parent);
+        count++;
+      }
+    }
+    
+    return count;
+  }
+  
   async injectUI() {
     await this.injectInputStats();
     this.startDraftMonitor();
   }
   
   async injectInputStats() {
-    if (document.getElementById('cup-input-stats')) {
-      return;
-    }
+    if (document.getElementById('cup-input-stats')) return;
     
     for (let attempt = 0; attempt < 10; attempt++) {
       const contentEditable = document.querySelector('[contenteditable="true"]');
@@ -191,6 +219,7 @@ class ChatUI {
             <span class="cup-stat-icon">📎</span>
             <span class="cup-stat-label">Files:</span>
             <span class="cup-stat-value" id="cup-files-count">0</span>
+            <span class="cup-clear-files" id="cup-clear-files" title="Clear tracked files" style="display:none; cursor:pointer; margin-left:4px;">✕</span>
           </span>
           <span class="cup-stat-divider">│</span>
           <span class="cup-stat-item">
@@ -216,14 +245,21 @@ class ChatUI {
         
         let container = contentEditable;
         for (let i = 0; i < 6; i++) {
-          if (container.parentElement) {
-            container = container.parentElement;
-          }
+          if (container.parentElement) container = container.parentElement;
         }
         
         if (container && container.parentElement) {
           container.parentElement.insertBefore(this.inputStats, container.nextSibling);
           window.CUP.log('ChatUI: Input stats injected');
+          
+          // Add click handler for clear files button
+          const clearBtn = document.getElementById('cup-clear-files');
+          if (clearBtn) {
+            clearBtn.addEventListener('click', () => {
+              this.clearTrackedAttachments();
+              this.updateDraftDisplay(this.lastAccurateTextTokens, this.lastAccurateTextTokens, 0, 0, this.useAccurateCount);
+            });
+          }
           
           if (this.currentUsageData) {
             this.updateUsage(this.currentUsageData);
@@ -252,10 +288,9 @@ class ChatUI {
   
   clearTrackedAttachments() {
     this.trackedAttachments.clear();
-    window.CUP.log('ChatUI: Cleared tracked attachments (message sent)');
+    window.CUP.log('ChatUI: Cleared tracked attachments');
   }
   
-  // Get accurate token count from Anthropic API
   async getAccurateTokenCount(text) {
     if (!text || text.length === 0) return 0;
     
@@ -272,27 +307,27 @@ class ChatUI {
       window.CUP.log('ChatUI: Token count API error:', e.message);
     }
     
-    // Fallback to estimate
     return Math.ceil(text.length / 4);
   }
   
-  // Debounced accurate token counting
   scheduleAccurateCount(text) {
     if (this.tokenCountDebounce) {
       clearTimeout(this.tokenCountDebounce);
     }
     
-    // Show estimate immediately with ~ indicator
     const estimate = Math.ceil(text.length / 4);
-    this.updateDraftDisplay(estimate + this.getAttachmentTokens().tokens, estimate, this.getAttachmentTokens().tokens, this.getAttachmentTokens().count, false);
+    const attachments = this.getAttachmentTokens();
+    this.updateDraftDisplay(estimate + attachments.tokens, estimate, attachments.tokens, attachments.count, false);
     
-    // Schedule accurate count after 500ms of no typing
     this.tokenCountDebounce = setTimeout(async () => {
       if (text === this.lastText) {
         const accurate = await this.getAccurateTokenCount(text);
+        this.lastAccurateTextTokens = accurate;
         const attachments = this.getAttachmentTokens();
-        this.updateDraftDisplay(accurate + attachments.tokens, accurate, attachments.tokens, attachments.count, true);
-        window.CUP.log('ChatUI: Accurate count:', accurate, 'tokens');
+        // Only show ✓ if NO attachments (since attachment counts are always estimates)
+        const isFullyAccurate = attachments.count === 0;
+        this.updateDraftDisplay(accurate + attachments.tokens, accurate, attachments.tokens, attachments.count, isFullyAccurate);
+        window.CUP.log('ChatUI: Accurate text count:', accurate, 'tokens');
       }
     }, 500);
   }
@@ -302,35 +337,49 @@ class ChatUI {
     
     this.typingInterval = setInterval(() => {
       const input = document.querySelector('[contenteditable="true"]');
-      if (input) {
-        let text = input.innerText || '';
-        text = text.trim();
+      if (!input) return;
+      
+      // Check for attachment removal by comparing visible vs tracked
+      const visibleCount = this.countVisibleAttachments();
+      const trackedCount = this.trackedAttachments.size;
+      
+      if (trackedCount > 0 && visibleCount === 0) {
+        // User removed all attachments
+        window.CUP.log('ChatUI: Detected all attachments removed');
+        this.clearTrackedAttachments();
+      } else if (trackedCount > visibleCount && visibleCount >= 0) {
+        // Some attachments were removed - clear and let user re-add
+        // This is imperfect but better than showing stale data
+        window.CUP.log('ChatUI: Detected attachment removal, visible:', visibleCount, 'tracked:', trackedCount);
+        this.clearTrackedAttachments();
+      }
+      
+      let text = input.innerText || '';
+      text = text.trim();
+      
+      if (text.match(/^(Reply to Claude|Type a message|Ask Claude|How can I help|Message Claude)/i)) {
+        text = '';
+      }
+      
+      const textChanged = text !== this.lastText;
+      const attachments = this.getAttachmentTokens();
+      
+      if (textChanged) {
+        this.lastText = text;
         
-        // Ignore common placeholder patterns
-        if (text.match(/^(Reply to Claude|Type a message|Ask Claude|How can I help|Message Claude)/i)) {
-          text = '';
+        if (this.useAccurateCount && text.length > 0) {
+          this.scheduleAccurateCount(text);
+        } else {
+          const textTokens = text.length > 0 ? Math.ceil(text.length / 4) : 0;
+          this.lastAccurateTextTokens = textTokens;
+          this.updateDraftDisplay(textTokens + attachments.tokens, textTokens, attachments.tokens, attachments.count, false);
         }
-        
-        // Only process if text changed
-        if (text !== this.lastText) {
-          this.lastText = text;
-          
-          if (this.useAccurateCount && text.length > 0) {
-            // Use accurate API counting with debounce
-            this.scheduleAccurateCount(text);
-          } else {
-            // Use estimate
-            const textTokens = text.length > 0 ? Math.ceil(text.length / 4) : 0;
-            const attachments = this.getAttachmentTokens();
-            const totalTokens = textTokens + attachments.tokens;
-            
-            if (totalTokens !== this.lastDraftTokens || attachments.count !== this.lastAttachmentCount) {
-              this.lastDraftTokens = totalTokens;
-              this.lastAttachmentCount = attachments.count;
-              this.updateDraftDisplay(totalTokens, textTokens, attachments.tokens, attachments.count, false);
-            }
-          }
-        }
+      } else if (attachments.count !== this.lastAttachmentCount || attachments.tokens !== this.lastAttachmentTokens) {
+        // Attachments changed but text didn't
+        this.lastAttachmentTokens = attachments.tokens;
+        const textTokens = this.lastAccurateTextTokens || Math.ceil(text.length / 4);
+        const isFullyAccurate = this.useAccurateCount && attachments.count === 0 && text.length > 0;
+        this.updateDraftDisplay(textTokens + attachments.tokens, textTokens, attachments.tokens, attachments.count, isFullyAccurate);
       }
     }, 300);
   }
@@ -339,14 +388,15 @@ class ChatUI {
     const draftEl = document.getElementById('cup-draft-tokens');
     const filesEl = document.getElementById('cup-files-count');
     const accuracyEl = document.getElementById('cup-accuracy');
+    const clearBtn = document.getElementById('cup-clear-files');
     
     if (draftEl) {
       draftEl.textContent = totalTokens.toLocaleString();
       
       if (attachmentTokens > 0) {
-        draftEl.title = 'Text: ' + textTokens.toLocaleString() + ' + Files: ~' + attachmentTokens.toLocaleString() + ' tokens';
+        draftEl.title = `Text: ${textTokens.toLocaleString()} + Files: ~${attachmentTokens.toLocaleString()} tokens (file estimates only)`;
       } else {
-        draftEl.title = isAccurate ? 'Accurate token count via Anthropic API' : 'Estimated tokens (~4 chars per token)';
+        draftEl.title = isAccurate ? 'Accurate token count via Anthropic API' : 'Estimated (~4 chars per token)';
       }
       
       if (totalTokens >= 32000) {
@@ -360,7 +410,6 @@ class ChatUI {
       }
     }
     
-    // Update accuracy indicator
     if (accuracyEl) {
       if (isAccurate) {
         accuracyEl.textContent = '✓';
@@ -368,7 +417,9 @@ class ChatUI {
         accuracyEl.style.color = '#22c55e';
       } else {
         accuracyEl.textContent = '~';
-        accuracyEl.title = 'Estimated (~4 chars per token)';
+        accuracyEl.title = attachmentCount > 0 
+          ? 'Estimated (file token counts are always approximate)'
+          : 'Estimated (~4 chars per token)';
         accuracyEl.style.color = '#6b7280';
       }
     }
@@ -376,25 +427,26 @@ class ChatUI {
     if (filesEl) {
       filesEl.textContent = attachmentCount;
       filesEl.title = attachmentCount > 0 
-        ? `${attachmentCount} file(s) attached (~${attachmentTokens.toLocaleString()} tokens)`
+        ? `${attachmentCount} file(s) tracked (~${attachmentTokens.toLocaleString()} tokens)`
         : 'No files attached';
       
-      if (attachmentCount > 0) {
-        filesEl.style.color = '#60a5fa';
-      } else {
-        filesEl.style.color = '#a1a1aa';
-      }
+      filesEl.style.color = attachmentCount > 0 ? '#60a5fa' : '#a1a1aa';
+    }
+    
+    // Show/hide clear button
+    if (clearBtn) {
+      clearBtn.style.display = attachmentCount > 0 ? 'inline' : 'none';
     }
     
     this.lastDraftTokens = totalTokens;
     this.lastAttachmentCount = attachmentCount;
+    this.lastAttachmentTokens = attachmentTokens;
   }
   
   updateUsage(usageData) {
     if (!usageData) return;
     this.currentUsageData = usageData;
     
-    // Session percentage
     const sessionEl = document.getElementById('cup-session-pct');
     if (sessionEl && usageData.currentSession) {
       sessionEl.textContent = usageData.currentSession.percent + '%';
@@ -404,7 +456,6 @@ class ChatUI {
       else sessionEl.style.color = '#22c55e';
     }
     
-    // Reset timer
     const resetEl = document.getElementById('cup-reset-timer');
     if (resetEl) {
       const resetTime = usageData.currentSession?.resetsIn || '--';
@@ -423,7 +474,6 @@ class ChatUI {
       }
     }
     
-    // Weekly All Models
     const weeklyAllEl = document.getElementById('cup-weekly-all-pct');
     if (weeklyAllEl && usageData.weeklyAllModels) {
       weeklyAllEl.textContent = usageData.weeklyAllModels.percent + '%';
@@ -433,14 +483,13 @@ class ChatUI {
       else weeklyAllEl.style.color = '#22c55e';
     }
     
-    // Weekly Sonnet
     const weeklySonnetEl = document.getElementById('cup-weekly-sonnet-pct');
     if (weeklySonnetEl && usageData.weeklySonnet) {
       weeklySonnetEl.textContent = usageData.weeklySonnet.percent + '%';
       const pct = usageData.weeklySonnet.percent;
       if (pct >= 90) weeklySonnetEl.style.color = '#ef4444';
       else if (pct >= 70) weeklySonnetEl.style.color = '#f59e0b';
-      else weeklySonnetEl.style.color = '#a855f7';  // Purple for Sonnet
+      else weeklySonnetEl.style.color = '#a855f7';
     }
   }
   
