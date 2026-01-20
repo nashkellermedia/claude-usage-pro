@@ -371,6 +371,42 @@ function displayAnalytics(summary) {
     return;
   }
   
+  // Build threshold hits section
+  let thresholdHtml = '';
+  if (summary.thresholdHits) {
+    const hits = summary.thresholdHits;
+    thresholdHtml = `
+    <div class="analytics-card">
+      <h4>⚠️ Threshold Alerts</h4>
+      <div class="analytics-stat">
+        <span class="label">Hit 70%:</span>
+        <span class="value">${hits.by70 || 0} times</span>
+      </div>
+      <div class="analytics-stat">
+        <span class="label">Hit 90%:</span>
+        <span class="value warning">${hits.by90 || 0} times</span>
+      </div>
+      <div class="analytics-stat">
+        <span class="label">Maxed out:</span>
+        <span class="value danger">${hits.by100 || 0} times</span>
+      </div>
+    </div>`;
+  }
+  
+  // Build model preference section
+  let modelHtml = '';
+  if (summary.modelPreference && Object.keys(summary.modelPreference).length > 0) {
+    const models = Object.entries(summary.modelPreference)
+      .sort((a, b) => b[1] - a[1])
+      .map(([model, count]) => `<div class="analytics-stat"><span class="label">${model}:</span><span class="value">${count}</span></div>`)
+      .join('');
+    modelHtml = `
+    <div class="analytics-card">
+      <h4>🤖 Model Usage</h4>
+      ${models}
+    </div>`;
+  }
+  
   const html = `
     <div class="analytics-card">
       <h3>📊 ${summary.period || 'Usage Summary'}</h3>
@@ -378,7 +414,7 @@ function displayAnalytics(summary) {
     </div>
     
     <div class="analytics-card">
-      <h4>Average Usage</h4>
+      <h4>📈 Average Usage</h4>
       <div class="analytics-stat">
         <span class="label">Session:</span>
         <span class="value">${summary.averageUsage.session || 0}%</span>
@@ -387,11 +423,30 @@ function displayAnalytics(summary) {
         <span class="label">Weekly (All):</span>
         <span class="value">${summary.averageUsage.weeklyAll || 0}%</span>
       </div>
+      <div class="analytics-stat">
+        <span class="label">Weekly (Sonnet):</span>
+        <span class="value">${summary.averageUsage.weeklySonnet || 0}%</span>
+      </div>
     </div>
     
-    <p class="analytics-meta" style="margin-top: 12px; text-align: center;">
-      Analytics tracking is active. More detailed stats will appear as you use Claude.
-    </p>
+    <div class="analytics-card">
+      <h4>🔥 Peak Usage</h4>
+      <div class="analytics-stat">
+        <span class="label">Session:</span>
+        <span class="value">${summary.peakUsage?.session || 0}%</span>
+      </div>
+      <div class="analytics-stat">
+        <span class="label">Weekly (All):</span>
+        <span class="value">${summary.peakUsage?.weeklyAll || 0}%</span>
+      </div>
+      <div class="analytics-stat">
+        <span class="label">Weekly (Sonnet):</span>
+        <span class="value">${summary.peakUsage?.weeklySonnet || 0}%</span>
+      </div>
+    </div>
+    
+    ${thresholdHtml}
+    ${modelHtml}
   `;
   
   els.analyticsSummary.innerHTML = html;

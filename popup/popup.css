@@ -555,6 +555,10 @@ body {
   color: #ef4444;
 }
 
+.analytics-stat .value.warning {
+  color: #f59e0b;
+}
+
 /* API Key Section */
 .badge {
   display: inline-block;
