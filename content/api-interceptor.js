@@ -18,6 +18,7 @@ class APIInterceptorClass {
       onUsageDataReceived: null
     };
     this.lastUsageData = null;
+    this.lastModel = null;  // Track model for output tokens
   }
   
   start() {
@@ -190,8 +191,12 @@ class APIInterceptorClass {
         chrome.runtime.sendMessage({
           type: 'ADD_TOKEN_DELTA',
           inputTokens: tokens,
-          outputTokens: 0
+          outputTokens: 0,
+          model: data.model
         }).catch(() => {});
+        
+        // Store model for output token tracking
+        this.lastModel = data.model;
       } catch (e) {
         window.CUP.logError('Failed to send input tokens:', e);
       }
@@ -359,8 +364,9 @@ class APIInterceptorClass {
       try {
         chrome.runtime.sendMessage({
           type: 'ADD_TOKEN_DELTA',
-          inputTokens: 0,  // Input tokens already tracked in outgoing
-          outputTokens: outputTotal
+          inputTokens: 0,
+          outputTokens: outputTotal,
+          model: this.lastModel
         }).catch(() => {});
       } catch (e) {
         window.CUP.logError('Failed to send output tokens:', e);

@@ -134,6 +134,21 @@
     if (window.cupChatUI) {
       window.cupChatUI.updateUsage(usageData);
     }
+    
+    // Update tab title with usage percentage
+    updateTabTitle(usageData);
+  }
+  
+  // Store original title
+  const originalTitle = document.title.replace(/^\(\d+%\)\s*/, '');
+  
+  function updateTabTitle(usageData) {
+    const sessionPercent = usageData?.currentSession?.percent || 0;
+    if (sessionPercent > 0) {
+      document.title = `(${sessionPercent}%) ${originalTitle}`;
+    } else {
+      document.title = originalTitle;
+    }
   }
   
   function handleSettingsUpdate(newSettings) {
