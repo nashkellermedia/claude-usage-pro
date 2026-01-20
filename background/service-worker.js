@@ -279,11 +279,24 @@ class FirebaseSync {
   async makeAuthenticatedRequest(path, method = 'GET', data = null) {
     const token = await this.auth.getValidToken();
     if (!token) {
-      console.error('[FirebaseSync] No valid auth token');
-      return null;
+      log('[FirebaseSync] No valid auth token - attempting refresh...');
+      // Try to refresh the token
+      const refreshed = await this.auth.refreshIdToken();
+      if (!refreshed) {
+        logError('[FirebaseSync] Token refresh failed');
+        return null;
+      }
+      const newToken = await this.auth.getValidToken();
+      if (!newToken) {
+        logError('[FirebaseSync] Still no token after refresh');
+        return null;
+      }
     }
 
-    const url = `${this.getBasePath()}/${path}.json?auth=${token}`;
+    const finalToken = await this.auth.getValidToken();
+    const basePath = this.getBasePath();
+    const url = `${basePath}/${path}.json?auth=${finalToken}`;
+    
     const options = {
       method,
       headers: { 'Content-Type': 'application/json' }
@@ -294,17 +307,20 @@ class FirebaseSync {
     }
 
     try {
+      log('[FirebaseSync]', method, path);
       const response = await fetch(url, options);
       if (!response.ok) {
         const error = await response.text();
-        log('[FirebaseSync] Request failed:', response.status, error.substring(0, 100));
+        logError('[FirebaseSync] Request failed:', response.status, path, error.substring(0, 200));
         return null;
       }
       return await response.json();
     } catch (e) {
-      // Network errors are common (offline, wrong URL, etc) - don't spam console
-      if (e.message !== 'Failed to fetch') {
-        log('[FirebaseSync] Request error:', e.message);
+      // Log the full error for debugging
+      logError('[FirebaseSync] Fetch error for', path + ':', e.message);
+      // Check if it might be a token issue
+      if (e.message === 'Failed to fetch') {
+        log('[FirebaseSync] Network error - will retry on next interval');
       }
       return null;
     }
