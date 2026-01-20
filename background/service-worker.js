@@ -397,17 +397,28 @@ class FirebaseSync {
 
   startAutoSync() {
     this.stopAutoSync();
+    
+    // Push local changes every 30 seconds
     this.syncInterval = setInterval(async () => {
       if (hybridTracker) {
         const syncData = hybridTracker.exportForSync();
         await this.syncUsage(syncData);
       }
-      // Also sync analytics periodically
       if (usageAnalytics) {
         const analyticsData = await usageAnalytics.export();
         await this.syncAnalytics(analyticsData);
       }
     }, 30000);
+    
+    // Pull remote changes every 60 seconds (staggered from push)
+    this.pullInterval = setInterval(async () => {
+      console.log('[FirebaseSync] Auto-pulling from Firebase...');
+      await pullFromFirebase();
+      
+      // Notify tabs of any changes
+      const usageData = await getUsageData();
+      notifyAllTabs(usageData);
+    }, 60000);
   }
 
   stopAutoSync() {
@@ -415,7 +426,13 @@ class FirebaseSync {
       clearInterval(this.syncInterval);
       this.syncInterval = null;
     }
+    if (this.pullInterval) {
+      clearInterval(this.pullInterval);
+      this.pullInterval = null;
+    }
   }
+  
+
 
   async getDeviceName() {
     const ua = self.navigator?.userAgent || '';
