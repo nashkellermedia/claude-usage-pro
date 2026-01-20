@@ -585,6 +585,7 @@ class UsageAnalytics {
   }
 
   async recordSnapshot(usageData) {
+    console.log('[UsageAnalytics] recordSnapshot called with:', usageData?.currentSession?.percent, usageData?.weeklyAllModels?.percent);
     if (!usageData) return;
     
     const today = new Date().toISOString().split('T')[0];
@@ -975,6 +976,8 @@ async function handleMessage(message, sender) {
     }
 
     case 'GET_ANALYTICS_SUMMARY': {
+      console.log('[CUP BG] GET_ANALYTICS_SUMMARY, usageAnalytics exists:', !!usageAnalytics);
+      console.log('[CUP BG] dailySnapshots:', Object.keys(usageAnalytics?.data?.dailySnapshots || {}));
       if (!usageAnalytics) return { summary: null };
       return { summary: usageAnalytics.getSummary(message.days || 30) };
     }

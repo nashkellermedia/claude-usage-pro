@@ -371,8 +371,12 @@ function updateFirebaseStatus(connected, customMessage) {
 }
 
 async function loadAnalytics(days = 30) {
+  console.log('[CUP Popup] Loading analytics for', days, 'days');
   try {
+    // First, ensure we have a snapshot recorded
+    await chrome.runtime.sendMessage({ type: 'GET_USAGE_DATA', recordSnapshot: true });
     const response = await chrome.runtime.sendMessage({ type: 'GET_ANALYTICS_SUMMARY', days });
+    console.log('[CUP Popup] Analytics response:', response);
     if (response?.summary) {
       displayAnalytics(response.summary);
     } else {
@@ -384,8 +388,8 @@ async function loadAnalytics(days = 30) {
 }
 
 function displayAnalytics(summary) {
-  if (!summary || !summary.averageUsage) {
-    els.analyticsSummary.innerHTML = '<p>No analytics data yet.</p>';
+  if (!summary || !summary.averageUsage || summary.days === 0) {
+    els.analyticsSummary.innerHTML = '<p>No historical snapshots yet.</p><p class="hint">Click refresh in the main popup to sync usage data and start tracking.</p>';
     return;
   }
   
