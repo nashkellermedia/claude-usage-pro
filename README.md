@@ -7,35 +7,39 @@ A Chrome extension that tracks your Claude.ai usage in real-time with visual ove
 
 ---
 
-## 🚀 Quick Start (2 Minutes)
+## 📥 Installation
 
-### Step 1: Install the Extension
+### Option A: Chrome Web Store (Recommended)
+*Coming soon!*
 
-**Option A: Chrome Web Store** (Recommended)
-- Coming soon!
+### Option B: Manual Install (Developer Mode)
 
-**Option B: Manual Install** (Developer Mode)
-1. Download or clone this repository
-2. Open Chrome → `chrome://extensions`
-3. Enable **"Developer mode"** (toggle in top right)
-4. Click **"Load unpacked"**
-5. Select the `claude-usage-pro` folder
+1. **Download the extension:**
+   - Go to [Releases](https://github.com/NashKellerMedia/claude-usage-pro/releases)
+   - Download the latest `claude-usage-pro-vX.X.X.zip`
+   - Unzip the file to a folder on your computer
 
-### Step 2: Start Using It
+2. **Install in Chrome:**
+   - Open Chrome and go to `chrome://extensions`
+   - Enable **"Developer mode"** (toggle in top right corner)
+   - Click **"Load unpacked"**
+   - Select the unzipped folder
+
+3. **You're done!** The extension icon will appear in your toolbar.
+
+> **Note:** With manual install, you'll need to manually update when new versions are released.
+
+---
+
+## 🚀 Quick Start
 
 1. Go to [claude.ai](https://claude.ai)
-2. **That's it!** You'll see:
+2. **That's it!** You'll immediately see:
    - 📊 **Sidebar widget** (left side) - Usage percentages
    - 📝 **Stats bar** (below chat input) - Draft tokens, file count, usage
    - 🔢 **Badge icon** - Quick usage percentage
 
-### Step 3: Click the Extension Icon
-
-Click the Claude Usage Pro icon in your toolbar to see:
-- Detailed usage breakdown
-- Session & weekly limits
-- Reset timers
-- Settings
+3. Click the extension icon in your toolbar for detailed stats and settings.
 
 ---
 
@@ -55,19 +59,17 @@ Click the Claude Usage Pro icon in your toolbar to see:
 
 ## ⚙️ Optional Setup
 
-The extension works great out of the box, but you can enable these optional features:
+The extension works great out of the box! These features are optional:
 
 ### 🔢 Accurate Token Counting (Free)
 
-Get exact token counts instead of estimates using Anthropic's API.
+Get exact token counts instead of estimates using Anthropic's free API.
 
 1. Go to [Anthropic Console](https://console.anthropic.com/settings/keys)
-2. Create an API key (free tier is fine - token counting doesn't cost anything)
+2. Create an API key (token counting is completely free)
 3. Click the extension icon → **Settings** (gear icon)
 4. Paste your API key in **"Anthropic API Key"**
 5. Click **Save Settings**
-
-You'll see a ✓ next to token counts when accurate counting is active.
 
 ---
 
@@ -75,7 +77,7 @@ You'll see a ✓ next to token counts when accurate counting is active.
 
 Sync your usage data across multiple devices or Chrome profiles.
 
-> **Note:** You provide your own Firebase project. Your data stays in YOUR account - we never see it.
+> **Note:** You provide your own Firebase project - your data stays in YOUR account.
 
 <details>
 <summary><strong>Click to expand Firebase setup instructions</strong></summary>
@@ -152,8 +154,6 @@ On each additional device/profile:
 2. Enter the **same** Database URL, API Key, and **Sync ID**
 3. Click **Save Settings** → data will sync automatically
 
-**Tip:** Use the ⬆️ Push and ⬇️ Pull buttons to manually sync if needed.
-
 </details>
 
 ---
@@ -226,24 +226,23 @@ See [PRIVACY_POLICY.md](PRIVACY_POLICY.md) for full details.
 
 ```
 claude-usage-pro/
-├── manifest.json        # Extension manifest
+├── manifest.json           # Extension manifest
 ├── background/
-│   └── service-worker.js    # Background service
+│   └── service-worker.js   # Background service
 ├── content/
-│   ├── main.js              # Main orchestrator
-│   ├── sidebar-ui.js        # Sidebar widget
-│   ├── chat-ui.js           # Chat overlay + attachments
-│   ├── voice-input.js       # Voice dictation
-│   ├── usage-scraper.js     # Scrapes usage from Claude
-│   ├── api-interceptor.js   # Monitors API calls
-│   └── styles.css           # Injected styles
+│   ├── main.js             # Main orchestrator
+│   ├── sidebar-ui.js       # Sidebar widget
+│   ├── chat-ui.js          # Chat overlay
+│   ├── voice-input.js      # Voice dictation
+│   ├── usage-scraper.js    # Scrapes usage data
+│   └── styles.css          # Injected styles
 ├── popup/
-│   ├── popup.html           # Popup UI
-│   ├── popup.css            # Popup styles
-│   └── popup.js             # Popup logic
+│   ├── popup.html          # Popup UI
+│   ├── popup.css           # Popup styles
+│   └── popup.js            # Popup logic
 ├── lib/
-│   └── tokenizer.js         # Token estimation
-└── icons/                   # Extension icons
+│   └── tokenizer.js        # Token estimation
+└── icons/                  # Extension icons
 ```
 
 ---
@@ -263,5 +262,3 @@ MIT License - see [LICENSE](LICENSE) for details.
 ## 🙏 Credits
 
 Built by [Nash Keller Media](https://nashkellermedia.com).
-
-Inspired by [lugia19's Claude-Usage-Extension](https://github.com/lugia19/Claude-Usage-Extension).
