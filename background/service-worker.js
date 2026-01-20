@@ -340,7 +340,12 @@ class FirebaseSync {
     this.syncInterval = setInterval(async () => {
       const result = await chrome.storage.local.get(['usageData']);
       if (result.usageData) {
-        await this.syncToFirebase(result.usageData);
+        // Include hybrid tracker data in auto-sync
+        const syncData = hybridTracker ? {
+          ...result.usageData,
+          ...hybridTracker.exportForSync()
+        } : result.usageData;
+        await this.syncToFirebase(syncData);
       }
     }, 30000);
   }
@@ -628,11 +633,15 @@ async function initializeAll() {
       // Try to get data from Firebase
       const merged = await firebaseSync.getMergedUsage();
       if (merged) {
-        console.log('[CUP BG] Got Firebase data');
+        console.log('[CUP BG] Got Firebase data:', JSON.stringify(merged.currentSession));
         
         // Merge into hybrid tracker
         if (merged.baseline) {
           await hybridTracker.mergeFromFirebase(merged);
+        } else if (merged.currentSession || merged.weeklyAllModels) {
+          // No baseline but has usage data - create a baseline from it
+          console.log('[CUP BG] Creating baseline from Firebase usage data');
+          await hybridTracker.setBaseline(merged, 'firebase');
         }
         
         // Also save to legacy storage
