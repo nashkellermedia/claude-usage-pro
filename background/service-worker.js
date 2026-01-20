@@ -930,23 +930,45 @@ async function handleMessage(message, sender) {
       // Re-initialize Firebase if config changed
       const authChanged = updated.firebaseApiKey !== current.firebaseApiKey;
       const urlChanged = updated.firebaseDatabaseUrl !== current.firebaseDatabaseUrl;
+      const syncIdChanged = updated.firebaseSyncId !== current.firebaseSyncId;
       
-      if (authChanged || urlChanged) {
+      if (authChanged || urlChanged || syncIdChanged) {
         console.log('[CUP BG] Firebase config changed, reinitializing...');
+        console.log('[CUP BG] authChanged:', authChanged, 'urlChanged:', urlChanged, 'syncIdChanged:', syncIdChanged);
         
         // Initialize auth
         if (updated.firebaseApiKey) {
-          firebaseAuth = new FirebaseAuth();
-          const authSuccess = await firebaseAuth.initialize(updated.firebaseApiKey);
+          if (!firebaseAuth || authChanged) {
+            firebaseAuth = new FirebaseAuth();
+            await firebaseAuth.initialize(updated.firebaseApiKey);
+          }
           
-          if (authSuccess && updated.firebaseDatabaseUrl) {
+          if (firebaseAuth?.isAuthenticated() && updated.firebaseDatabaseUrl) {
             firebaseSync = new FirebaseSync(firebaseAuth);
             const syncInitialized = await firebaseSync.initialize(updated.firebaseDatabaseUrl, updated.firebaseSyncId);
             
-            // Auto-pull from Firebase when newly configured
             if (syncInitialized) {
-              console.log('[CUP BG] Firebase newly configured, pulling data...');
-              await pullFromFirebase();
+              // Check if this profile has existing usage data
+              const existingData = await getUsageData();
+              const hasExistingData = existingData?.currentSession?.percent > 0 || 
+                                      existingData?.weeklyAllModels?.percent > 0;
+              
+              console.log('[CUP BG] Has existing local data:', hasExistingData);
+              
+              if (syncIdChanged && updated.firebaseSyncId && hasExistingData) {
+                // Profile with data adding sync ID -> push to new path
+                console.log('[CUP BG] Sync ID changed with existing data, pushing to new path...');
+                await firebaseSync.syncUsage(existingData);
+                if (usageAnalytics) {
+                  await firebaseSync.syncAnalytics(await usageAnalytics.export());
+                }
+                await firebaseSync.syncSettings(updated);
+                console.log('[CUP BG] Data pushed to new sync path');
+              } else {
+                // New profile or no local data -> pull from Firebase
+                console.log('[CUP BG] Pulling data from Firebase...');
+                await pullFromFirebase();
+              }
             }
           }
         } else {
@@ -983,6 +1005,33 @@ async function handleMessage(message, sender) {
       }).catch(() => {});
 
       return { success: true };
+    }
+
+    case 'PUSH_TO_FIREBASE': {
+      if (!firebaseSync?.syncEnabled) {
+        return { success: false, error: 'Firebase not configured' };
+      }
+
+      try {
+        // Push all data to Firebase
+        const usageData = await getUsageData();
+        await firebaseSync.syncUsage(usageData);
+        console.log('[CUP BG] Pushed usage data');
+        
+        if (usageAnalytics) {
+          const analyticsData = await usageAnalytics.export();
+          await firebaseSync.syncAnalytics(analyticsData);
+          console.log('[CUP BG] Pushed analytics');
+        }
+        
+        const settings = await getSettings();
+        await firebaseSync.syncSettings(settings);
+        console.log('[CUP BG] Pushed settings');
+        
+        return { success: true };
+      } catch (e) {
+        return { success: false, error: e.message };
+      }
     }
 
     case 'SYNC_FROM_FIREBASE': {
@@ -1047,13 +1096,19 @@ async function handleMessage(message, sender) {
 // ============================================================================
 
 async function pullFromFirebase() {
-  if (!firebaseSync?.syncEnabled) return;
+  if (!firebaseSync?.syncEnabled) {
+    console.log('[CUP BG] pullFromFirebase: sync not enabled');
+    return;
+  }
+  
+  console.log('[CUP BG] pullFromFirebase: starting pull from path:', firebaseSync.getBasePath());
   
   try {
     // Pull usage data
     const mergedUsage = await firebaseSync.getMergedUsage();
+    console.log('[CUP BG] Pulled usage data:', mergedUsage ? 'got data' : 'empty/null');
     if (mergedUsage) {
-      console.log('[CUP BG] Pulled usage data from Firebase');
+      console.log('[CUP BG] Usage data keys:', Object.keys(mergedUsage));
       if (mergedUsage.baseline && hybridTracker) {
         await hybridTracker.mergeFromFirebase(mergedUsage);
       }

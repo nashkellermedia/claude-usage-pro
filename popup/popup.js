@@ -480,6 +480,30 @@ els.closeSettings.addEventListener('click', () => els.settingsPanel.classList.ad
 els.refreshBtn.addEventListener('click', triggerRefresh);
 els.saveSettings.addEventListener('click', saveSettings);
 
+els.pushFirebaseBtn = document.getElementById('pushFirebaseBtn');
+if (els.pushFirebaseBtn) {
+  els.pushFirebaseBtn.addEventListener('click', async () => {
+    els.pushFirebaseBtn.disabled = true;
+    els.pushFirebaseBtn.textContent = '⏳';
+    try {
+      const result = await chrome.runtime.sendMessage({ type: 'PUSH_TO_FIREBASE' });
+      if (result?.success) {
+        els.pushFirebaseBtn.textContent = '✓';
+      } else {
+        els.pushFirebaseBtn.textContent = '❌';
+        console.error('[CUP Popup] Push failed:', result?.error);
+      }
+    } catch (e) {
+      els.pushFirebaseBtn.textContent = '❌';
+      console.error('[CUP Popup] Push error:', e);
+    }
+    setTimeout(() => {
+      els.pushFirebaseBtn.textContent = '⬆️ Push';
+      els.pushFirebaseBtn.disabled = false;
+    }, 1500);
+  });
+}
+
 els.pullFirebaseBtn = document.getElementById('pullFirebaseBtn');
 if (els.pullFirebaseBtn) {
   els.pullFirebaseBtn.addEventListener('click', async () => {
