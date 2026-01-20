@@ -374,20 +374,27 @@ async function loadAnalytics(days = 30) {
   console.log('[CUP Popup] Loading analytics for', days, 'days');
   try {
     // First, ensure we have a snapshot recorded
-    await chrome.runtime.sendMessage({ type: 'GET_USAGE_DATA', recordSnapshot: true });
+    const usageResponse = await chrome.runtime.sendMessage({ type: 'GET_USAGE_DATA', recordSnapshot: true });
+    console.log('[CUP Popup] Usage data response:', usageResponse);
+    
     const response = await chrome.runtime.sendMessage({ type: 'GET_ANALYTICS_SUMMARY', days });
-    console.log('[CUP Popup] Analytics response:', response);
+    console.log('[CUP Popup] Analytics response:', JSON.stringify(response, null, 2));
+    
     if (response?.summary) {
+      console.log('[CUP Popup] Calling displayAnalytics with:', response.summary);
       displayAnalytics(response.summary);
     } else {
-      els.analyticsSummary.innerHTML = '<p>No analytics data yet. Use Claude to generate data.</p>';
+      console.log('[CUP Popup] No summary in response, showing empty state');
+      els.analyticsSummary.innerHTML = '<p>No analytics data yet.</p><p style="font-size:11px;color:#888;">Debug: response=' + JSON.stringify(response) + '</p>';
     }
   } catch (e) {
-    els.analyticsSummary.innerHTML = '<p>Error loading analytics</p>';
+    console.error('[CUP Popup] Analytics error:', e);
+    els.analyticsSummary.innerHTML = '<p>Error loading analytics: ' + e.message + '</p>';
   }
 }
 
 function displayAnalytics(summary) {
+  console.log('[CUP Popup] displayAnalytics called with:', summary);
   if (!summary || !summary.averageUsage || summary.days === 0) {
     els.analyticsSummary.innerHTML = '<p>No historical snapshots yet.</p><p class="hint">Click refresh in the main popup to sync usage data and start tracking.</p>';
     return;

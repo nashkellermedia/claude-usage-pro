@@ -576,7 +576,18 @@ class UsageAnalytics {
       const result = await chrome.storage.local.get('usageAnalytics');
       if (result.usageAnalytics) {
         this.data = { ...this.data, ...result.usageAnalytics };
+        
+        // Clean up corrupted dailySnapshots entries
+        if (this.data.dailySnapshots) {
+          for (const [date, value] of Object.entries(this.data.dailySnapshots)) {
+            if (!Array.isArray(value)) {
+              console.log('[UsageAnalytics] Fixing corrupted entry for', date);
+              this.data.dailySnapshots[date] = [];
+            }
+          }
+        }
       }
+      console.log('[UsageAnalytics] Initialized with', Object.keys(this.data.dailySnapshots || {}).length, 'days of data');
       return true;
     } catch (e) {
       console.error('[UsageAnalytics] Init error:', e.message);
@@ -598,7 +609,8 @@ class UsageAnalytics {
       weeklySonnet: usageData.weeklySonnet?.percent || 0
     };
     
-    if (!this.data.dailySnapshots[today]) {
+    // Ensure dailySnapshots[today] is an array (fix for corrupted data)
+    if (!this.data.dailySnapshots[today] || !Array.isArray(this.data.dailySnapshots[today])) {
       this.data.dailySnapshots[today] = [];
     }
     this.data.dailySnapshots[today].push(snapshot);
@@ -664,11 +676,11 @@ class UsageAnalytics {
     let totalSession = 0, totalWeeklyAll = 0, totalWeeklySonnet = 0, count = 0;
     
     for (const [date, snapshots] of Object.entries(this.data.dailySnapshots)) {
-      if (date >= cutoffDate) {
+      if (date >= cutoffDate && Array.isArray(snapshots)) {
         for (const snap of snapshots) {
-          totalSession += snap.session;
-          totalWeeklyAll += snap.weeklyAll;
-          totalWeeklySonnet += snap.weeklySonnet;
+          totalSession += snap.session || 0;
+          totalWeeklyAll += snap.weeklyAll || 0;
+          totalWeeklySonnet += snap.weeklySonnet || 0;
           count++;
         }
       }
@@ -992,6 +1004,20 @@ async function handleMessage(message, sender) {
       console.log('[CUP BG] dailySnapshots:', Object.keys(usageAnalytics?.data?.dailySnapshots || {}));
       if (!usageAnalytics) return { summary: null };
       return { summary: usageAnalytics.getSummary(message.days || 30) };
+    }
+
+    case 'RESET_ANALYTICS': {
+      if (usageAnalytics) {
+        usageAnalytics.data = {
+          dailySnapshots: {},
+          thresholdEvents: [],
+          modelUsage: {},
+          peakUsage: { session: 0, weeklyAll: 0, weeklySonnet: 0 }
+        };
+        await usageAnalytics.save();
+        console.log('[CUP BG] Analytics reset');
+      }
+      return { success: true };
     }
 
     case 'EXPORT_ANALYTICS': {
