@@ -11,7 +11,7 @@
 
 // Debug mode - set to true for verbose logging
 const DEBUG = true;
-const log = (...args) => DEBUG && log('[CUP]', ...args);
+const log = (...args) => DEBUG && console.log('[CUP]', ...args);
 const logError = (...args) => console.error('[CUP]', ...args);
 
 // ============================================================================
