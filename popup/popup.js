@@ -162,35 +162,95 @@ async function triggerRefresh() {
   els.refreshBtn.textContent = '⏳';
   els.refreshBtn.disabled = true;
   
+  let tabId = null;
+  
   try {
+    // Create tab
     const tab = await chrome.tabs.create({ 
       url: 'https://claude.ai/settings/usage',
       active: false
     });
+    tabId = tab.id;
     
-    setTimeout(async () => {
-      try {
-        await chrome.tabs.sendMessage(tab.id, { type: 'SCRAPE_USAGE' });
-      } catch (e) {}
+    // Wait for tab to fully load
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        chrome.tabs.onUpdated.removeListener(listener);
+        resolve(); // Continue anyway after timeout
+      }, 15000);
       
-      setTimeout(async () => {
-        try { await chrome.tabs.remove(tab.id); } catch (e) {}
-        await loadUsageData();
-        
-        els.refreshBtn.textContent = '✓';
-        setTimeout(() => {
-          els.refreshBtn.textContent = '🔄';
-          els.refreshBtn.disabled = false;
-        }, 1000);
-      }, 3000);
-    }, 2000);
+      const listener = (id, info) => {
+        if (id === tabId && info.status === 'complete') {
+          clearTimeout(timeout);
+          chrome.tabs.onUpdated.removeListener(listener);
+          resolve();
+        }
+      };
+      
+      chrome.tabs.onUpdated.addListener(listener);
+    });
+    
+    console.log('[CUP Popup] Tab loaded, waiting for content script...');
+    
+    // Wait for content script to initialize and auto-scrape
+    // Content script auto-scrapes after 2 seconds on usage page
+    await new Promise(r => setTimeout(r, 4000));
+    
+    // Try to trigger scrape via message
+    try {
+      await chrome.tabs.sendMessage(tabId, { type: 'SCRAPE_USAGE' });
+      console.log('[CUP Popup] Sent SCRAPE_USAGE message');
+    } catch (e) {
+      console.log('[CUP Popup] Message failed, using scripting API...');
+      // Fallback: use scripting API to trigger scrape directly
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: tabId },
+          func: () => {
+            if (window.cupScraper) {
+              window.cupScraper.scrapeCurrentPage();
+              return true;
+            }
+            return false;
+          }
+        });
+        console.log('[CUP Popup] Executed scrape via scripting API');
+      } catch (e2) {
+        console.log('[CUP Popup] Scripting API failed:', e2.message);
+      }
+    }
+    
+    // Wait for scrape to complete and sync
+    await new Promise(r => setTimeout(r, 2000));
+    
+    // Close the tab
+    try { 
+      await chrome.tabs.remove(tabId); 
+      tabId = null;
+    } catch (e) {}
+    
+    // Reload data in popup
+    await loadUsageData();
+    
+    els.refreshBtn.textContent = '✓';
+    setTimeout(() => {
+      els.refreshBtn.textContent = '🔄';
+      els.refreshBtn.disabled = false;
+    }, 1500);
+    
   } catch (e) {
     console.error('[CUP Popup] Refresh error:', e);
+    
+    // Try to clean up tab
+    if (tabId) {
+      try { await chrome.tabs.remove(tabId); } catch (e2) {}
+    }
+    
     els.refreshBtn.textContent = '❌';
     setTimeout(() => {
       els.refreshBtn.textContent = '🔄';
       els.refreshBtn.disabled = false;
-    }, 1000);
+    }, 1500);
   }
 }
 
