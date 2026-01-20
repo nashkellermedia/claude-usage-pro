@@ -272,11 +272,11 @@ class UsageScraper {
     if (currentSessionSection) {
       const section = currentSessionSection[1];
       const percentMatch = section.match(/(\d+)%\s*used/i);
-      // Try multiple reset time formats
-      let resetMatch = section.match(/Resets?\s+in\s+([\d]+\s*h(?:r|our)?s?\s*(?:[\d]+\s*m(?:in)?s?)?)/i);
-      if (!resetMatch) resetMatch = section.match(/Resets?\s+in\s+([\d:]+)/i);
-      if (!resetMatch) resetMatch = section.match(/([\d]+\s*h(?:r|our)?s?\s*(?:\d+\s*m(?:in)?s?)?)\s*(?:left|remaining)/i);
-      if (!resetMatch) resetMatch = section.match(/in\s+(\d+\s*(?:hours?|hr?|minutes?|min?|m|h)[^\n]*)/i);
+      // Try multiple reset time formats - capture number AND units
+      let resetMatch = section.match(/Resets?\s+in\s+(\d+\s*(?:hours?|hr?|h)\s*(?:\d+\s*(?:minutes?|min|m))?)/i);
+      if (!resetMatch) resetMatch = section.match(/Resets?\s+in\s+(\d+\s*(?:minutes?|min|m))/i);
+      if (!resetMatch) resetMatch = section.match(/Resets?\s+in\s+(\d+\s*(?:days?|d))/i);
+      if (!resetMatch) resetMatch = section.match(/(\d+\s*(?:hours?|hr?|h|minutes?|min|m))\s*(?:left|remaining)/i);
       
       data.currentSession = {
         percent: percentMatch ? parseInt(percentMatch[1]) : 0,
@@ -289,14 +289,19 @@ class UsageScraper {
     if (allModelsSection) {
       const section = allModelsSection[1];
       const percentMatch = section.match(/(\d+)%\s*used/i);
-      const resetMatch = section.match(/Resets\s+([\w]+\s+[\d:]+\s*(?:AM|PM)?)/i);
+      
+      // Try day/time format first (e.g., "Monday 3:00 PM"), then time-based format
+      let resetMatch = section.match(/Resets\s+([A-Za-z]+\s+[\d:]+\s*(?:AM|PM)?)/i);
+      if (!resetMatch) resetMatch = section.match(/Resets?\s+in\s+(\d+\s*(?:hours?|hr?|h)\s*(?:\d+\s*(?:minutes?|min|m))?)/i);
+      if (!resetMatch) resetMatch = section.match(/Resets?\s+in\s+(\d+\s*(?:minutes?|min|m))/i);
+      if (!resetMatch) resetMatch = section.match(/Resets?\s+in\s+(\d+\s*(?:days?|d))/i);
       
       if (percentMatch) {
         data.weeklyAllModels = {
           percent: parseInt(percentMatch[1]),
           resetsAt: resetMatch ? resetMatch[1].trim() : '--'
         };
-        window.CUP.log('UsageScraper: All Models:', data.weeklyAllModels.percent + '%');
+        window.CUP.log('UsageScraper: All Models:', data.weeklyAllModels.percent + '%, resets', data.weeklyAllModels.resetsAt);
       }
     }
     
@@ -304,11 +309,11 @@ class UsageScraper {
     if (sonnetSection) {
       const section = sonnetSection[1];
       const percentMatch = section.match(/(\d+)%\s*used/i);
-      // Try multiple reset time formats
-      let resetMatch = section.match(/Resets?\s+in\s+([\d]+\s*h(?:r|our)?s?\s*(?:[\d]+\s*m(?:in)?s?)?)/i);
-      if (!resetMatch) resetMatch = section.match(/Resets?\s+in\s+([\d:]+)/i);
-      if (!resetMatch) resetMatch = section.match(/([\d]+\s*h(?:r|our)?s?\s*(?:\d+\s*m(?:in)?s?)?)\s*(?:left|remaining)/i);
-      if (!resetMatch) resetMatch = section.match(/in\s+(\d+\s*(?:hours?|hr?|minutes?|min?|m|h)[^\n]*)/i);
+      // Try multiple reset time formats - capture number AND units
+      let resetMatch = section.match(/Resets?\s+in\s+(\d+\s*(?:hours?|hr?|h)\s*(?:\d+\s*(?:minutes?|min|m))?)/i);
+      if (!resetMatch) resetMatch = section.match(/Resets?\s+in\s+(\d+\s*(?:minutes?|min|m))/i);
+      if (!resetMatch) resetMatch = section.match(/Resets?\s+in\s+(\d+\s*(?:days?|d))/i);
+      if (!resetMatch) resetMatch = section.match(/(\d+\s*(?:hours?|hr?|h|minutes?|min|m))\s*(?:left|remaining)/i);
       
       if (percentMatch) {
         data.weeklySonnet = {
