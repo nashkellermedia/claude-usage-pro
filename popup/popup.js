@@ -389,6 +389,12 @@ async function exportAnalyticsData() {
 }
 
 // Event Listeners
+els.usagePageBtn = document.getElementById('usagePageBtn');
+
+els.usagePageBtn.addEventListener('click', () => {
+  chrome.tabs.create({ url: 'https://claude.ai/settings/usage' });
+});
+
 els.settingsBtn.addEventListener('click', () => els.settingsPanel.classList.toggle('hidden'));
 els.closeSettings.addEventListener('click', () => els.settingsPanel.classList.add('hidden'));
 els.refreshBtn.addEventListener('click', triggerRefresh);
