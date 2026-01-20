@@ -471,28 +471,30 @@ els.closeSettings.addEventListener('click', () => els.settingsPanel.classList.ad
 els.refreshBtn.addEventListener('click', triggerRefresh);
 els.saveSettings.addEventListener('click', saveSettings);
 
-els.pullFromCloud = document.getElementById('pullFromCloud');
-
-if (els.pullFromCloud) {
-  els.pullFromCloud.addEventListener('click', async () => {
-    els.pullFromCloud.textContent = '⏳ Pulling...';
-    els.pullFromCloud.disabled = true;
+els.pullFirebaseBtn = document.getElementById('pullFirebaseBtn');
+if (els.pullFirebaseBtn) {
+  els.pullFirebaseBtn.addEventListener('click', async () => {
+    els.pullFirebaseBtn.disabled = true;
+    els.pullFirebaseBtn.textContent = '⏳';
     try {
       const result = await chrome.runtime.sendMessage({ type: 'SYNC_FROM_FIREBASE' });
       if (result?.success) {
-        els.pullFromCloud.textContent = '✓ Pulled!';
-        await loadUsageData();
+        els.pullFirebaseBtn.textContent = '✓';
+        // Reload settings to show updated values
         await loadSettings();
+        await loadUsageData();
       } else {
-        els.pullFromCloud.textContent = '❌ ' + (result?.error || 'Failed');
+        els.pullFirebaseBtn.textContent = '❌';
+        console.error('[CUP Popup] Pull failed:', result?.error);
       }
     } catch (e) {
-      els.pullFromCloud.textContent = '❌ Error';
+      els.pullFirebaseBtn.textContent = '❌';
+      console.error('[CUP Popup] Pull error:', e);
     }
     setTimeout(() => {
-      els.pullFromCloud.textContent = '⬇️ Pull from Cloud';
-      els.pullFromCloud.disabled = false;
-    }, 2000);
+      els.pullFirebaseBtn.textContent = '⬇️ Pull';
+      els.pullFirebaseBtn.disabled = false;
+    }, 1500);
   });
 }
 
