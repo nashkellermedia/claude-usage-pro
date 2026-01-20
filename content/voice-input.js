@@ -8,9 +8,8 @@ class VoiceInput {
   constructor() {
     this.recognition = null;
     this.isListening = false;
-    this.button = null;
     this.supported = 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window;
-    this.reinjecting = false;
+    this.lastInjectAttempt = 0;
   }
   
   initialize() {
@@ -31,14 +30,20 @@ class VoiceInput {
     this.recognition.onerror = (event) => this.handleError(event);
     this.recognition.onend = () => this.handleEnd();
     
-    this.injectButton();
     this.setupKeyboardShortcut();
     
-    // Check button position frequently (every 500ms) to catch UI re-renders
-    setInterval(() => this.ensureButtonExists(), 500);
+    // Initial injection
+    this.injectButton();
     
-    // Also watch for DOM changes near the composer
-    this.setupMutationObserver();
+    // Simple interval - check every 300ms, inject if missing
+    setInterval(() => {
+      const btn = document.querySelector('.cup-voice-btn');
+      if (!btn) {
+        this.injectButton();
+      }
+    }, 300);
+    
+    window.CUP.log('VoiceInput: Initialized with 300ms monitor');
   }
   
   setupKeyboardShortcut() {
@@ -48,119 +53,86 @@ class VoiceInput {
         e.preventDefault();
         e.stopPropagation();
         this.toggle();
-        window.CUP.log('VoiceInput: Toggled via keyboard shortcut');
       }
     });
-    window.CUP.log('VoiceInput: Keyboard shortcut registered (Ctrl/Cmd+Shift+V)');
   }
   
-  setupMutationObserver() {
-    // Watch for changes to the composer area that might remove our button
-    const observer = new MutationObserver((mutations) => {
-      // Debounce - only check if button is missing
-      if (!this.button || !this.button.isConnected) {
-        if (!this.reinjecting) {
-          this.reinjecting = true;
-          setTimeout(() => {
-            this.injectButton();
-            this.reinjecting = false;
-          }, 100);
-        }
-      }
-    });
+  findSendButton() {
+    // Strategy 1: aria-label contains "send"
+    let sendBtn = document.querySelector('button[aria-label*="Send" i]');
+    if (sendBtn) return sendBtn;
     
-    // Start observing once body is ready
-    setTimeout(() => {
-      observer.observe(document.body, { 
-        childList: true, 
-        subtree: true 
-      });
-    }, 2000);
-  }
-  
-  findButtonContainer() {
-    const contentEditable = document.querySelector('[contenteditable="true"]');
-    if (!contentEditable) return null;
+    // Strategy 2: Find contenteditable, go up to form, find buttons
+    const editor = document.querySelector('[contenteditable="true"]');
+    if (!editor) return null;
     
-    // Find the form or main container
-    let container = contentEditable;
+    let container = editor;
     for (let i = 0; i < 10; i++) {
       if (!container.parentElement) break;
       container = container.parentElement;
       if (container.tagName === 'FORM') break;
     }
     
-    // Find the send button
-    const allButtons = container.querySelectorAll('button');
-    let sendButton = null;
-    
-    // Try aria-label first
-    for (const btn of allButtons) {
-      const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
-      if (ariaLabel.includes('send')) {
-        sendButton = btn;
-        break;
+    // Look for send button by color (orange-ish)
+    const buttons = container.querySelectorAll('button');
+    for (const btn of buttons) {
+      // Skip if it's our button
+      if (btn.classList.contains('cup-voice-btn')) continue;
+      
+      const style = window.getComputedStyle(btn);
+      const bg = style.backgroundColor;
+      
+      // Orange/coral colors Claude uses for send
+      if (bg.includes('232, 121, 83') || 
+          bg.includes('217, 119, 87') || 
+          bg.includes('249, 115, 22') ||
+          bg.includes('234, 88, 12')) {
+        return btn;
       }
     }
     
-    // Fallback: look for orange/accent button
-    if (!sendButton) {
-      for (const btn of allButtons) {
-        const style = window.getComputedStyle(btn);
-        const bg = style.backgroundColor;
-        if (bg.includes('232, 121, 83') || bg.includes('217, 119, 87') || bg.includes('249, 115, 22')) {
-          sendButton = btn;
-          break;
-        }
+    // Strategy 3: Last button in the toolbar area near editor
+    const toolbar = editor.closest('form')?.querySelector('div:last-child');
+    if (toolbar) {
+      const btns = toolbar.querySelectorAll('button:not(.cup-voice-btn)');
+      if (btns.length > 0) {
+        return btns[btns.length - 1];
       }
-    }
-    
-    if (sendButton && sendButton.parentElement) {
-      return { toolbar: sendButton.parentElement, sendButton };
     }
     
     return null;
   }
   
   injectButton() {
-    // Remove any existing buttons first
+    // Throttle injection attempts
+    const now = Date.now();
+    if (now - this.lastInjectAttempt < 100) return;
+    this.lastInjectAttempt = now;
+    
+    // Remove ALL existing voice buttons first
     document.querySelectorAll('.cup-voice-btn').forEach(el => el.remove());
     
-    const result = this.findButtonContainer();
-    if (!result) {
-      // Retry in a moment
-      setTimeout(() => this.injectButton(), 500);
-      return;
+    const sendButton = this.findSendButton();
+    if (!sendButton || !sendButton.parentElement) {
+      return; // Will retry on next interval
     }
     
-    const { toolbar, sendButton } = result;
+    // Create button
+    const btn = document.createElement('button');
+    btn.className = 'cup-voice-btn';
+    btn.type = 'button';
+    btn.innerHTML = this.isListening ? '🔴' : '🎤';
+    btn.title = this.isListening ? 'Listening... (Ctrl+Shift+V to stop)' : 'Voice Input (Ctrl+Shift+V)';
+    if (this.isListening) btn.classList.add('listening');
     
-    // Create voice button
-    this.button = document.createElement('button');
-    this.button.className = 'cup-voice-btn';
-    this.button.type = 'button';
-    this.button.innerHTML = '🎤';
-    this.button.title = 'Voice Input (Ctrl+Shift+V)';
-    
-    this.button.addEventListener('click', (e) => {
+    btn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
       this.toggle();
     });
     
     // Insert before send button
-    toolbar.insertBefore(this.button, sendButton);
-    window.CUP.log('VoiceInput: Button injected');
-  }
-  
-  ensureButtonExists() {
-    if (!this.button || !this.button.isConnected) {
-      if (!this.reinjecting) {
-        this.reinjecting = true;
-        this.injectButton();
-        setTimeout(() => { this.reinjecting = false; }, 200);
-      }
-    }
+    sendButton.parentElement.insertBefore(btn, sendButton);
   }
   
   toggle() {
@@ -173,9 +145,6 @@ class VoiceInput {
   
   start() {
     if (!this.recognition) return;
-    
-    // Ensure button exists before starting
-    this.ensureButtonExists();
     
     try {
       this.recognition.start();
@@ -260,14 +229,13 @@ class VoiceInput {
   }
   
   updateButtonState() {
-    // Find button fresh in case it was re-injected
     const btn = document.querySelector('.cup-voice-btn');
     if (!btn) return;
     
     if (this.isListening) {
       btn.innerHTML = '🔴';
       btn.classList.add('listening');
-      btn.title = 'Listening... (click or Ctrl+Shift+V to stop)';
+      btn.title = 'Listening... (Ctrl+Shift+V to stop)';
     } else {
       btn.innerHTML = '🎤';
       btn.classList.remove('listening');
