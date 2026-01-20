@@ -819,12 +819,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 async function handleMessage(message, sender) {
   switch (message.type) {
     case 'GET_USAGE_DATA': {
+      console.log('[CUP BG] GET_USAGE_DATA called, recordSnapshot:', message.recordSnapshot);
       const usageData = await getUsageData();
+      
       // Merge with estimates if available
-      if (hybridTracker?.estimatedUsage) {
-        return { usageData: { ...usageData, ...hybridTracker.estimatedUsage } };
+      const merged = hybridTracker?.estimatedUsage 
+        ? { ...usageData, ...hybridTracker.estimatedUsage }
+        : usageData;
+      
+      // Record analytics snapshot if requested and we have valid data
+      if (message.recordSnapshot && usageAnalytics) {
+        console.log('[CUP BG] Recording snapshot, currentSession:', merged.currentSession?.percent);
+        if (merged.currentSession?.percent > 0 || merged.weeklyAllModels?.percent > 0) {
+          await usageAnalytics.recordSnapshot(merged);
+          console.log('[CUP BG] Snapshot recorded successfully');
+        }
       }
-      return { usageData };
+      
+      return { usageData: merged };
     }
 
     case 'SYNC_SCRAPED_DATA':

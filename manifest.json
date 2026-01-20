@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Claude Usage Pro",
-  "version": "2.1.10",
+  "version": "2.1.11",
   "description": "Track and visualize your Claude.ai usage with real-time stats, accurate token counting, voice input, and cross-device sync",
   "permissions": [
     "storage",
