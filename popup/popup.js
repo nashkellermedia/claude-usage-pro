@@ -1,5 +1,5 @@
 /**
- * Claude Usage Pro - Popup
+ * Claude Usage Pro - Popup v2.0.0
  */
 
 const els = {
@@ -7,7 +7,6 @@ const els = {
   settingsBtn: document.getElementById('settingsBtn'),
   settingsPanel: document.getElementById('settingsPanel'),
   closeSettings: document.getElementById('closeSettings'),
-  viewUsageLink: document.getElementById('viewUsageLink'),
   
   sessionPercent: document.getElementById('sessionPercent'),
   sessionBar: document.getElementById('sessionBar'),
@@ -89,7 +88,9 @@ function updateUI(usageData) {
   if (usageData.weeklyAllModels) {
     updateUsageDisplay(els.weeklyAllPercent, els.weeklyAllBar, usageData.weeklyAllModels.percent || 0);
     if (usageData.weeklyAllModels.resetsAt) {
-      els.weeklyAllMeta.textContent = `Resets ${usageData.weeklyAllModels.resetsAt}`;
+      const val = usageData.weeklyAllModels.resetsAt;
+      const isDayTime = /^[A-Za-z]{3,}/.test(val);
+      els.weeklyAllMeta.textContent = isDayTime ? `Resets ${val}` : `Resets in ${val}`;
     }
   }
   
@@ -97,7 +98,9 @@ function updateUI(usageData) {
   if (usageData.weeklySonnet) {
     updateUsageDisplay(els.weeklySonnetPercent, els.weeklySonnetBar, usageData.weeklySonnet.percent || 0);
     if (usageData.weeklySonnet.resetsIn) {
-      els.weeklySonnetMeta.textContent = `Resets in ${usageData.weeklySonnet.resetsIn}`;
+      const val = usageData.weeklySonnet.resetsIn;
+      const isDayTime = /^[A-Za-z]{3,}/.test(val);
+      els.weeklySonnetMeta.textContent = isDayTime ? `Resets ${val}` : `Resets in ${val}`;
     }
   }
 }
@@ -109,7 +112,6 @@ async function loadUsageData() {
       updateUI(response.usageData);
     }
     
-    // Also load hybrid tracker status
     await loadTrackingStatus();
   } catch (e) {
     console.error('[CUP Popup] Load error:', e);
@@ -131,18 +133,18 @@ function updateTrackingStatus(hybrid, firebase) {
   if (!els.trackingIndicator || !els.trackingText) return;
   
   let statusText = '';
-  let statusColor = '#888'; // gray
+  let statusColor = '#888';
   
   if (!hybrid || !hybrid.initialized) {
     statusText = 'Initializing...';
     statusColor = '#888';
   } else if (!hybrid.hasBaseline) {
-    statusText = 'No baseline - visit Usage page to sync';
-    statusColor = '#f59e0b'; // yellow
+    statusText = 'No baseline - click refresh to sync';
+    statusColor = '#f59e0b';
   } else if (hybrid.isStale) {
     const ageMin = Math.floor((hybrid.baselineAge || 0) / 60000);
     statusText = `Baseline stale (${ageMin}m old) - using estimates`;
-    statusColor = '#f59e0b'; // yellow
+    statusColor = '#f59e0b';
   } else {
     const ageMin = Math.floor((hybrid.baselineAge || 0) / 60000);
     const deltaTokens = hybrid.deltaTokens || 0;
@@ -152,10 +154,9 @@ function updateTrackingStatus(hybrid, firebase) {
     } else {
       statusText = `Synced ${ageMin}m ago`;
     }
-    statusColor = '#22c55e'; // green
+    statusColor = '#22c55e';
   }
   
-  // Add Firebase status
   if (firebase?.enabled) {
     statusText += ' • Firebase: ✓';
   }
@@ -164,25 +165,44 @@ function updateTrackingStatus(hybrid, firebase) {
   els.trackingText.textContent = statusText;
 }
 
+// Refresh button: Opens usage page in background, auto-closes after 5 seconds
 async function triggerRefresh() {
   els.refreshBtn.textContent = '⏳';
   els.refreshBtn.disabled = true;
   
   try {
-    // Try to trigger scrape on active Claude tab
-    const tabs = await chrome.tabs.query({ url: 'https://claude.ai/*', active: true });
-    if (tabs.length > 0) {
-      await chrome.tabs.sendMessage(tabs[0].id, { type: 'SCRAPE_USAGE' });
-    }
+    // Open usage page in background tab
+    const tab = await chrome.tabs.create({ 
+      url: 'https://claude.ai/settings/usage',
+      active: false  // Background tab
+    });
     
-    // Then refresh our display
-    await loadUsageData();
+    // Wait for page to load and scrape, then close
+    setTimeout(async () => {
+      try {
+        // Try to trigger scrape
+        await chrome.tabs.sendMessage(tab.id, { type: 'SCRAPE_USAGE' });
+      } catch (e) {
+        // Tab might not have content script ready yet
+      }
+      
+      // Wait a bit more for scrape to complete, then close
+      setTimeout(async () => {
+        try {
+          await chrome.tabs.remove(tab.id);
+        } catch (e) {}
+        
+        // Refresh our display
+        await loadUsageData();
+        
+        els.refreshBtn.textContent = '✓';
+        setTimeout(() => {
+          els.refreshBtn.textContent = '🔄';
+          els.refreshBtn.disabled = false;
+        }, 1000);
+      }, 3000);
+    }, 2000);
     
-    els.refreshBtn.textContent = '✓';
-    setTimeout(() => {
-      els.refreshBtn.textContent = '🔄';
-      els.refreshBtn.disabled = false;
-    }, 1000);
   } catch (e) {
     console.error('[CUP Popup] Refresh error:', e);
     els.refreshBtn.textContent = '❌';
@@ -193,35 +213,31 @@ async function triggerRefresh() {
   }
 }
 
+// FIX: Use chrome.storage.local (same as background) instead of sync
 async function loadSettings() {
   try {
-    const result = await chrome.storage.sync.get([
-      'badgeDisplay', 
-      'showSidebar', 
-      'showChatOverlay',
-      'enableVoice',
-      'firebaseUrl',
-      'anthropicApiKey'
-    ]);
+    const response = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
+    const settings = response?.settings || {};
     
-    if (result.badgeDisplay) els.badgeDisplay.value = result.badgeDisplay;
-    if (typeof result.showSidebar !== 'undefined') els.showSidebar.checked = result.showSidebar;
-    if (typeof result.showChatOverlay !== 'undefined') els.showChatOverlay.checked = result.showChatOverlay;
-    if (typeof result.enableVoice !== 'undefined') els.enableVoice.checked = result.enableVoice;
-    if (result.firebaseUrl) {
-      els.firebaseUrl.value = result.firebaseUrl;
+    if (settings.badgeDisplay) els.badgeDisplay.value = settings.badgeDisplay;
+    els.showSidebar.checked = settings.showSidebar !== false;
+    els.showChatOverlay.checked = settings.showChatOverlay !== false;
+    els.enableVoice.checked = settings.enableVoice === true;
+    
+    if (settings.firebaseUrl) {
+      els.firebaseUrl.value = settings.firebaseUrl;
       updateFirebaseStatus(true);
     }
-    if (result.anthropicApiKey) {
-      // Show masked key
-      els.anthropicApiKey.value = result.anthropicApiKey;
-      updateApiKeyStatus(true, 'API key configured - using accurate counting');
+    if (settings.anthropicApiKey) {
+      els.anthropicApiKey.value = '••••••••' + settings.anthropicApiKey.slice(-8);
+      updateApiKeyStatus(true);
     }
   } catch (e) {
     console.error('[CUP Popup] Load settings error:', e);
   }
 }
 
+// FIX: Use SAVE_SETTINGS message to save to chrome.storage.local via background
 async function saveSettings() {
   const settings = {
     badgeDisplay: els.badgeDisplay.value,
@@ -232,32 +248,18 @@ async function saveSettings() {
   };
   
   // Handle API key
-  const apiKey = els.anthropicApiKey.value.trim();
-  if (apiKey && apiKey.startsWith('sk-ant-')) {
-    settings.anthropicApiKey = apiKey;
-  } else if (!apiKey) {
-    // Clear the key
-    await chrome.storage.sync.remove('anthropicApiKey');
+  const apiKeyValue = els.anthropicApiKey.value.trim();
+  if (apiKeyValue && apiKeyValue.startsWith('sk-ant-')) {
+    settings.anthropicApiKey = apiKeyValue;
   }
   
   try {
-    await chrome.storage.sync.set(settings);
-    
-    // Notify background
-    await chrome.runtime.sendMessage({ type: 'SETTINGS_UPDATED', settings });
-    
-    // Notify all Claude tabs
-    const tabs = await chrome.tabs.query({ url: 'https://claude.ai/*' });
-    for (const tab of tabs) {
-      try {
-        await chrome.tabs.sendMessage(tab.id, { type: 'SETTINGS_UPDATED', settings });
-      } catch (e) {}
-    }
+    // Send to background to save and broadcast
+    await chrome.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings });
     
     els.saveSettings.textContent = '✓ Saved!';
     setTimeout(() => els.saveSettings.textContent = 'Save Settings', 1500);
     
-    // Update Firebase status
     if (settings.firebaseUrl) {
       updateFirebaseStatus(true);
     } else {
@@ -284,7 +286,7 @@ function updateFirebaseStatus(connected) {
 function updateApiKeyStatus(valid, message) {
   if (valid) {
     els.apiKeyStatusDot.style.background = '#22c55e';
-    els.apiKeyStatusText.textContent = message || 'API key valid - using accurate counting';
+    els.apiKeyStatusText.textContent = message || 'API key configured';
   } else {
     els.apiKeyStatusDot.style.background = '#6b7280';
     els.apiKeyStatusText.textContent = message || 'Not configured (using estimates)';
@@ -300,15 +302,14 @@ async function validateAnthropicApiKey() {
   }
   
   if (!apiKey.startsWith('sk-ant-')) {
-    updateApiKeyStatus(false, 'Invalid format - should start with sk-ant-');
+    updateApiKeyStatus(false, 'Invalid key format');
     return;
   }
   
-  els.validateApiKey.textContent = 'Testing...';
-  els.validateApiKey.disabled = true;
+  els.validateApiKey.textContent = 'Validating...';
   
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages/count_tokens', {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -317,41 +318,32 @@ async function validateAnthropicApiKey() {
         'anthropic-dangerous-direct-browser-access': 'true'
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        messages: [{ role: 'user', content: 'test' }]
+        model: 'claude-3-haiku-20240307',
+        max_tokens: 1,
+        messages: [{ role: 'user', content: 'Hi' }]
       })
     });
     
-    if (response.ok) {
-      updateApiKeyStatus(true, 'API key valid ✓ - using accurate counting');
-      els.validateApiKey.textContent = '✓ Valid!';
+    if (response.ok || response.status === 400) {
+      updateApiKeyStatus(true, 'API key valid ✓');
     } else if (response.status === 401) {
       updateApiKeyStatus(false, 'Invalid API key');
-      els.validateApiKey.textContent = 'Invalid Key';
     } else {
-      updateApiKeyStatus(false, `API error: ${response.status}`);
-      els.validateApiKey.textContent = 'Error';
+      updateApiKeyStatus(false, `Error: ${response.status}`);
     }
   } catch (e) {
-    updateApiKeyStatus(false, 'Connection failed');
-    els.validateApiKey.textContent = 'Failed';
+    updateApiKeyStatus(false, 'Connection error');
   }
   
-  setTimeout(() => {
-    els.validateApiKey.textContent = 'Test API Key';
-    els.validateApiKey.disabled = false;
-  }, 2000);
+  els.validateApiKey.textContent = 'Validate';
 }
 
-// Analytics functions
 async function loadAnalytics(days = 30) {
   try {
     const response = await chrome.runtime.sendMessage({ 
       type: 'GET_ANALYTICS_SUMMARY',
       days 
     });
-    
-    console.log('[CUP Popup] Analytics response:', response);
     
     if (response?.summary) {
       displayAnalytics(response.summary);
@@ -365,13 +357,11 @@ async function loadAnalytics(days = 30) {
 }
 
 function displayAnalytics(summary) {
-  // Safety check for missing data
   if (!summary || !summary.averageUsage) {
     els.analyticsSummary.innerHTML = '<p>No analytics data available yet. Use Claude to generate usage data.</p>';
     return;
   }
   
-  // Build threshold hits section
   let thresholdHtml = '';
   if (summary.thresholdHits) {
     const hits = summary.thresholdHits;
@@ -393,7 +383,6 @@ function displayAnalytics(summary) {
     </div>`;
   }
   
-  // Build model preference section
   let modelHtml = '';
   if (summary.modelPreference && Object.keys(summary.modelPreference).length > 0) {
     const models = Object.entries(summary.modelPreference)
@@ -454,11 +443,9 @@ function displayAnalytics(summary) {
 
 async function exportAnalyticsData() {
   try {
-    els.exportAnalytics.textContent = 'Exporting...';
     const response = await chrome.runtime.sendMessage({ type: 'EXPORT_ANALYTICS' });
     
     if (response?.data) {
-      // Create download
       const blob = new Blob([JSON.stringify(response.data, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -466,48 +453,34 @@ async function exportAnalyticsData() {
       a.download = `claude-usage-analytics-${new Date().toISOString().split('T')[0]}.json`;
       a.click();
       URL.revokeObjectURL(url);
-      
-      els.exportAnalytics.textContent = '✓ Exported!';
-      setTimeout(() => {
-        els.exportAnalytics.textContent = 'Export Data';
-      }, 2000);
     }
   } catch (e) {
     console.error('[CUP Popup] Export error:', e);
-    els.exportAnalytics.textContent = 'Export Failed';
-    setTimeout(() => {
-      els.exportAnalytics.textContent = 'Export Data';
-    }, 2000);
   }
 }
 
 // Event Listeners
 els.settingsBtn.addEventListener('click', () => {
   els.settingsPanel.classList.toggle('hidden');
-  if (!els.settingsPanel.classList.contains('hidden')) loadSettings();
 });
 
-els.closeSettings.addEventListener('click', () => els.settingsPanel.classList.add('hidden'));
+els.closeSettings.addEventListener('click', () => {
+  els.settingsPanel.classList.add('hidden');
+});
+
 els.refreshBtn.addEventListener('click', triggerRefresh);
 els.saveSettings.addEventListener('click', saveSettings);
 
-els.viewUsageLink.addEventListener('click', () => {
-  chrome.tabs.create({ url: 'https://claude.ai/settings/usage' });
-});
-
-// API Key validation
 if (els.validateApiKey) {
   els.validateApiKey.addEventListener('click', validateAnthropicApiKey);
 }
 
-// Firebase help toggle
 if (els.firebaseHelp) {
   els.firebaseHelp.addEventListener('click', () => {
     els.firebaseInstructions.classList.toggle('hidden');
   });
 }
 
-// Analytics listeners
 els.viewAnalytics.addEventListener('click', () => {
   els.analyticsPanel.classList.toggle('hidden');
   if (!els.analyticsPanel.classList.contains('hidden')) {

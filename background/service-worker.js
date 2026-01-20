@@ -1158,19 +1158,6 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 // ============================================================================
 // WebRequest Listener - Track API calls
 // ============================================================================
-
-// Listen for completion requests to track token usage
-chrome.webRequest.onCompleted.addListener(
-  async (details) => {
-    if (details.url.includes('/completion') || details.url.includes('/chat')) {
-      // A message was sent - content script will report tokens
-      console.log('[CUP BG] Detected completion request');
-    }
-  },
-  { urls: ['https://claude.ai/api/*'] }
-);
-
-// ============================================================================
 // Initialize on Load
 // ============================================================================
 
