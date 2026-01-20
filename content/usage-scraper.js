@@ -332,10 +332,36 @@ class UsageScraper {
     return null;
   }
   
-  scrapeCurrentPage() {
+  async scrapeCurrentPage() {
     if (!window.location.pathname.includes('/settings/usage')) return;
     
     window.CUP.log('UsageScraper: Scraping current page...');
+    
+    // Wait for content to actually load (not just "Loading...")
+    let attempts = 0;
+    const maxAttempts = 10;
+    
+    while (attempts < maxAttempts) {
+      const pageText = document.body?.innerText || '';
+      
+      // Check if page is still loading
+      if (pageText.includes('Loading...') && !pageText.includes('Plan usage limits')) {
+        window.CUP.log('UsageScraper: Page still loading, waiting... (attempt', attempts + 1 + ')');
+        await new Promise(r => setTimeout(r, 1000));
+        attempts++;
+        continue;
+      }
+      
+      // Check if we have actual content
+      if (pageText.includes('Plan usage limits') || pageText.includes('Current session')) {
+        window.CUP.log('UsageScraper: Content loaded, scraping...');
+        break;
+      }
+      
+      // Neither loading nor content found, wait a bit
+      await new Promise(r => setTimeout(r, 1000));
+      attempts++;
+    }
     
     const data = this.scrapeFromMainContent();
     
@@ -343,6 +369,8 @@ class UsageScraper {
       this.lastScrapedData = data;
       window.CUP.sendToBackground({ type: 'SYNC_SCRAPED_DATA', data });
       window.CUP.log('UsageScraper: Data synced to background');
+    } else {
+      window.CUP.log('UsageScraper: Failed to scrape after', attempts, 'attempts');
     }
   }
   
