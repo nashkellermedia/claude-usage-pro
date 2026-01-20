@@ -85,18 +85,15 @@
             <option value="weekly-sonnet">Weekly Sonnet %</option>
             <option value="none">Hide Badge</option>
           </select>
-          <p class="setting-hint">Choose what percentage to show on the extension icon</p>
         </div>
         
         <!-- UI Toggles -->
         <div class="setting-group">
           <label class="setting-label">Display Options</label>
-          
           <div class="setting-toggle">
             <input type="checkbox" id="showSidebar" checked>
             <label for="showSidebar">Show Sidebar Widget</label>
           </div>
-          
           <div class="setting-toggle">
             <input type="checkbox" id="showChatOverlay" checked>
             <label for="showChatOverlay">Show Chat Input Stats</label>
@@ -106,55 +103,69 @@
         <!-- Voice Input -->
         <div class="setting-group">
           <label class="setting-label">Voice Input</label>
-          
           <div class="setting-toggle">
             <input type="checkbox" id="enableVoice">
             <label for="enableVoice">Enable Voice-to-Text</label>
           </div>
-          <p class="setting-hint">Adds a microphone button to the chat input</p>
+        </div>
+        
+        <!-- Anthropic API Key (FREE token counting) -->
+        <div class="setting-group">
+          <label class="setting-label">
+            Anthropic API Key
+            <span class="badge badge-free">FREE</span>
+          </label>
+          <input type="password" id="anthropicApiKey" class="setting-input" placeholder="sk-ant-...">
+          <p class="setting-hint">
+            For 100% accurate token counting. The token counting API is <strong>completely free</strong> - no charges ever.
+            <a href="https://console.anthropic.com/settings/keys" target="_blank">Get API key</a>
+          </p>
+          <div class="status-row" id="anthropicStatus">
+            <span class="status-indicator" id="anthropicStatusDot"></span>
+            <span id="anthropicStatusText">Not configured (using estimates)</span>
+          </div>
         </div>
         
         <!-- Firebase Sync -->
         <div class="setting-group">
           <label class="setting-label">
-            Firebase Sync (Optional)
+            Firebase Sync
             <button id="firebaseHelp" class="btn-help">?</button>
           </label>
           
-          <input 
-            type="text" 
-            id="firebaseUrl" 
-            class="setting-input" 
-            placeholder="https://your-project.firebaseio.com"
-          >
+          <input type="text" id="firebaseDatabaseUrl" class="setting-input" placeholder="https://your-project.firebaseio.com">
+          <p class="setting-hint">Database URL from Firebase Console</p>
           
-          <input 
-            type="password" 
-            id="firebaseSecret" 
-            class="setting-input" 
-            placeholder="Secret key (any string you choose)"
-            style="margin-top: 6px;"
-          >
-          <p class="setting-hint">
-            Firebase URL syncs data across devices. The secret key protects your data - 
-            use the same secret on all devices. <strong>Keep your secret private!</strong>
-          </p>
+          <input type="text" id="firebaseApiKey" class="setting-input" placeholder="AIzaSy..." style="margin-top: 6px;">
+          <p class="setting-hint">Web API Key from Firebase Project Settings</p>
           
-          <div class="firebase-status" id="firebaseStatus">
+          <div class="status-row" id="firebaseStatus">
             <span class="status-indicator" id="firebaseStatusDot"></span>
             <span id="firebaseStatusText">Not configured</span>
           </div>
           
           <div id="firebaseInstructions" class="hidden instructions">
-            <h4>Firebase Setup:</h4>
+            <h4>Firebase Setup (Secure):</h4>
             <ol>
               <li>Go to <a href="https://console.firebase.google.com" target="_blank">Firebase Console</a></li>
-              <li>Create a new project (or use existing)</li>
-              <li>Go to Realtime Database → Create Database</li>
-              <li>Copy your database URL (ends with .firebaseio.com)</li>
-              <li>Set security rules to allow read/write</li>
-              <li>Choose a secret key (like a password) - use the same on all your devices</li>
+              <li>Create project → Realtime Database → Create Database</li>
+              <li>Copy database URL (e.g., https://xxx.firebaseio.com)</li>
+              <li>Go to Project Settings → General → Web API Key</li>
+              <li>Go to Authentication → Sign-in method → Enable "Anonymous"</li>
+              <li>Set database rules to:
+                <pre>{
+  "rules": {
+    "users": {
+      "$uid": {
+        ".read": "$uid === auth.uid",
+        ".write": "$uid === auth.uid"
+      }
+    }
+  }
+}</pre>
+              </li>
             </ol>
+            <p><strong>Security:</strong> Your data is protected by Firebase Auth. Only YOU can access YOUR data.</p>
           </div>
         </div>
         
@@ -162,7 +173,7 @@
       </div>
       
       <div class="settings-footer">
-        <span class="version">v2.0.1</span>
+        <span class="version">v2.1.0</span>
         <a href="https://github.com/NashKellerMedia/claude-usage-pro" target="_blank" class="github-link">GitHub</a>
       </div>
     </div>

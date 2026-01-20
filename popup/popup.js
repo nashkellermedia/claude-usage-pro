@@ -1,5 +1,5 @@
 /**
- * Claude Usage Pro - Popup v2.0.0
+ * Claude Usage Pro - Popup v2.1.0
  */
 
 const els = {
@@ -20,8 +20,6 @@ const els = {
   weeklySonnetBar: document.getElementById('weeklySonnetBar'),
   weeklySonnetMeta: document.getElementById('weeklySonnetMeta'),
   
-  // Tracking Status
-  trackingStatus: document.getElementById('trackingStatus'),
   trackingIndicator: document.getElementById('trackingIndicator'),
   trackingText: document.getElementById('trackingText'),
   
@@ -31,12 +29,16 @@ const els = {
   showChatOverlay: document.getElementById('showChatOverlay'),
   enableVoice: document.getElementById('enableVoice'),
   
+  // Anthropic
+  anthropicApiKey: document.getElementById('anthropicApiKey'),
+  anthropicStatusDot: document.getElementById('anthropicStatusDot'),
+  anthropicStatusText: document.getElementById('anthropicStatusText'),
+  
   // Firebase
-  firebaseUrl: document.getElementById('firebaseUrl'),
-  firebaseSecret: document.getElementById('firebaseSecret'),
+  firebaseDatabaseUrl: document.getElementById('firebaseDatabaseUrl'),
+  firebaseApiKey: document.getElementById('firebaseApiKey'),
   firebaseHelp: document.getElementById('firebaseHelp'),
   firebaseInstructions: document.getElementById('firebaseInstructions'),
-  firebaseStatus: document.getElementById('firebaseStatus'),
   firebaseStatusDot: document.getElementById('firebaseStatusDot'),
   firebaseStatusText: document.getElementById('firebaseStatusText'),
   saveSettings: document.getElementById('saveSettings'),
@@ -48,6 +50,9 @@ const els = {
   analyticsSummary: document.getElementById('analyticsSummary'),
   exportAnalytics: document.getElementById('exportAnalytics')
 };
+
+// Store original values to detect real changes
+let originalSettings = {};
 
 function updateUsageDisplay(el, barEl, percent) {
   if (!el || !barEl) return;
@@ -70,7 +75,6 @@ function updateUsageDisplay(el, barEl, percent) {
 function updateUI(usageData) {
   if (!usageData) return;
   
-  // Current Session
   if (usageData.currentSession) {
     updateUsageDisplay(els.sessionPercent, els.sessionBar, usageData.currentSession.percent || 0);
     if (usageData.currentSession.resetsIn) {
@@ -78,7 +82,6 @@ function updateUI(usageData) {
     }
   }
   
-  // Weekly All Models
   if (usageData.weeklyAllModels) {
     updateUsageDisplay(els.weeklyAllPercent, els.weeklyAllBar, usageData.weeklyAllModels.percent || 0);
     if (usageData.weeklyAllModels.resetsAt) {
@@ -88,7 +91,6 @@ function updateUI(usageData) {
     }
   }
   
-  // Weekly Sonnet
   if (usageData.weeklySonnet) {
     updateUsageDisplay(els.weeklySonnetPercent, els.weeklySonnetBar, usageData.weeklySonnet.percent || 0);
     if (usageData.weeklySonnet.resetsIn) {
@@ -105,7 +107,6 @@ async function loadUsageData() {
     if (response?.usageData) {
       updateUI(response.usageData);
     }
-    
     await loadTrackingStatus();
   } catch (e) {
     console.error('[CUP Popup] Load error:', e);
@@ -116,7 +117,6 @@ async function loadTrackingStatus() {
   try {
     const hybridStatus = await chrome.runtime.sendMessage({ type: 'GET_HYBRID_STATUS' });
     const firebaseStatus = await chrome.runtime.sendMessage({ type: 'GET_FIREBASE_STATUS' });
-    
     updateTrackingStatus(hybridStatus, firebaseStatus);
   } catch (e) {
     console.error('[CUP Popup] Status error:', e);
@@ -131,35 +131,33 @@ function updateTrackingStatus(hybrid, firebase) {
   
   if (!hybrid || !hybrid.initialized) {
     statusText = 'Initializing...';
-    statusColor = '#888';
   } else if (!hybrid.hasBaseline) {
     statusText = 'No baseline - click refresh to sync';
     statusColor = '#f59e0b';
   } else if (hybrid.isStale) {
     const ageMin = Math.floor((hybrid.baselineAge || 0) / 60000);
-    statusText = `Baseline stale (${ageMin}m old) - using estimates`;
+    statusText = `Baseline stale (${ageMin}m old)`;
     statusColor = '#f59e0b';
   } else {
     const ageMin = Math.floor((hybrid.baselineAge || 0) / 60000);
     const deltaTokens = hybrid.deltaTokens || 0;
     
     if (deltaTokens > 0) {
-      statusText = `Tracking: +${deltaTokens.toLocaleString()} tokens since sync (${ageMin}m ago)`;
+      statusText = `+${deltaTokens.toLocaleString()} tokens (${ageMin}m ago)`;
     } else {
       statusText = `Synced ${ageMin}m ago`;
     }
     statusColor = '#22c55e';
   }
   
-  if (firebase?.enabled) {
-    statusText += ' • Firebase: ✓';
+  if (firebase?.authenticated) {
+    statusText += ' • Firebase ✓';
   }
   
   els.trackingIndicator.style.color = statusColor;
   els.trackingText.textContent = statusText;
 }
 
-// Refresh button: Opens usage page in background, auto-closes after 5 seconds
 async function triggerRefresh() {
   els.refreshBtn.textContent = '⏳';
   els.refreshBtn.disabled = true;
@@ -176,10 +174,7 @@ async function triggerRefresh() {
       } catch (e) {}
       
       setTimeout(async () => {
-        try {
-          await chrome.tabs.remove(tab.id);
-        } catch (e) {}
-        
+        try { await chrome.tabs.remove(tab.id); } catch (e) {}
         await loadUsageData();
         
         els.refreshBtn.textContent = '✓';
@@ -189,7 +184,6 @@ async function triggerRefresh() {
         }, 1000);
       }, 3000);
     }, 2000);
-    
   } catch (e) {
     console.error('[CUP Popup] Refresh error:', e);
     els.refreshBtn.textContent = '❌';
@@ -205,20 +199,38 @@ async function loadSettings() {
     const response = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
     const settings = response?.settings || {};
     
+    // Store original values
+    originalSettings = { ...settings };
+    
     if (settings.badgeDisplay) els.badgeDisplay.value = settings.badgeDisplay;
     els.showSidebar.checked = settings.showSidebar !== false;
     els.showChatOverlay.checked = settings.showChatOverlay !== false;
     els.enableVoice.checked = settings.enableVoice === true;
     
-    if (settings.firebaseUrl) {
-      els.firebaseUrl.value = settings.firebaseUrl;
+    // Anthropic API key
+    if (settings.anthropicApiKey) {
+      els.anthropicApiKey.value = '••••••••' + settings.anthropicApiKey.slice(-8);
+      updateAnthropicStatus(true);
+    } else {
+      updateAnthropicStatus(false);
     }
-    if (settings.firebaseSecret) {
-      // Show masked secret
-      els.firebaseSecret.value = '••••••••' + settings.firebaseSecret.slice(-4);
-      updateFirebaseStatus(true);
-    } else if (settings.firebaseUrl) {
-      updateFirebaseStatus(true, 'Connected (no secret - data unprotected!)');
+    
+    // Firebase
+    if (settings.firebaseDatabaseUrl) {
+      els.firebaseDatabaseUrl.value = settings.firebaseDatabaseUrl;
+    }
+    if (settings.firebaseApiKey) {
+      els.firebaseApiKey.value = '••••••••' + settings.firebaseApiKey.slice(-8);
+    }
+    
+    // Update Firebase status
+    const fbStatus = await chrome.runtime.sendMessage({ type: 'GET_FIREBASE_STATUS' });
+    if (fbStatus?.authenticated) {
+      updateFirebaseStatus(true, `Connected (UID: ${fbStatus.uid?.slice(0,8)}...)`);
+    } else if (settings.firebaseDatabaseUrl && settings.firebaseApiKey) {
+      updateFirebaseStatus(false, 'Not authenticated - check API key');
+    } else {
+      updateFirebaseStatus(false);
     }
   } catch (e) {
     console.error('[CUP Popup] Load settings error:', e);
@@ -231,16 +243,30 @@ async function saveSettings() {
     showSidebar: els.showSidebar.checked,
     showChatOverlay: els.showChatOverlay.checked,
     enableVoice: els.enableVoice.checked,
-    firebaseUrl: els.firebaseUrl.value.trim()
+    firebaseDatabaseUrl: els.firebaseDatabaseUrl.value.trim()
   };
   
-  // Handle Firebase secret - don't overwrite with masked value
-  const secretValue = els.firebaseSecret.value.trim();
-  if (secretValue && !secretValue.startsWith('••••')) {
-    settings.firebaseSecret = secretValue;
+  // Handle Anthropic API key - only update if changed from masked value
+  const anthropicValue = els.anthropicApiKey.value.trim();
+  if (anthropicValue && anthropicValue.startsWith('sk-ant-')) {
+    settings.anthropicApiKey = anthropicValue;
+  } else if (!anthropicValue) {
+    settings.anthropicApiKey = '';
+  } else if (anthropicValue.startsWith('••••')) {
+    // Keep original
+    settings.anthropicApiKey = originalSettings.anthropicApiKey || '';
   }
-  // If masked, we need to preserve the existing secret
-  // The background will handle this by merging with existing settings
+  
+  // Handle Firebase API key - only update if changed from masked value
+  const firebaseKeyValue = els.firebaseApiKey.value.trim();
+  if (firebaseKeyValue && firebaseKeyValue.startsWith('AIza')) {
+    settings.firebaseApiKey = firebaseKeyValue;
+  } else if (!firebaseKeyValue) {
+    settings.firebaseApiKey = '';
+  } else if (firebaseKeyValue.startsWith('••••')) {
+    // Keep original
+    settings.firebaseApiKey = originalSettings.firebaseApiKey || '';
+  }
   
   try {
     await chrome.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings });
@@ -248,13 +274,15 @@ async function saveSettings() {
     els.saveSettings.textContent = '✓ Saved!';
     setTimeout(() => els.saveSettings.textContent = 'Save Settings', 1500);
     
-    if (settings.firebaseUrl) {
-      const hasSecret = secretValue && !secretValue.startsWith('••••');
-      updateFirebaseStatus(true, hasSecret ? null : 'Connected (no secret - add one for security)');
+    // Update status displays
+    if (settings.anthropicApiKey) {
+      updateAnthropicStatus(true);
     } else {
-      updateFirebaseStatus(false);
+      updateAnthropicStatus(false);
     }
     
+    // Reload to get updated Firebase status
+    setTimeout(loadSettings, 500);
   } catch (e) {
     console.error('[CUP Popup] Save settings error:', e);
     els.saveSettings.textContent = 'Error!';
@@ -262,37 +290,42 @@ async function saveSettings() {
   }
 }
 
+function updateAnthropicStatus(configured) {
+  if (configured) {
+    els.anthropicStatusDot.style.background = '#22c55e';
+    els.anthropicStatusText.textContent = 'Configured - using accurate token counting (FREE)';
+  } else {
+    els.anthropicStatusDot.style.background = '#6b7280';
+    els.anthropicStatusText.textContent = 'Not configured (using estimates)';
+  }
+}
+
 function updateFirebaseStatus(connected, customMessage) {
   if (connected) {
     els.firebaseStatusDot.style.background = '#22c55e';
-    els.firebaseStatusText.textContent = customMessage || 'Connected & Protected';
+    els.firebaseStatusText.textContent = customMessage || 'Connected & Authenticated';
   } else {
     els.firebaseStatusDot.style.background = '#6b7280';
-    els.firebaseStatusText.textContent = 'Not configured';
+    els.firebaseStatusText.textContent = customMessage || 'Not configured';
   }
 }
 
 async function loadAnalytics(days = 30) {
   try {
-    const response = await chrome.runtime.sendMessage({ 
-      type: 'GET_ANALYTICS_SUMMARY',
-      days 
-    });
-    
+    const response = await chrome.runtime.sendMessage({ type: 'GET_ANALYTICS_SUMMARY', days });
     if (response?.summary) {
       displayAnalytics(response.summary);
     } else {
-      els.analyticsSummary.innerHTML = '<p>No analytics data available yet. Use Claude to generate usage data.</p>';
+      els.analyticsSummary.innerHTML = '<p>No analytics data yet. Use Claude to generate data.</p>';
     }
   } catch (e) {
-    console.error('[CUP Popup] Analytics error:', e);
     els.analyticsSummary.innerHTML = '<p>Error loading analytics</p>';
   }
 }
 
 function displayAnalytics(summary) {
   if (!summary || !summary.averageUsage) {
-    els.analyticsSummary.innerHTML = '<p>No analytics data available yet. Use Claude to generate usage data.</p>';
+    els.analyticsSummary.innerHTML = '<p>No analytics data yet.</p>';
     return;
   }
   
@@ -302,18 +335,9 @@ function displayAnalytics(summary) {
     thresholdHtml = `
     <div class="analytics-card">
       <h4>⚠️ Threshold Alerts</h4>
-      <div class="analytics-stat">
-        <span class="label">Hit 70%:</span>
-        <span class="value">${hits.by70 || 0} times</span>
-      </div>
-      <div class="analytics-stat">
-        <span class="label">Hit 90%:</span>
-        <span class="value warning">${hits.by90 || 0} times</span>
-      </div>
-      <div class="analytics-stat">
-        <span class="label">Maxed out:</span>
-        <span class="value danger">${hits.by100 || 0} times</span>
-      </div>
+      <div class="analytics-stat"><span class="label">Hit 70%:</span><span class="value">${hits.by70 || 0}x</span></div>
+      <div class="analytics-stat"><span class="label">Hit 90%:</span><span class="value warning">${hits.by90 || 0}x</span></div>
+      <div class="analytics-stat"><span class="label">Maxed:</span><span class="value danger">${hits.by100 || 0}x</span></div>
     </div>`;
   }
   
@@ -321,64 +345,35 @@ function displayAnalytics(summary) {
   if (summary.modelPreference && Object.keys(summary.modelPreference).length > 0) {
     const models = Object.entries(summary.modelPreference)
       .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
       .map(([model, count]) => `<div class="analytics-stat"><span class="label">${model}:</span><span class="value">${count}</span></div>`)
       .join('');
-    modelHtml = `
-    <div class="analytics-card">
-      <h4>🤖 Model Usage</h4>
-      ${models}
-    </div>`;
+    modelHtml = `<div class="analytics-card"><h4>🤖 Models Used</h4>${models}</div>`;
   }
   
-  const html = `
+  els.analyticsSummary.innerHTML = `
     <div class="analytics-card">
-      <h3>📊 ${summary.period || 'Usage Summary'}</h3>
-      <p class="analytics-meta">${summary.days || 0} days of data</p>
+      <h3>📊 ${summary.period}</h3>
+      <p class="analytics-meta">${summary.days} days of data</p>
     </div>
-    
     <div class="analytics-card">
       <h4>📈 Average Usage</h4>
-      <div class="analytics-stat">
-        <span class="label">Session:</span>
-        <span class="value">${summary.averageUsage.session || 0}%</span>
-      </div>
-      <div class="analytics-stat">
-        <span class="label">Weekly (All):</span>
-        <span class="value">${summary.averageUsage.weeklyAll || 0}%</span>
-      </div>
-      <div class="analytics-stat">
-        <span class="label">Weekly (Sonnet):</span>
-        <span class="value">${summary.averageUsage.weeklySonnet || 0}%</span>
-      </div>
+      <div class="analytics-stat"><span class="label">Session:</span><span class="value">${summary.averageUsage.session}%</span></div>
+      <div class="analytics-stat"><span class="label">Weekly:</span><span class="value">${summary.averageUsage.weeklyAll}%</span></div>
     </div>
-    
     <div class="analytics-card">
       <h4>🔥 Peak Usage</h4>
-      <div class="analytics-stat">
-        <span class="label">Session:</span>
-        <span class="value">${summary.peakUsage?.session || 0}%</span>
-      </div>
-      <div class="analytics-stat">
-        <span class="label">Weekly (All):</span>
-        <span class="value">${summary.peakUsage?.weeklyAll || 0}%</span>
-      </div>
-      <div class="analytics-stat">
-        <span class="label">Weekly (Sonnet):</span>
-        <span class="value">${summary.peakUsage?.weeklySonnet || 0}%</span>
-      </div>
+      <div class="analytics-stat"><span class="label">Session:</span><span class="value">${summary.peakUsage?.session || 0}%</span></div>
+      <div class="analytics-stat"><span class="label">Weekly:</span><span class="value">${summary.peakUsage?.weeklyAll || 0}%</span></div>
     </div>
-    
     ${thresholdHtml}
     ${modelHtml}
   `;
-  
-  els.analyticsSummary.innerHTML = html;
 }
 
 async function exportAnalyticsData() {
   try {
     const response = await chrome.runtime.sendMessage({ type: 'EXPORT_ANALYTICS' });
-    
     if (response?.data) {
       const blob = new Blob([JSON.stringify(response.data, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -394,34 +389,20 @@ async function exportAnalyticsData() {
 }
 
 // Event Listeners
-els.settingsBtn.addEventListener('click', () => {
-  els.settingsPanel.classList.toggle('hidden');
-});
-
-els.closeSettings.addEventListener('click', () => {
-  els.settingsPanel.classList.add('hidden');
-});
-
+els.settingsBtn.addEventListener('click', () => els.settingsPanel.classList.toggle('hidden'));
+els.closeSettings.addEventListener('click', () => els.settingsPanel.classList.add('hidden'));
 els.refreshBtn.addEventListener('click', triggerRefresh);
 els.saveSettings.addEventListener('click', saveSettings);
 
 if (els.firebaseHelp) {
-  els.firebaseHelp.addEventListener('click', () => {
-    els.firebaseInstructions.classList.toggle('hidden');
-  });
+  els.firebaseHelp.addEventListener('click', () => els.firebaseInstructions.classList.toggle('hidden'));
 }
 
 els.viewAnalytics.addEventListener('click', () => {
   els.analyticsPanel.classList.toggle('hidden');
-  if (!els.analyticsPanel.classList.contains('hidden')) {
-    loadAnalytics(30);
-  }
+  if (!els.analyticsPanel.classList.contains('hidden')) loadAnalytics(30);
 });
-
-els.closeAnalytics.addEventListener('click', () => {
-  els.analyticsPanel.classList.add('hidden');
-});
-
+els.closeAnalytics.addEventListener('click', () => els.analyticsPanel.classList.add('hidden'));
 els.exportAnalytics.addEventListener('click', exportAnalyticsData);
 
 // Initialize

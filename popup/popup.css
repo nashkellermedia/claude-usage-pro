@@ -606,3 +606,42 @@ body {
 input[type="password"].setting-input {
   font-family: monospace;
 }
+
+/* v2.1.0 additions */
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 11px;
+}
+
+.badge-free {
+  background: #22c55e;
+  color: white;
+  font-size: 9px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  margin-left: 6px;
+  font-weight: 600;
+}
+
+.instructions pre {
+  background: #1a1a2e;
+  padding: 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.instructions ol {
+  padding-left: 18px;
+  margin: 8px 0;
+}
+
+.instructions li {
+  margin-bottom: 6px;
+  font-size: 11px;
+}
