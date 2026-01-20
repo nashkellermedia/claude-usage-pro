@@ -40,6 +40,10 @@ class ChatUI {
    * Find attachments in the composer area - ULTRA CONSERVATIVE
    * Only detect things we are 100% certain are attachments
    */
+  /**
+   * Find attachments in the composer area - SMART DETECTION
+   * Looks for file chips with remove buttons + filename patterns
+   */
   findAttachments() {
     const attachments = [];
     
@@ -52,7 +56,6 @@ class ChatUI {
     // Find the form container
     let form = composer.closest('form');
     if (!form) {
-      // Walk up to find form
       let el = composer;
       for (let i = 0; i < 10; i++) {
         if (!el.parentElement) break;
@@ -65,25 +68,23 @@ class ChatUI {
     }
     if (!form) return attachments;
     
-    // Helper: is element actually visible and in composer area
+    // File extension pattern
+    const fileExtensions = 'pdf|txt|md|csv|json|doc|docx|xlsx|xls|py|js|ts|html|css|xml|zip|c|cpp|h|java|rb|go|rs|swift|kt';
+    const fileRegex = new RegExp(`([^\\s\\/\\\\<>"']+\\.(${fileExtensions}))`, 'i');
+    
+    // Helper: is element actually visible and in composer area (ABOVE text input)
     const isValidAttachment = (el) => {
       if (!el) return false;
       
-      // Must be visible
       const style = window.getComputedStyle(el);
       if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
         return false;
       }
       
       const rect = el.getBoundingClientRect();
-      
-      // Must have real size
       if (rect.width < 20 || rect.height < 20) return false;
-      
-      // Must be above the composer text (attachments appear above where you type)
-      // and within reasonable bounds
-      if (rect.bottom > composerRect.top + 20) return false;  // Must be ABOVE composer
-      if (rect.top < composerRect.top - 200) return false;    // Not too far up
+      if (rect.bottom > composerRect.top + 20) return false;
+      if (rect.top < composerRect.top - 300) return false;
       
       return true;
     };
@@ -103,15 +104,12 @@ class ChatUI {
       }
     }
     
-    // METHOD 2: Blob images that have an X/remove button as a DIRECT sibling or parent sibling
+    // METHOD 2: Blob images that have an X/remove button nearby
     const blobImages = form.querySelectorAll('img[src^="blob:"]');
     for (const img of blobImages) {
       if (!isValidAttachment(img)) continue;
       
-      // Must have a remove button very close (sibling or parent's sibling)
       let hasRemove = false;
-      
-      // Check siblings
       const parent = img.parentElement;
       if (parent) {
         const buttons = parent.querySelectorAll('button');
@@ -136,15 +134,63 @@ class ChatUI {
       }
     }
     
-    // METHOD 3: ONLY elements with data-testid containing "attachment" (very specific)
-    // DO NOT use class*="attachment" as this matches too many things
-    const attachmentTestIds = form.querySelectorAll('[data-testid*="attachment"]');
-    for (const el of attachmentTestIds) {
+    // METHOD 3: Find file chips by looking for remove buttons + nearby filename
+    // This catches .md, .doc, .pdf, etc files shown as chips
+    const allButtons = form.querySelectorAll('button');
+    for (const btn of allButtons) {
+      const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+      
+      // Must be a remove/close/delete button
+      if (!ariaLabel.includes('remove') && !ariaLabel.includes('delete') && !ariaLabel.includes('close')) {
+        continue;
+      }
+      
+      // Check if button itself or its container is in valid position
+      if (!isValidAttachment(btn)) continue;
+      
+      // Search up the DOM for a filename pattern
+      let container = btn.parentElement;
+      for (let depth = 0; depth < 5 && container && container !== form; depth++) {
+        const text = container.textContent || '';
+        const fileMatch = text.match(fileRegex);
+        
+        if (fileMatch) {
+          const fileName = fileMatch[1];
+          
+          // Don't double-count
+          if (attachments.some(a => a.name === fileName)) break;
+          
+          const ext = fileMatch[2].toLowerCase();
+          let tokens = 1500;
+          
+          // Token estimates by file type
+          if (ext === 'pdf') tokens = 3000;
+          else if (['txt', 'md', 'csv', 'json', 'xml'].includes(ext)) tokens = 1000;
+          else if (['doc', 'docx'].includes(ext)) tokens = 2000;
+          else if (['xlsx', 'xls'].includes(ext)) tokens = 2500;
+          else if (['py', 'js', 'ts', 'html', 'css', 'c', 'cpp', 'java', 'rb', 'go', 'rs', 'swift', 'kt', 'h'].includes(ext)) tokens = 1200;
+          
+          attachments.push({
+            id: `file-${fileName}-${Date.now()}`,
+            name: fileName,
+            type: 'file',
+            tokens
+          });
+          window.CUP.log('ChatUI: Found file via remove button:', fileName);
+          break; // Found a file for this button, stop searching up
+        }
+        
+        container = container.parentElement;
+      }
+    }
+    
+    // METHOD 4: Backup - check data-testid attributes
+    const testIdElements = form.querySelectorAll('[data-testid*="attachment"], [data-testid*="file-preview"], [data-testid*="upload"]');
+    for (const el of testIdElements) {
       if (!isValidAttachment(el)) continue;
       
-      // Look for filename with extension in text content
       const text = el.textContent || '';
-      const fileMatch = text.match(/([^\s\/\\<>]+\.(pdf|txt|md|csv|json|doc|docx|xlsx|py|js|ts|html|css|xml))/i);
+      const fileMatch = text.match(fileRegex);
       if (fileMatch) {
         const fileName = fileMatch[1];
         if (!attachments.some(a => a.name === fileName)) {
