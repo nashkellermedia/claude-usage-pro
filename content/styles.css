@@ -190,7 +190,7 @@
 }
 
 /* ========== VOICE INPUT BUTTON ========== */
-#cup-voice-btn {
+.cup-voice-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -201,19 +201,20 @@
   border-radius: 8px;
   cursor: pointer;
   font-size: 16px;
-  opacity: 0.6;
+  opacity: 0.7;
   transition: all 0.2s;
-  margin-right: 4px;
+  margin: 0 8px;
+  flex-shrink: 0;
 }
 
-#cup-voice-btn:hover {
+.cup-voice-btn:hover {
   opacity: 1;
-  background: rgba(107, 138, 253, 0.1);
+  background: rgba(107, 138, 253, 0.15);
 }
 
-#cup-voice-btn.listening {
+.cup-voice-btn.listening {
   opacity: 1;
-  background: rgba(239, 68, 68, 0.15);
+  background: rgba(239, 68, 68, 0.2);
   animation: pulse 1.5s infinite;
 }
 
