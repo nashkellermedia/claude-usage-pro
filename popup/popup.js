@@ -311,7 +311,7 @@ async function saveSettings() {
     showSidebar: els.showSidebar.checked,
     showChatOverlay: els.showChatOverlay.checked,
     enableVoice: els.enableVoice.checked,
-    firebaseDatabaseUrl: els.firebaseDatabaseUrl.value.trim(),
+    firebaseDatabaseUrl: els.firebaseDatabaseUrl.value.trim().replace(/\/+$/, ''),  // Strip trailing slashes
     firebaseSyncId: els.firebaseSyncId.value.trim()
   };
   
@@ -553,3 +553,13 @@ els.exportAnalytics.addEventListener('click', exportAnalyticsData);
 loadUsageData();
 loadSettings();
 setInterval(loadUsageData, 5000);
+
+// Auto-normalize Firebase URL on blur
+if (els.firebaseDatabaseUrl) {
+  els.firebaseDatabaseUrl.addEventListener('blur', () => {
+    const url = els.firebaseDatabaseUrl.value.trim().replace(/\/+$/, '');
+    if (url !== els.firebaseDatabaseUrl.value) {
+      els.firebaseDatabaseUrl.value = url;
+    }
+  });
+}
