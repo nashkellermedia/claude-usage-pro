@@ -1,6 +1,6 @@
 /**
  * Claude Usage Pro - Chat UI
- * Stats bar below chat input with attachment tracking and color coding
+ * Stats bar below chat input with attachment tracking
  */
 
 class ChatUI {
@@ -9,11 +9,9 @@ class ChatUI {
     this.initialized = false;
     this.lastDraftTokens = 0;
     this.lastAttachmentCount = 0;
+    this.lastAttachmentTokens = 0;
     this.typingInterval = null;
     this.currentUsageData = null;
-    
-    // Track attachments via events
-    this.trackedAttachments = new Map();
     
     // Token counting state
     this.lastText = '';
@@ -25,19 +23,7 @@ class ChatUI {
   initialize() {
     window.CUP.log('ChatUI: Initializing...');
     this.initialized = true;
-    
     this.checkTokenCountingAvailable();
-    
-    if (window.APIInterceptor) {
-      window.APIInterceptor.on('onMessageSent', () => {
-        this.clearTrackedAttachments();
-      });
-    }
-    
-    // Track file additions via events
-    this.interceptFileInputs();
-    document.addEventListener('paste', (e) => this.handlePaste(e), true);
-    document.addEventListener('drop', (e) => this.handleDrop(e), true);
   }
   
   async checkTokenCountingAvailable() {
@@ -50,88 +36,146 @@ class ChatUI {
     }
   }
   
-  interceptFileInputs() {
-    const self = this;
-    setInterval(() => {
-      const fileInputs = document.querySelectorAll('input[type="file"]');
-      for (const input of fileInputs) {
-        if (input.files && input.files.length > 0 && !input._cupTracked) {
-          input._cupTracked = true;
-          for (const file of input.files) {
-            self.trackFile(file);
-          }
+  /**
+   * Find attachments in the composer area by scanning DOM
+   */
+  findAttachments() {
+    const attachments = [];
+    
+    // Find the composer
+    const composer = document.querySelector('[contenteditable="true"]');
+    if (!composer) return attachments;
+    
+    // Get composer's bounding area
+    const composerRect = composer.getBoundingClientRect();
+    
+    // Find the form or main input container
+    let inputContainer = composer;
+    for (let i = 0; i < 10; i++) {
+      if (inputContainer.parentElement) {
+        inputContainer = inputContainer.parentElement;
+        // Stop at form or main container
+        if (inputContainer.tagName === 'FORM' || inputContainer.classList.contains('composer')) {
+          break;
         }
       }
-    }, 500);
-  }
-  
-  handlePaste(e) {
-    if (e.clipboardData && e.clipboardData.files && e.clipboardData.files.length > 0) {
-      for (const file of e.clipboardData.files) {
-        this.trackFile(file);
-        window.CUP.log('ChatUI: Tracked pasted file:', file.name || 'clipboard image');
-      }
     }
-  }
-  
-  handleDrop(e) {
-    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      for (const file of e.dataTransfer.files) {
-        this.trackFile(file);
-        window.CUP.log('ChatUI: Tracked dropped file:', file.name);
-      }
-    }
-  }
-  
-  trackFile(file) {
-    if (!file) return;
     
-    const id = `file-${file.name}-${file.size}-${Date.now()}`;
+    // Helper: is element in the input area (above or within composer)
+    const isInInputArea = (el) => {
+      const rect = el.getBoundingClientRect();
+      // Must be above the composer text area but within the same horizontal bounds
+      // and within 300px above
+      return rect.width > 20 && 
+             rect.height > 20 &&
+             rect.bottom <= composerRect.bottom + 50 &&
+             rect.top >= composerRect.top - 300;
+    };
     
-    let tokens = 1500;
-    
-    if (file.type.startsWith('image/')) {
-      const img = new Image();
-      const url = URL.createObjectURL(file);
-      img.onload = () => {
-        const width = img.naturalWidth;
-        const height = img.naturalHeight;
-        URL.revokeObjectURL(url);
-        
-        tokens = this.estimateImageTokens(width, height);
-        this.trackedAttachments.set(id, {
-          name: file.name || 'image',
-          type: file.type,
-          tokens: tokens,
-          addedAt: Date.now()
+    // Strategy 1: Look for images with Claude API URLs (uploaded files)
+    const apiImages = document.querySelectorAll('img[src*="/api/"][src*="/files/"]');
+    for (const img of apiImages) {
+      if (isInInputArea(img)) {
+        const tokens = this.estimateImageTokens(img.naturalWidth || img.width || 400, img.naturalHeight || img.height || 400);
+        attachments.push({
+          id: img.src,
+          name: 'uploaded image',
+          type: 'image',
+          tokens
         });
-        
-        window.CUP.log('ChatUI: Tracked image:', file.name, width, 'x', height, '=', tokens, 'tokens');
-      };
-      img.src = url;
-      tokens = this.estimateImageTokensFromSize(file.size);
-    } else if (file.type === 'application/pdf') {
-      const pages = Math.max(1, Math.ceil(file.size / 100000));
-      tokens = pages * 800;
-    } else if (file.type.startsWith('text/') || file.name?.match(/\.(txt|md|json|csv|xml|html|css|js|ts|py)$/i)) {
-      tokens = Math.ceil(file.size / 4);
-    } else {
-      tokens = Math.ceil(file.size / 4);
+      }
     }
     
-    this.trackedAttachments.set(id, {
-      name: file.name || 'file',
-      type: file.type,
-      tokens: tokens,
-      addedAt: Date.now()
-    });
+    // Strategy 2: Look for blob URLs (pasted/dropped images)
+    const blobImages = document.querySelectorAll('img[src^="blob:"]');
+    for (const img of blobImages) {
+      if (isInInputArea(img)) {
+        const tokens = this.estimateImageTokens(img.naturalWidth || img.width || 400, img.naturalHeight || img.height || 400);
+        attachments.push({
+          id: img.src,
+          name: 'image',
+          type: 'image',
+          tokens
+        });
+      }
+    }
     
-    window.CUP.log('ChatUI: Tracked file:', file.name, tokens, 'tokens');
-  }
-  
-  estimateImageTokensFromSize(size) {
-    const estimatedPixels = Math.sqrt(size * 10);
-    return this.estimateImageTokens(estimatedPixels, estimatedPixels);
+    // Strategy 3: Look for file attachment indicators
+    // Claude shows file names with remove buttons
+    const buttons = inputContainer.querySelectorAll('button');
+    for (const btn of buttons) {
+      // Look for buttons that might be remove/close buttons for attachments
+      const ariaLabel = btn.getAttribute('aria-label') || '';
+      const text = btn.textContent || '';
+      
+      // Skip if it's clearly not an attachment-related button
+      if (ariaLabel.toLowerCase().includes('send') || 
+          ariaLabel.toLowerCase().includes('model') ||
+          ariaLabel.toLowerCase().includes('menu')) {
+        continue;
+      }
+      
+      // Find parent that might be an attachment container
+      let container = btn.parentElement;
+      for (let i = 0; i < 3; i++) {
+        if (!container) break;
+        
+        const containerText = container.textContent || '';
+        // Look for file extension patterns
+        const fileMatch = containerText.match(/([^\s<>]+\.(pdf|txt|md|csv|json|doc|docx|png|jpg|jpeg|gif|webp|py|js|ts|html|css))/i);
+        
+        if (fileMatch && isInInputArea(container)) {
+          const fileName = fileMatch[1];
+          const ext = fileMatch[2].toLowerCase();
+          
+          // Don't double count if we already have this
+          if (attachments.some(a => a.name === fileName)) break;
+          
+          let tokens = 1500;
+          if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext)) {
+            tokens = 1500; // Default image estimate
+          } else if (ext === 'pdf') {
+            tokens = 3000;
+          } else if (['txt', 'md', 'csv', 'json'].includes(ext)) {
+            tokens = 1000;
+          } else if (['doc', 'docx'].includes(ext)) {
+            tokens = 2000;
+          } else {
+            tokens = 1500;
+          }
+          
+          attachments.push({
+            id: `file-${fileName}`,
+            name: fileName,
+            type: 'file',
+            tokens
+          });
+          break;
+        }
+        
+        container = container.parentElement;
+      }
+    }
+    
+    // Strategy 4: Look for any thumbnail containers near composer
+    const thumbnailContainers = inputContainer.querySelectorAll('[class*="thumbnail"], [class*="preview"], [class*="attachment"]');
+    for (const container of thumbnailContainers) {
+      if (!isInInputArea(container)) continue;
+      
+      // Check if it contains an image we haven't counted
+      const img = container.querySelector('img');
+      if (img && !attachments.some(a => a.id === img.src)) {
+        const tokens = this.estimateImageTokens(img.naturalWidth || img.width || 400, img.naturalHeight || img.height || 400);
+        attachments.push({
+          id: img.src || `thumb-${Date.now()}`,
+          name: 'image',
+          type: 'image',
+          tokens
+        });
+      }
+    }
+    
+    return attachments;
   }
   
   estimateImageTokens(width, height) {
@@ -154,42 +198,6 @@ class ChatUI {
     const tilesY = Math.ceil(h / TILE_SIZE);
     
     return tilesX * tilesY * 765;
-  }
-  
-  /**
-   * Check if there are visible attachment previews in the composer
-   * Used to detect when user removes attachments
-   */
-  countVisibleAttachments() {
-    const composer = document.querySelector('[contenteditable="true"]');
-    if (!composer) return 0;
-    
-    // Find composer container
-    let container = composer;
-    for (let i = 0; i < 8; i++) {
-      if (container.parentElement) container = container.parentElement;
-    }
-    
-    let count = 0;
-    
-    // Look for image thumbnails in composer area
-    const images = container.querySelectorAll('img[src^="blob:"], img[src*="/api/"][src*="/files/"]');
-    count += images.length;
-    
-    // Look for file attachment buttons/previews (x buttons, file icons)
-    // These typically have aria-label or specific classes
-    const removeButtons = container.querySelectorAll('[aria-label*="Remove"], [aria-label*="Delete"], button[class*="remove"], button[class*="delete"]');
-    // Count unique parent containers
-    const seen = new Set();
-    for (const btn of removeButtons) {
-      const parent = btn.closest('[class*="attachment"], [class*="preview"], [class*="file"]');
-      if (parent && !seen.has(parent)) {
-        seen.add(parent);
-        count++;
-      }
-    }
-    
-    return count;
   }
   
   async injectUI() {
@@ -219,7 +227,6 @@ class ChatUI {
             <span class="cup-stat-icon">📎</span>
             <span class="cup-stat-label">Files:</span>
             <span class="cup-stat-value" id="cup-files-count">0</span>
-            <span class="cup-clear-files" id="cup-clear-files" title="Clear tracked files" style="display:none; cursor:pointer; margin-left:4px;">✕</span>
           </span>
           <span class="cup-stat-divider">│</span>
           <span class="cup-stat-item">
@@ -252,15 +259,6 @@ class ChatUI {
           container.parentElement.insertBefore(this.inputStats, container.nextSibling);
           window.CUP.log('ChatUI: Input stats injected');
           
-          // Add click handler for clear files button
-          const clearBtn = document.getElementById('cup-clear-files');
-          if (clearBtn) {
-            clearBtn.addEventListener('click', () => {
-              this.clearTrackedAttachments();
-              this.updateDraftDisplay(this.lastAccurateTextTokens, this.lastAccurateTextTokens, 0, 0, this.useAccurateCount);
-            });
-          }
-          
           if (this.currentUsageData) {
             this.updateUsage(this.currentUsageData);
           }
@@ -272,23 +270,6 @@ class ChatUI {
     }
     
     window.CUP.log('ChatUI: Could not inject input stats');
-  }
-  
-  getAttachmentTokens() {
-    let totalTokens = 0;
-    let count = 0;
-    
-    for (const [id, data] of this.trackedAttachments) {
-      totalTokens += data.tokens;
-      count++;
-    }
-    
-    return { tokens: totalTokens, count: count };
-  }
-  
-  clearTrackedAttachments() {
-    this.trackedAttachments.clear();
-    window.CUP.log('ChatUI: Cleared tracked attachments');
   }
   
   async getAccurateTokenCount(text) {
@@ -315,19 +296,22 @@ class ChatUI {
       clearTimeout(this.tokenCountDebounce);
     }
     
+    // Show estimate immediately
     const estimate = Math.ceil(text.length / 4);
-    const attachments = this.getAttachmentTokens();
-    this.updateDraftDisplay(estimate + attachments.tokens, estimate, attachments.tokens, attachments.count, false);
+    const attachments = this.findAttachments();
+    const attachmentTokens = attachments.reduce((sum, a) => sum + a.tokens, 0);
+    this.updateDraftDisplay(estimate + attachmentTokens, estimate, attachmentTokens, attachments.length, false);
     
+    // Get accurate count after typing stops
     this.tokenCountDebounce = setTimeout(async () => {
       if (text === this.lastText) {
         const accurate = await this.getAccurateTokenCount(text);
         this.lastAccurateTextTokens = accurate;
-        const attachments = this.getAttachmentTokens();
-        // Only show ✓ if NO attachments (since attachment counts are always estimates)
-        const isFullyAccurate = attachments.count === 0;
-        this.updateDraftDisplay(accurate + attachments.tokens, accurate, attachments.tokens, attachments.count, isFullyAccurate);
-        window.CUP.log('ChatUI: Accurate text count:', accurate, 'tokens');
+        const attachments = this.findAttachments();
+        const attachmentTokens = attachments.reduce((sum, a) => sum + a.tokens, 0);
+        const isFullyAccurate = attachments.length === 0;
+        this.updateDraftDisplay(accurate + attachmentTokens, accurate, attachmentTokens, attachments.length, isFullyAccurate);
+        window.CUP.log('ChatUI: Accurate text count:', accurate);
       }
     }, 500);
   }
@@ -339,64 +323,50 @@ class ChatUI {
       const input = document.querySelector('[contenteditable="true"]');
       if (!input) return;
       
-      // Check for attachment removal by comparing visible vs tracked
-      const visibleCount = this.countVisibleAttachments();
-      const trackedCount = this.trackedAttachments.size;
-      
-      if (trackedCount > 0 && visibleCount === 0) {
-        // User removed all attachments
-        window.CUP.log('ChatUI: Detected all attachments removed');
-        this.clearTrackedAttachments();
-      } else if (trackedCount > visibleCount && visibleCount >= 0) {
-        // Some attachments were removed - clear and let user re-add
-        // This is imperfect but better than showing stale data
-        window.CUP.log('ChatUI: Detected attachment removal, visible:', visibleCount, 'tracked:', trackedCount);
-        this.clearTrackedAttachments();
-      }
-      
       let text = input.innerText || '';
       text = text.trim();
       
+      // Ignore placeholder text
       if (text.match(/^(Reply to Claude|Type a message|Ask Claude|How can I help|Message Claude)/i)) {
         text = '';
       }
       
-      const textChanged = text !== this.lastText;
-      const attachments = this.getAttachmentTokens();
+      // Get current attachments from DOM
+      const attachments = this.findAttachments();
+      const attachmentCount = attachments.length;
+      const attachmentTokens = attachments.reduce((sum, a) => sum + a.tokens, 0);
       
-      if (textChanged) {
+      const textChanged = text !== this.lastText;
+      const attachmentsChanged = attachmentCount !== this.lastAttachmentCount;
+      
+      if (textChanged || attachmentsChanged) {
         this.lastText = text;
+        this.lastAttachmentCount = attachmentCount;
+        this.lastAttachmentTokens = attachmentTokens;
         
         if (this.useAccurateCount && text.length > 0) {
           this.scheduleAccurateCount(text);
         } else {
           const textTokens = text.length > 0 ? Math.ceil(text.length / 4) : 0;
           this.lastAccurateTextTokens = textTokens;
-          this.updateDraftDisplay(textTokens + attachments.tokens, textTokens, attachments.tokens, attachments.count, false);
+          this.updateDraftDisplay(textTokens + attachmentTokens, textTokens, attachmentTokens, attachmentCount, false);
         }
-      } else if (attachments.count !== this.lastAttachmentCount || attachments.tokens !== this.lastAttachmentTokens) {
-        // Attachments changed but text didn't
-        this.lastAttachmentTokens = attachments.tokens;
-        const textTokens = this.lastAccurateTextTokens || Math.ceil(text.length / 4);
-        const isFullyAccurate = this.useAccurateCount && attachments.count === 0 && text.length > 0;
-        this.updateDraftDisplay(textTokens + attachments.tokens, textTokens, attachments.tokens, attachments.count, isFullyAccurate);
       }
-    }, 300);
+    }, 500);
   }
   
   updateDraftDisplay(totalTokens, textTokens, attachmentTokens, attachmentCount, isAccurate) {
     const draftEl = document.getElementById('cup-draft-tokens');
     const filesEl = document.getElementById('cup-files-count');
     const accuracyEl = document.getElementById('cup-accuracy');
-    const clearBtn = document.getElementById('cup-clear-files');
     
     if (draftEl) {
       draftEl.textContent = totalTokens.toLocaleString();
       
       if (attachmentTokens > 0) {
-        draftEl.title = `Text: ${textTokens.toLocaleString()} + Files: ~${attachmentTokens.toLocaleString()} tokens (file estimates only)`;
+        draftEl.title = `Text: ${textTokens.toLocaleString()} + Files: ~${attachmentTokens.toLocaleString()} tokens`;
       } else {
-        draftEl.title = isAccurate ? 'Accurate token count via Anthropic API' : 'Estimated (~4 chars per token)';
+        draftEl.title = isAccurate ? 'Accurate count via Anthropic API' : 'Estimated (~4 chars/token)';
       }
       
       if (totalTokens >= 32000) {
@@ -418,8 +388,8 @@ class ChatUI {
       } else {
         accuracyEl.textContent = '~';
         accuracyEl.title = attachmentCount > 0 
-          ? 'Estimated (file token counts are always approximate)'
-          : 'Estimated (~4 chars per token)';
+          ? 'Estimated (files are always approximate)'
+          : 'Estimated (~4 chars/token)';
         accuracyEl.style.color = '#6b7280';
       }
     }
@@ -427,20 +397,10 @@ class ChatUI {
     if (filesEl) {
       filesEl.textContent = attachmentCount;
       filesEl.title = attachmentCount > 0 
-        ? `${attachmentCount} file(s) tracked (~${attachmentTokens.toLocaleString()} tokens)`
+        ? `${attachmentCount} file(s) (~${attachmentTokens.toLocaleString()} tokens)`
         : 'No files attached';
-      
       filesEl.style.color = attachmentCount > 0 ? '#60a5fa' : '#a1a1aa';
     }
-    
-    // Show/hide clear button
-    if (clearBtn) {
-      clearBtn.style.display = attachmentCount > 0 ? 'inline' : 'none';
-    }
-    
-    this.lastDraftTokens = totalTokens;
-    this.lastAttachmentCount = attachmentCount;
-    this.lastAttachmentTokens = attachmentTokens;
   }
   
   updateUsage(usageData) {
@@ -460,18 +420,7 @@ class ChatUI {
     if (resetEl) {
       const resetTime = usageData.currentSession?.resetsIn || '--';
       resetEl.textContent = resetTime;
-      
-      if (resetTime === '--') {
-        resetEl.title = 'Visit Settings > Usage to sync reset time';
-        resetEl.style.cursor = 'pointer';
-        resetEl.style.textDecoration = 'underline';
-        resetEl.onclick = () => window.open('https://claude.ai/settings/usage', '_blank');
-      } else {
-        resetEl.title = 'Session resets in ' + resetTime;
-        resetEl.style.cursor = 'default';
-        resetEl.style.textDecoration = 'none';
-        resetEl.onclick = null;
-      }
+      resetEl.title = resetTime === '--' ? 'Click refresh to sync' : `Resets in ${resetTime}`;
     }
     
     const weeklyAllEl = document.getElementById('cup-weekly-all-pct');
