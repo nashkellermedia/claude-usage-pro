@@ -70,7 +70,7 @@ class SidebarUI {
                 <div class="cup-usage-bar-bg">
                   <div class="cup-usage-bar cup-bar-sonnet" id="cup-sidebar-sonnet-bar" style="width: 0%"></div>
                 </div>
-                <div class="cup-usage-meta" id="cup-sidebar-sonnet-reset">Resets in --</div>
+                <div class="cup-usage-meta" id="cup-sidebar-sonnet-reset">Resets --</div>
               </div>
               
 
@@ -164,8 +164,11 @@ class SidebarUI {
       this.updateBar('cup-sidebar-sonnet-bar', pct);
       this.colorizePercent('cup-sidebar-sonnet', pct);
       
-      if (usageData.weeklySonnet.resetsIn) {
-        this.updateElement('cup-sidebar-sonnet-reset', 'Resets in ' + usageData.weeklySonnet.resetsIn);
+      if (usageData.weeklySonnet.resetsIn && usageData.weeklySonnet.resetsIn !== '--') {
+        const resetVal = usageData.weeklySonnet.resetsIn;
+        // Check if it's a day/time format (e.g., "Thu 1:00 AM") vs duration (e.g., "5 hr")
+        const isDayTime = /^[A-Za-z]{3,}/.test(resetVal);
+        this.updateElement('cup-sidebar-sonnet-reset', isDayTime ? 'Resets ' + resetVal : 'Resets in ' + resetVal);
       }
     }
     

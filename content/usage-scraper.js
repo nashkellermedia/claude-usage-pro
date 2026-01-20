@@ -309,10 +309,13 @@ class UsageScraper {
     if (sonnetSection) {
       const section = sonnetSection[1];
       const percentMatch = section.match(/(\d+)%\s*used/i);
-      // Try multiple reset time formats - capture number AND units
+      // Try multiple reset time formats
+      // First try "Resets in X hr Y min" format
       let resetMatch = section.match(/Resets?\s+in\s+(\d+\s*(?:hours?|hr?|h)\s*(?:\d+\s*(?:minutes?|min|m))?)/i);
       if (!resetMatch) resetMatch = section.match(/Resets?\s+in\s+(\d+\s*(?:minutes?|min|m))/i);
       if (!resetMatch) resetMatch = section.match(/Resets?\s+in\s+(\d+\s*(?:days?|d))/i);
+      // Then try "Resets Thu 1:00 AM" day/time format
+      if (!resetMatch) resetMatch = section.match(/Resets?\s+([A-Za-z]{3,}\s+\d{1,2}:\d{2}\s*(?:AM|PM)?)/i);
       if (!resetMatch) resetMatch = section.match(/(\d+\s*(?:hours?|hr?|h|minutes?|min|m))\s*(?:left|remaining)/i);
       
       if (percentMatch) {
@@ -320,7 +323,7 @@ class UsageScraper {
           percent: parseInt(percentMatch[1]),
           resetsIn: resetMatch ? resetMatch[1].trim() : '--'
         };
-        window.CUP.log('UsageScraper: Sonnet Only:', data.weeklySonnet.percent + '%');
+        window.CUP.log('UsageScraper: Sonnet Only:', data.weeklySonnet.percent + '%, resets', data.weeklySonnet.resetsIn);
       }
     }
     
