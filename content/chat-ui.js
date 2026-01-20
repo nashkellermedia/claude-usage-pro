@@ -12,11 +12,8 @@ class ChatUI {
     this.typingInterval = null;
     this.currentUsageData = null;
     
-    // Track attachments persistently (backup tracking via events)
+    // Track attachments via events only (not DOM scanning)
     this.trackedAttachments = new Map();
-    
-    // Start attachment watcher for DOM-based detection
-    this.attachmentWatcherInterval = null;
   }
   
   initialize() {
@@ -30,220 +27,10 @@ class ChatUI {
       });
     }
     
-    // Intercept file additions (backup method)
+    // Track file additions via events
     this.interceptFileInputs();
     document.addEventListener('paste', (e) => this.handlePaste(e), true);
     document.addEventListener('drop', (e) => this.handleDrop(e), true);
-    
-    // Start DOM-based attachment watcher
-    this.startAttachmentWatcher();
-  }
-  
-  /**
-   * DOM-based attachment watcher - primary detection method
-   * Scans for visible attachments and estimates their tokens
-   */
-  startAttachmentWatcher() {
-    if (this.attachmentWatcherInterval) {
-      clearInterval(this.attachmentWatcherInterval);
-    }
-    
-    window.CUP.log('ChatUI: Attachment watcher started');
-    
-    this.attachmentWatcherInterval = setInterval(() => {
-      this.syncAttachmentsFromDOM();
-    }, 500);
-  }
-  
-  /**
-   * Synchronize tracked attachments with what's visible in the DOM
-   */
-  syncAttachmentsFromDOM() {
-    const visibleAttachments = this.findVisibleAttachments();
-    const visibleCount = visibleAttachments.length;
-    const trackedCount = this.trackedAttachments.size;
-    
-    // Only log when there's a change
-    if (visibleCount !== this._lastVisibleCount || trackedCount !== this._lastTrackedCount) {
-      window.CUP.log('ChatUI: Sync - visible:', visibleCount, 'tracked:', trackedCount);
-      this._lastVisibleCount = visibleCount;
-      this._lastTrackedCount = trackedCount;
-    }
-    
-    // If we see attachments in DOM that aren't tracked, add them
-    if (visibleCount > 0) {
-      for (const att of visibleAttachments) {
-        const id = att.id;
-        if (!this.trackedAttachments.has(id)) {
-          this.trackedAttachments.set(id, {
-            name: att.name || 'attachment',
-            type: att.type,
-            tokens: att.tokens,
-            addedAt: Date.now(),
-            source: 'dom'
-          });
-          window.CUP.log('ChatUI: Auto-tracked from DOM:', att.name, att.tokens, 'tokens');
-        }
-      }
-      
-      // Remove tracked items that are no longer visible
-      const visibleIds = new Set(visibleAttachments.map(a => a.id));
-      for (const [id, data] of this.trackedAttachments) {
-        if (!visibleIds.has(id)) {
-          window.CUP.log('ChatUI: Removing tracked:', data.name, '(', data.tokens, 'tokens)');
-          this.trackedAttachments.delete(id);
-        }
-      }
-    } else if (trackedCount > 0) {
-      // No visible attachments but we have tracked ones
-      // Check if they're stale (added more than 2 seconds ago)
-      const now = Date.now();
-      let hasStale = false;
-      for (const [id, data] of this.trackedAttachments) {
-        if (now - data.addedAt > 2000) {
-          hasStale = true;
-          break;
-        }
-      }
-      if (hasStale) {
-        window.CUP.log('ChatUI: Detected attachment removal, clearing tracked');
-        this.trackedAttachments.clear();
-      }
-    }
-  }
-  
-  /**
-   * Find all visible attachments in the composer area
-   * Returns array of { id, name, type, tokens, element }
-   */
-  findVisibleAttachments() {
-    const attachments = [];
-    const composer = document.querySelector('[contenteditable="true"]');
-    
-    if (!composer) return attachments;
-    
-    const composerRect = composer.getBoundingClientRect();
-    
-    // Helper to check if element is near composer
-    const isNearComposer = (el) => {
-      const rect = el.getBoundingClientRect();
-      // Attachment previews appear above the composer input
-      return rect.bottom > composerRect.top - 300 && 
-             rect.top < composerRect.bottom + 50 &&
-             rect.width > 20 && rect.height > 20;
-    };
-    
-    // Strategy 1: Find images with Claude API URLs (uploaded images)
-    const apiImages = document.querySelectorAll('img[src*="/api/"][src*="/files/"]');
-    for (const img of apiImages) {
-      if (isNearComposer(img)) {
-        const tokens = this.estimateImageTokens(img.naturalWidth || img.width, img.naturalHeight || img.height);
-        const id = `api-img-${img.src.split('/').pop()?.substring(0, 20) || Date.now()}`;
-        attachments.push({
-          id,
-          name: img.alt || 'uploaded image',
-          type: 'image',
-          tokens,
-          element: img
-        });
-      }
-    }
-    
-    // Strategy 2: Find blob images (during/after upload)
-    const blobImages = document.querySelectorAll('img[src^="blob:"]');
-    for (const img of blobImages) {
-      if (isNearComposer(img)) {
-        const tokens = this.estimateImageTokens(img.naturalWidth || img.width, img.naturalHeight || img.height);
-        const id = `blob-${img.src.substring(5, 30)}`;
-        attachments.push({
-          id,
-          name: 'pasted image',
-          type: 'image',
-          tokens,
-          element: img
-        });
-      }
-    }
-    
-    // Strategy 3: Find data URL images
-    const dataImages = document.querySelectorAll('img[src^="data:"]');
-    for (const img of dataImages) {
-      if (isNearComposer(img)) {
-        const tokens = this.estimateImageTokens(img.naturalWidth || img.width, img.naturalHeight || img.height);
-        const id = `data-img-${Date.now()}-${Math.random().toString(36).substring(7)}`;
-        // Avoid duplicates
-        if (!attachments.some(a => a.element === img)) {
-          attachments.push({
-            id,
-            name: 'embedded image',
-            type: 'image',
-            tokens,
-            element: img
-          });
-        }
-      }
-    }
-    
-    // Strategy 4: Look for file preview containers (specific selectors only)
-    const previewContainers = document.querySelectorAll('[data-testid*="file"], [data-testid*="attachment"], [data-testid*="upload"]');
-    for (const container of previewContainers) {
-      if (!isNearComposer(container)) continue;
-      
-      // Skip if we already found an image inside this container
-      const hasImage = container.querySelector('img');
-      if (hasImage && attachments.some(a => a.element === hasImage)) continue;
-      
-      // Look for file info (non-image files like PDFs, docs)
-      const textContent = container.textContent || '';
-      const fileName = textContent.trim().substring(0, 50);
-      
-      // Must look like a filename (has extension) or be a known file type indicator
-      const looksLikeFile = fileName.match(/\.\w{2,5}$/i) || fileName.match(/^(PDF|Document|Image|File)/i);
-      if (fileName && !fileName.includes('Add content') && fileName.length > 2 && looksLikeFile) {
-        const id = `file-${fileName.replace(/\s+/g, '-').substring(0, 30)}`;
-        
-        // Estimate tokens based on file type
-        let tokens = 1500;
-        if (fileName.match(/\.pdf$/i)) {
-          tokens = 3000;
-        } else if (fileName.match(/\.(txt|md|json|csv)$/i)) {
-          tokens = 1000;
-        } else if (fileName.match(/\.(doc|docx)$/i)) {
-          tokens = 2000;
-        }
-        
-        if (!attachments.some(a => a.id === id)) {
-          attachments.push({
-            id,
-            name: fileName,
-            type: 'file',
-            tokens,
-            element: container
-          });
-        }
-      }
-    }
-    
-    // Strategy 5: Look for thumbnail-style previews
-    const thumbnails = document.querySelectorAll('[class*="thumbnail"], [class*="Thumbnail"]');
-    for (const thumb of thumbnails) {
-      if (!isNearComposer(thumb)) continue;
-      
-      const img = thumb.querySelector('img');
-      if (img && !attachments.some(a => a.element === img)) {
-        const tokens = this.estimateImageTokens(img.naturalWidth || 200, img.naturalHeight || 200);
-        const id = `thumb-${Date.now()}-${Math.random().toString(36).substring(7)}`;
-        attachments.push({
-          id,
-          name: 'image attachment',
-          type: 'image',
-          tokens,
-          element: img
-        });
-      }
-    }
-    
-    return attachments;
   }
   
   interceptFileInputs() {
@@ -258,13 +45,13 @@ class ChatUI {
           }
         }
       }
-    }, 200);
+    }, 500);
     
     window.CUP.log('ChatUI: File input interception active');
   }
   
   handlePaste(e) {
-    if (e.clipboardData && e.clipboardData.files) {
+    if (e.clipboardData && e.clipboardData.files && e.clipboardData.files.length > 0) {
       for (const file of e.clipboardData.files) {
         this.trackFile(file);
         window.CUP.log('ChatUI: Tracked pasted file:', file.name || 'clipboard image');
@@ -273,7 +60,7 @@ class ChatUI {
   }
   
   handleDrop(e) {
-    if (e.dataTransfer && e.dataTransfer.files) {
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       for (const file of e.dataTransfer.files) {
         this.trackFile(file);
         window.CUP.log('ChatUI: Tracked dropped file:', file.name);
@@ -302,13 +89,13 @@ class ChatUI {
           name: file.name || 'image',
           type: file.type,
           tokens: tokens,
-          addedAt: Date.now(),
-          source: 'event'
+          addedAt: Date.now()
         });
         
-        window.CUP.log('ChatUI: Tracked file:', file.name, width, 'x', height, '=', tokens, 'tokens');
+        window.CUP.log('ChatUI: Tracked image:', file.name, width, 'x', height, '=', tokens, 'tokens');
       };
       img.src = url;
+      // Use size-based estimate while loading
       tokens = this.estimateImageTokensFromSize(file.size);
     } else if (file.type === 'application/pdf') {
       const pages = Math.max(1, Math.ceil(file.size / 100000));
@@ -323,8 +110,7 @@ class ChatUI {
       name: file.name || 'file',
       type: file.type,
       tokens: tokens,
-      addedAt: Date.now(),
-      source: 'event'
+      addedAt: Date.now()
     });
     
     window.CUP.log('ChatUI: Tracked file:', file.name, tokens, 'tokens');
