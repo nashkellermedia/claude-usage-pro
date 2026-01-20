@@ -217,7 +217,7 @@ class FirebaseSync {
     this.deviceId = null;
   }
 
-  async initialize(databaseUrl) {
+  async initialize(databaseUrl, syncId = null) {
     if (!databaseUrl || !databaseUrl.trim()) {
       this.syncEnabled = false;
       this.stopAutoSync();
@@ -225,6 +225,7 @@ class FirebaseSync {
     }
 
     this.databaseUrl = databaseUrl.trim().replace(/\/$/, '');
+    this.syncId = syncId || null;  // User-defined sync ID for cross-device sync
     
     if (!this.databaseUrl.includes('firebaseio.com') && !this.databaseUrl.includes('firebasedatabase.app')) {
       console.error('[FirebaseSync] Invalid database URL');
@@ -237,6 +238,8 @@ class FirebaseSync {
     }
 
     this.deviceId = await this.getOrCreateDeviceId();
+    
+    console.log('[FirebaseSync] Initializing with syncId:', this.syncId || '(using UID)');
     
     const connected = await this.testConnection();
     if (connected) {
@@ -261,7 +264,10 @@ class FirebaseSync {
   }
 
   getBasePath() {
-    // Data stored under user's UID for security
+    // Use syncId for cross-device sync, fall back to UID
+    if (this.syncId) {
+      return `${this.databaseUrl}/sync/${this.syncId}`;
+    }
     return `${this.databaseUrl}/users/${this.auth.getUid()}`;
   }
 
@@ -738,7 +744,8 @@ const DEFAULT_SETTINGS = {
   enableVoice: false,
   firebaseDatabaseUrl: '',
   firebaseApiKey: '',
-  anthropicApiKey: ''
+  anthropicApiKey: '',
+  firebaseSyncId: ''
 };
 
 // ============================================================================
@@ -906,7 +913,8 @@ async function handleMessage(message, sender) {
         enabled: firebaseSync?.syncEnabled || false,
         authenticated: firebaseAuth?.isAuthenticated() || false,
         uid: firebaseAuth?.getUid() || null,
-        lastSync: firebaseSync?.lastSync || null
+        lastSync: firebaseSync?.lastSync || null,
+        syncId: firebaseSync?.syncId || null
       };
     }
 
@@ -933,7 +941,7 @@ async function handleMessage(message, sender) {
           
           if (authSuccess && updated.firebaseDatabaseUrl) {
             firebaseSync = new FirebaseSync(firebaseAuth);
-            const syncInitialized = await firebaseSync.initialize(updated.firebaseDatabaseUrl);
+            const syncInitialized = await firebaseSync.initialize(updated.firebaseDatabaseUrl, updated.firebaseSyncId);
             
             // Auto-pull from Firebase when newly configured
             if (syncInitialized) {
@@ -1138,7 +1146,7 @@ async function initializeExtension() {
     
     if (authSuccess && settings.firebaseDatabaseUrl) {
       firebaseSync = new FirebaseSync(firebaseAuth);
-      const syncInitialized = await firebaseSync.initialize(settings.firebaseDatabaseUrl);
+      const syncInitialized = await firebaseSync.initialize(settings.firebaseDatabaseUrl, settings.firebaseSyncId);
       
       // Auto-pull data from Firebase on startup
       if (syncInitialized) {

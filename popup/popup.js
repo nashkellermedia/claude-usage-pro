@@ -36,6 +36,7 @@ const els = {
   
   // Firebase
   firebaseDatabaseUrl: document.getElementById('firebaseDatabaseUrl'),
+  firebaseSyncId: document.getElementById('firebaseSyncId'),
   firebaseApiKey: document.getElementById('firebaseApiKey'),
   firebaseHelp: document.getElementById('firebaseHelp'),
   firebaseInstructions: document.getElementById('firebaseInstructions'),
@@ -279,6 +280,9 @@ async function loadSettings() {
     if (settings.firebaseDatabaseUrl) {
       els.firebaseDatabaseUrl.value = settings.firebaseDatabaseUrl;
     }
+    if (settings.firebaseSyncId) {
+      els.firebaseSyncId.value = settings.firebaseSyncId;
+    }
     if (settings.firebaseApiKey) {
       els.firebaseApiKey.value = '••••••••' + settings.firebaseApiKey.slice(-8);
     }
@@ -286,7 +290,11 @@ async function loadSettings() {
     // Update Firebase status
     const fbStatus = await chrome.runtime.sendMessage({ type: 'GET_FIREBASE_STATUS' });
     if (fbStatus?.authenticated) {
-      updateFirebaseStatus(true, `Connected (UID: ${fbStatus.uid?.slice(0,8)}...)`);
+      const syncId = settings.firebaseSyncId;
+      const statusText = syncId 
+        ? `Connected (Sync: ${syncId})`
+        : `Connected (UID: ${fbStatus.uid?.slice(0,8)}...)`;
+      updateFirebaseStatus(true, statusText);
     } else if (settings.firebaseDatabaseUrl && settings.firebaseApiKey) {
       updateFirebaseStatus(false, 'Not authenticated - check API key');
     } else {
@@ -303,7 +311,8 @@ async function saveSettings() {
     showSidebar: els.showSidebar.checked,
     showChatOverlay: els.showChatOverlay.checked,
     enableVoice: els.enableVoice.checked,
-    firebaseDatabaseUrl: els.firebaseDatabaseUrl.value.trim()
+    firebaseDatabaseUrl: els.firebaseDatabaseUrl.value.trim(),
+    firebaseSyncId: els.firebaseSyncId.value.trim()
   };
   
   // Handle Anthropic API key - only update if changed from masked value
