@@ -368,3 +368,10 @@ body.cup-context-active {
     color: #6b7280;
   }
 }
+
+/* Accuracy indicator for token counting */
+.cup-accuracy-indicator {
+  font-size: 10px;
+  margin-left: 2px;
+  vertical-align: super;
+}

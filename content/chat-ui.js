@@ -1,6 +1,7 @@
 /**
  * Claude Usage Pro - Chat UI
  * Stats bar below chat input with attachment tracking and color coding
+ * Now with accurate Anthropic API token counting!
  */
 
 class ChatUI {
@@ -12,13 +13,22 @@ class ChatUI {
     this.typingInterval = null;
     this.currentUsageData = null;
     
-    // Track attachments via events only (not DOM scanning)
+    // Track attachments via events only
     this.trackedAttachments = new Map();
+    
+    // Token counting state
+    this.lastText = '';
+    this.pendingTokenCount = null;
+    this.tokenCountDebounce = null;
+    this.useAccurateCount = false; // Will be set based on API key availability
   }
   
   initialize() {
     window.CUP.log('ChatUI: Initializing...');
     this.initialized = true;
+    
+    // Check if accurate token counting is available
+    this.checkTokenCountingAvailable();
     
     if (window.APIInterceptor) {
       // Clear attachments when message sent
@@ -31,6 +41,16 @@ class ChatUI {
     this.interceptFileInputs();
     document.addEventListener('paste', (e) => this.handlePaste(e), true);
     document.addEventListener('drop', (e) => this.handleDrop(e), true);
+  }
+  
+  async checkTokenCountingAvailable() {
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
+      this.useAccurateCount = !!(response?.settings?.anthropicApiKey);
+      window.CUP.log('ChatUI: Accurate token counting:', this.useAccurateCount ? 'ENABLED' : 'disabled (no API key)');
+    } catch (e) {
+      this.useAccurateCount = false;
+    }
   }
   
   interceptFileInputs() {
@@ -95,7 +115,6 @@ class ChatUI {
         window.CUP.log('ChatUI: Tracked image:', file.name, width, 'x', height, '=', tokens, 'tokens');
       };
       img.src = url;
-      // Use size-based estimate while loading
       tokens = this.estimateImageTokensFromSize(file.size);
     } else if (file.type === 'application/pdf') {
       const pages = Math.max(1, Math.ceil(file.size / 100000));
@@ -165,6 +184,7 @@ class ChatUI {
             <span class="cup-stat-label">Draft:</span>
             <span class="cup-stat-value" id="cup-draft-tokens">0</span>
             <span class="cup-stat-unit">tokens</span>
+            <span class="cup-accuracy-indicator" id="cup-accuracy" title="Estimated">~</span>
           </span>
           <span class="cup-stat-divider">│</span>
           <span class="cup-stat-item">
@@ -235,6 +255,48 @@ class ChatUI {
     window.CUP.log('ChatUI: Cleared tracked attachments (message sent)');
   }
   
+  // Get accurate token count from Anthropic API
+  async getAccurateTokenCount(text) {
+    if (!text || text.length === 0) return 0;
+    
+    try {
+      const response = await chrome.runtime.sendMessage({ 
+        type: 'COUNT_TOKENS', 
+        text: text 
+      });
+      
+      if (response?.tokens) {
+        return response.tokens;
+      }
+    } catch (e) {
+      window.CUP.log('ChatUI: Token count API error:', e.message);
+    }
+    
+    // Fallback to estimate
+    return Math.ceil(text.length / 4);
+  }
+  
+  // Debounced accurate token counting
+  scheduleAccurateCount(text) {
+    if (this.tokenCountDebounce) {
+      clearTimeout(this.tokenCountDebounce);
+    }
+    
+    // Show estimate immediately with ~ indicator
+    const estimate = Math.ceil(text.length / 4);
+    this.updateDraftDisplay(estimate + this.getAttachmentTokens().tokens, estimate, this.getAttachmentTokens().tokens, this.getAttachmentTokens().count, false);
+    
+    // Schedule accurate count after 500ms of no typing
+    this.tokenCountDebounce = setTimeout(async () => {
+      if (text === this.lastText) {
+        const accurate = await this.getAccurateTokenCount(text);
+        const attachments = this.getAttachmentTokens();
+        this.updateDraftDisplay(accurate + attachments.tokens, accurate, attachments.tokens, attachments.count, true);
+        window.CUP.log('ChatUI: Accurate count:', accurate, 'tokens');
+      }
+    }, 500);
+  }
+  
   startDraftMonitor() {
     if (this.typingInterval) clearInterval(this.typingInterval);
     
@@ -249,25 +311,34 @@ class ChatUI {
           text = '';
         }
         
-        const textTokens = text.length > 0 && window.TokenCounter ? 
-          window.TokenCounter.estimateTokens(text) : 
-          Math.ceil(text.length / 4);
-        
-        const attachments = this.getAttachmentTokens();
-        const totalTokens = textTokens + attachments.tokens;
-        
-        if (totalTokens !== this.lastDraftTokens || attachments.count !== this.lastAttachmentCount) {
-          this.lastDraftTokens = totalTokens;
-          this.lastAttachmentCount = attachments.count;
-          this.updateDraftDisplay(totalTokens, textTokens, attachments.tokens, attachments.count);
+        // Only process if text changed
+        if (text !== this.lastText) {
+          this.lastText = text;
+          
+          if (this.useAccurateCount && text.length > 0) {
+            // Use accurate API counting with debounce
+            this.scheduleAccurateCount(text);
+          } else {
+            // Use estimate
+            const textTokens = text.length > 0 ? Math.ceil(text.length / 4) : 0;
+            const attachments = this.getAttachmentTokens();
+            const totalTokens = textTokens + attachments.tokens;
+            
+            if (totalTokens !== this.lastDraftTokens || attachments.count !== this.lastAttachmentCount) {
+              this.lastDraftTokens = totalTokens;
+              this.lastAttachmentCount = attachments.count;
+              this.updateDraftDisplay(totalTokens, textTokens, attachments.tokens, attachments.count, false);
+            }
+          }
         }
       }
     }, 300);
   }
   
-  updateDraftDisplay(totalTokens, textTokens, attachmentTokens, attachmentCount) {
+  updateDraftDisplay(totalTokens, textTokens, attachmentTokens, attachmentCount, isAccurate) {
     const draftEl = document.getElementById('cup-draft-tokens');
     const filesEl = document.getElementById('cup-files-count');
+    const accuracyEl = document.getElementById('cup-accuracy');
     
     if (draftEl) {
       draftEl.textContent = totalTokens.toLocaleString();
@@ -275,7 +346,7 @@ class ChatUI {
       if (attachmentTokens > 0) {
         draftEl.title = 'Text: ' + textTokens.toLocaleString() + ' + Files: ~' + attachmentTokens.toLocaleString() + ' tokens';
       } else {
-        draftEl.title = 'Estimated tokens in your message';
+        draftEl.title = isAccurate ? 'Accurate token count via Anthropic API' : 'Estimated tokens (~4 chars per token)';
       }
       
       if (totalTokens >= 32000) {
@@ -286,6 +357,19 @@ class ChatUI {
         draftEl.style.color = '#eab308';
       } else {
         draftEl.style.color = '#a1a1aa';
+      }
+    }
+    
+    // Update accuracy indicator
+    if (accuracyEl) {
+      if (isAccurate) {
+        accuracyEl.textContent = '✓';
+        accuracyEl.title = 'Accurate (via Anthropic API)';
+        accuracyEl.style.color = '#22c55e';
+      } else {
+        accuracyEl.textContent = '~';
+        accuracyEl.title = 'Estimated (~4 chars per token)';
+        accuracyEl.style.color = '#6b7280';
       }
     }
     
@@ -301,6 +385,9 @@ class ChatUI {
         filesEl.style.color = '#a1a1aa';
       }
     }
+    
+    this.lastDraftTokens = totalTokens;
+    this.lastAttachmentCount = attachmentCount;
   }
   
   updateUsage(usageData) {
