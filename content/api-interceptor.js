@@ -177,7 +177,7 @@ class APIInterceptorClass {
       // Send token delta to background for hybrid tracking
       try {
         chrome.runtime.sendMessage({
-          type: 'TOKEN_DELTA',
+          type: 'ADD_TOKEN_DELTA',
           inputTokens: tokens,
           outputTokens: 0
         }).catch(() => {});
@@ -341,7 +341,7 @@ class APIInterceptorClass {
       // Send token delta to background for hybrid tracking
       try {
         chrome.runtime.sendMessage({
-          type: 'TOKEN_DELTA',
+          type: 'ADD_TOKEN_DELTA',
           inputTokens: 0,  // Input tokens already tracked in outgoing
           outputTokens: textTokens + thinkingTokens
         }).catch(() => {});

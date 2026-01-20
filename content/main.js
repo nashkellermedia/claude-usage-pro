@@ -45,13 +45,6 @@
   if (window.APIInterceptor) {
     window.CUP.log('Starting API interceptor...');
     window.APIInterceptor.start();
-    
-    // Clear tracked attachments when message is sent
-    window.APIInterceptor.on('onMessageSent', () => {
-      if (window.cupChatUI && window.cupChatUI.clearTrackedAttachments) {
-        window.cupChatUI.clearTrackedAttachments();
-      }
-    });
   }
   
   // Initialize components based on settings
@@ -107,7 +100,7 @@
         if (window.cupScraper) {
           window.cupScraper.scrapeUsage().then(data => {
             if (data) {
-              window.CUP.sendToBackground({ type: 'SYNC_SCRAPED_DATA', data });
+              window.CUP.sendToBackground({ type: 'SYNC_SCRAPED_DATA', usageData: data });
             }
           });
         }
@@ -174,7 +167,7 @@
     }
     
     // Toggle voice
-    const voiceBtn = document.getElementById('cup-voice-btn');
+    const voiceBtn = document.querySelector('.cup-voice-btn');
     if (settings.enableVoice) {
       if (!voiceBtn && window.VoiceInput) {
         window.CUP.log('Enabling voice input...');

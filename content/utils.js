@@ -111,37 +111,6 @@ window.CUP.formatTokens = function(tokens) {
   return tokens.toLocaleString();
 };
 
-// Detect current model from page
-window.CUP.getCurrentModel = function() {
-  // Look for model selector
-  const selectors = [
-    '[data-testid="model-selector"]',
-    '[class*="model"]',
-    'button:contains("Sonnet")',
-    'button:contains("Opus")',
-    'button:contains("Haiku")'
-  ];
-  
-  for (const sel of selectors) {
-    try {
-      const el = document.querySelector(sel);
-      if (el) {
-        const text = el.textContent?.toLowerCase() || '';
-        if (text.includes('opus')) return 'claude-opus-4';
-        if (text.includes('haiku')) return 'claude-haiku-4';
-        if (text.includes('sonnet')) return 'claude-sonnet-4';
-      }
-    } catch (e) {}
-  }
-  
-  // Check for model in URL or body text
-  const bodyText = document.body?.innerText?.toLowerCase() || '';
-  if (bodyText.includes('opus')) return 'claude-opus-4';
-  if (bodyText.includes('haiku')) return 'claude-haiku-4';
-  
-  return 'claude-sonnet-4';
-};
-
 // Estimate tokens from text
 window.CUP.estimateTokens = function(text) {
   if (!text) return 0;

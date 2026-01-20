@@ -205,7 +205,7 @@ class UsageScraper {
     
     if (data) {
       this.lastScrapedData = data;
-      window.CUP.sendToBackground({ type: 'SYNC_SCRAPED_DATA', data });
+      window.CUP.sendToBackground({ type: 'SYNC_SCRAPED_DATA', usageData: data });
       window.CUP.log('UsageScraper: Data synced to background');
     } else {
       window.CUP.log('UsageScraper: Failed to scrape - content may not have loaded');

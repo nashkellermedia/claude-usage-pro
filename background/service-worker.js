@@ -1,5 +1,5 @@
 /**
- * Claude Usage Pro - Background Service Worker v2.1.0
+ * Claude Usage Pro - Background Service Worker v2.1.6
  * 
  * FEATURES:
  * 1. Firebase Anonymous Auth - Proper security via REST API
@@ -826,6 +826,7 @@ async function handleMessage(message, sender) {
       return { usageData };
     }
 
+    case 'SYNC_SCRAPED_DATA':
     case 'USAGE_SCRAPED': {
       const { usageData } = message;
       if (!usageData) return { success: false };
@@ -1001,7 +1002,7 @@ async function handleMessage(message, sender) {
 // ============================================================================
 
 async function initializeExtension() {
-  console.log('[CUP BG] Initializing Claude Usage Pro v2.1.0...');
+  console.log('[CUP BG] Initializing Claude Usage Pro v2.1.6...');
 
   // Initialize hybrid tracker
   hybridTracker = new HybridTracker();
