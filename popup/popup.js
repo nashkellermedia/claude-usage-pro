@@ -532,7 +532,14 @@ if (els.pullFirebaseBtn) {
 }
 
 if (els.firebaseHelp) {
-  els.firebaseHelp.addEventListener('click', () => els.firebaseInstructions.classList.toggle('hidden'));
+  els.firebaseHelp.addEventListener('click', () => {
+    els.firebaseInstructions.classList.toggle('hidden');
+    if (!els.firebaseInstructions.classList.contains('hidden')) {
+      setTimeout(() => {
+        els.firebaseInstructions.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 50);
+    }
+  });
 }
 
 els.viewAnalytics.addEventListener('click', () => {
