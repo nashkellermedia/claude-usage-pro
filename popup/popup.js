@@ -394,11 +394,11 @@ async function loadAnalytics(days = 30) {
       displayAnalytics(response.summary);
     } else {
       console.log('[CUP Popup] No summary in response, showing empty state');
-      els.analyticsSummary.innerHTML = '<p>No analytics data yet.</p><p style="font-size:11px;color:#888;">Debug: response=' + JSON.stringify(response) + '</p>';
+      els.analyticsSummary.innerHTML = '<p>No analytics data yet.</p><p class="hint">Click refresh to start tracking your usage.</p>';
     }
   } catch (e) {
     console.error('[CUP Popup] Analytics error:', e);
-    els.analyticsSummary.innerHTML = '<p>Error loading analytics: ' + e.message + '</p>';
+    els.analyticsSummary.innerHTML = '<p>Error loading analytics. Try refreshing.</p>';
   }
 }
 

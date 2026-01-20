@@ -1,5 +1,5 @@
 /**
- * Claude Usage Pro - Background Service Worker v2.1.6
+ * Claude Usage Pro - Background Service Worker
  * 
  * FEATURES:
  * 1. Firebase Anonymous Auth - Proper security via REST API
@@ -8,6 +8,11 @@
  * 4. FirebaseSync - Secure cross-device sync with auth
  * 5. UsageAnalytics - Historical tracking synced to Firebase
  */
+
+// Debug mode - set to true for verbose logging
+const DEBUG = false;
+const log = (...args) => DEBUG && log('[CUP]', ...args);
+const logError = (...args) => console.error('[CUP]', ...args);
 
 // ============================================================================
 // Firebase Auth Class - Anonymous Authentication via REST API
@@ -24,7 +29,7 @@ class FirebaseAuth {
 
   async initialize(apiKey) {
     if (!apiKey || !apiKey.trim()) {
-      console.log('[FirebaseAuth] No API key provided');
+      log('[FirebaseAuth] No API key provided');
       return false;
     }
     
@@ -39,7 +44,7 @@ class FirebaseAuth {
       // Refresh the token
       const refreshed = await this.refreshIdToken();
       if (refreshed) {
-        console.log('[FirebaseAuth] Restored session for UID:', this.uid);
+        log('[FirebaseAuth] Restored session for UID:', this.uid);
         return true;
       }
     }
@@ -80,7 +85,7 @@ class FirebaseAuth {
         }
       });
       
-      console.log('[FirebaseAuth] Signed in anonymously, UID:', this.uid);
+      log('[FirebaseAuth] Signed in anonymously, UID:', this.uid);
       return true;
     } catch (e) {
       console.error('[FirebaseAuth] Sign in error:', e.message);
@@ -239,13 +244,13 @@ class FirebaseSync {
 
     this.deviceId = await this.getOrCreateDeviceId();
     
-    console.log('[FirebaseSync] Initializing with syncId:', this.syncId || '(using UID)');
+    log('[FirebaseSync] Initializing with syncId:', this.syncId || '(using UID)');
     
     const connected = await this.testConnection();
     if (connected) {
       this.syncEnabled = true;
       this.startAutoSync();
-      console.log('[FirebaseSync] Initialized with auth');
+      log('[FirebaseSync] Initialized with auth');
       return true;
     }
 
@@ -314,7 +319,7 @@ class FirebaseSync {
   disable() {
     this.syncEnabled = false;
     this.stopAutoSync();
-    console.log('[FirebaseSync] Disabled');
+    log('[FirebaseSync] Disabled');
   }
 
   // Sync usage data
@@ -424,7 +429,7 @@ class FirebaseSync {
     
     // Pull remote changes every 60 seconds (staggered from push)
     this.pullInterval = setInterval(async () => {
-      console.log('[FirebaseSync] Auto-pulling from Firebase...');
+      log('[FirebaseSync] Auto-pulling from Firebase...');
       await pullFromFirebase();
       
       // Notify tabs of any changes
@@ -495,7 +500,7 @@ class HybridTracker {
     this.delta = { inputTokens: 0, outputTokens: 0, lastReset: now };
     await this.save();
     this.updateEstimate();
-    console.log('[HybridTracker] New baseline from', source);
+    log('[HybridTracker] New baseline from', source);
     return this.baseline;
   }
 
@@ -581,7 +586,7 @@ class HybridTracker {
       if (data.tokenRates) this.tokenRates = data.tokenRates;
       await this.save();
       this.updateEstimate();
-      console.log('[HybridTracker] Merged from Firebase');
+      log('[HybridTracker] Merged from Firebase');
     }
   }
 
@@ -617,13 +622,13 @@ class UsageAnalytics {
         if (this.data.dailySnapshots) {
           for (const [date, value] of Object.entries(this.data.dailySnapshots)) {
             if (!Array.isArray(value)) {
-              console.log('[UsageAnalytics] Fixing corrupted entry for', date);
+              log('[UsageAnalytics] Fixing corrupted entry for', date);
               this.data.dailySnapshots[date] = [];
             }
           }
         }
       }
-      console.log('[UsageAnalytics] Initialized with', Object.keys(this.data.dailySnapshots || {}).length, 'days of data');
+      log('[UsageAnalytics] Initialized with', Object.keys(this.data.dailySnapshots || {}).length, 'days of data');
       return true;
     } catch (e) {
       console.error('[UsageAnalytics] Init error:', e.message);
@@ -632,7 +637,7 @@ class UsageAnalytics {
   }
 
   async recordSnapshot(usageData) {
-    console.log('[UsageAnalytics] recordSnapshot called with:', usageData?.currentSession?.percent, usageData?.weeklyAllModels?.percent);
+    log('[UsageAnalytics] recordSnapshot called with:', usageData?.currentSession?.percent, usageData?.weeklyAllModels?.percent);
     if (!usageData) return;
     
     const today = new Date().toISOString().split('T')[0];
@@ -868,7 +873,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 async function handleMessage(message, sender) {
   switch (message.type) {
     case 'GET_USAGE_DATA': {
-      console.log('[CUP BG] GET_USAGE_DATA called, recordSnapshot:', message.recordSnapshot);
+      log('[CUP BG] GET_USAGE_DATA called, recordSnapshot:', message.recordSnapshot);
       const usageData = await getUsageData();
       
       // Merge with estimates if available
@@ -894,10 +899,10 @@ async function handleMessage(message, sender) {
       
       // Record analytics snapshot if requested and we have valid data
       if (message.recordSnapshot && usageAnalytics) {
-        console.log('[CUP BG] Recording snapshot, currentSession:', merged.currentSession?.percent);
+        log('[CUP BG] Recording snapshot, currentSession:', merged.currentSession?.percent);
         if (merged.currentSession?.percent > 0 || merged.weeklyAllModels?.percent > 0) {
           await usageAnalytics.recordSnapshot(merged);
-          console.log('[CUP BG] Snapshot recorded successfully');
+          log('[CUP BG] Snapshot recorded successfully');
         }
       }
       
@@ -978,8 +983,8 @@ async function handleMessage(message, sender) {
       const syncIdChanged = updated.firebaseSyncId !== current.firebaseSyncId;
       
       if (authChanged || urlChanged || syncIdChanged) {
-        console.log('[CUP BG] Firebase config changed, reinitializing...');
-        console.log('[CUP BG] authChanged:', authChanged, 'urlChanged:', urlChanged, 'syncIdChanged:', syncIdChanged);
+        log('[CUP BG] Firebase config changed, reinitializing...');
+        log('[CUP BG] authChanged:', authChanged, 'urlChanged:', urlChanged, 'syncIdChanged:', syncIdChanged);
         
         // Initialize auth
         if (updated.firebaseApiKey) {
@@ -998,11 +1003,11 @@ async function handleMessage(message, sender) {
               const hasExistingData = existingData?.currentSession?.percent > 0 || 
                                       existingData?.weeklyAllModels?.percent > 0;
               
-              console.log('[CUP BG] Has existing local data:', hasExistingData);
+              log('[CUP BG] Has existing local data:', hasExistingData);
               
               if (syncIdChanged && updated.firebaseSyncId && hasExistingData) {
                 // Profile with data adding sync ID -> push to new path
-                console.log('[CUP BG] Sync ID changed with existing data, pushing to new path...');
+                log('[CUP BG] Sync ID changed with existing data, pushing to new path...');
                 
                 // Combine tracker state and usage data
                 const syncData = {};
@@ -1018,10 +1023,10 @@ async function handleMessage(message, sender) {
                   await firebaseSync.syncAnalytics(await usageAnalytics.export());
                 }
                 await firebaseSync.syncSettings(updated);
-                console.log('[CUP BG] Data pushed to new sync path');
+                log('[CUP BG] Data pushed to new sync path');
               } else {
                 // New profile or no local data -> pull from Firebase
-                console.log('[CUP BG] Pulling data from Firebase...');
+                log('[CUP BG] Pulling data from Firebase...');
                 await pullFromFirebase();
               }
             }
@@ -1038,7 +1043,7 @@ async function handleMessage(message, sender) {
         if (updated.anthropicApiKey) {
           tokenCounter = new AnthropicTokenCounter();
           tokenCounter.setApiKey(updated.anthropicApiKey);
-          console.log('[CUP BG] Anthropic token counter configured');
+          log('[CUP BG] Anthropic token counter configured');
         } else {
           tokenCounter = null;
         }
@@ -1081,17 +1086,17 @@ async function handleMessage(message, sender) {
         if (usageData.weeklySonnet) syncData.weeklySonnet = usageData.weeklySonnet;
         
         await firebaseSync.syncUsage(syncData);
-        console.log('[CUP BG] Pushed usage data:', syncData.currentSession?.percent, syncData.weeklyAllModels?.percent);
+        log('[CUP BG] Pushed usage data:', syncData.currentSession?.percent, syncData.weeklyAllModels?.percent);
         
         if (usageAnalytics) {
           const analyticsData = await usageAnalytics.export();
           await firebaseSync.syncAnalytics(analyticsData);
-          console.log('[CUP BG] Pushed analytics');
+          log('[CUP BG] Pushed analytics');
         }
         
         const settings = await getSettings();
         await firebaseSync.syncSettings(settings);
-        console.log('[CUP BG] Pushed settings');
+        log('[CUP BG] Pushed settings');
         
         return { success: true };
       } catch (e) {
@@ -1118,8 +1123,8 @@ async function handleMessage(message, sender) {
     }
 
     case 'GET_ANALYTICS_SUMMARY': {
-      console.log('[CUP BG] GET_ANALYTICS_SUMMARY, usageAnalytics exists:', !!usageAnalytics);
-      console.log('[CUP BG] dailySnapshots:', Object.keys(usageAnalytics?.data?.dailySnapshots || {}));
+      log('[CUP BG] GET_ANALYTICS_SUMMARY, usageAnalytics exists:', !!usageAnalytics);
+      log('[CUP BG] dailySnapshots:', Object.keys(usageAnalytics?.data?.dailySnapshots || {}));
       if (!usageAnalytics) return { summary: null };
       return { summary: usageAnalytics.getSummary(message.days || 30) };
     }
@@ -1133,7 +1138,7 @@ async function handleMessage(message, sender) {
           peakUsage: { session: 0, weeklyAll: 0, weeklySonnet: 0 }
         };
         await usageAnalytics.save();
-        console.log('[CUP BG] Analytics reset');
+        log('[CUP BG] Analytics reset');
       }
       return { success: true };
     }
@@ -1162,18 +1167,18 @@ async function handleMessage(message, sender) {
 
 async function pullFromFirebase() {
   if (!firebaseSync?.syncEnabled) {
-    console.log('[CUP BG] pullFromFirebase: sync not enabled');
+    log('[CUP BG] pullFromFirebase: sync not enabled');
     return;
   }
   
-  console.log('[CUP BG] pullFromFirebase: starting pull from path:', firebaseSync.getBasePath());
+  log('[CUP BG] pullFromFirebase: starting pull from path:', firebaseSync.getBasePath());
   
   try {
     // Pull usage data (hybrid tracker state)
     const syncedData = await firebaseSync.getMergedUsage();
-    console.log('[CUP BG] Pulled usage data:', syncedData ? 'got data' : 'empty/null');
+    log('[CUP BG] Pulled usage data:', syncedData ? 'got data' : 'empty/null');
     if (syncedData) {
-      console.log('[CUP BG] Usage data keys:', Object.keys(syncedData));
+      log('[CUP BG] Usage data keys:', Object.keys(syncedData));
       
       // Merge into hybrid tracker
       if (syncedData.baseline && hybridTracker) {
@@ -1197,14 +1202,14 @@ async function pullFromFirebase() {
         const merged = { ...current, ...usageForStorage, lastUpdated: Date.now() };
         await chrome.storage.local.set({ usageData: merged });
         await updateBadge(merged);
-        console.log('[CUP BG] Stored usage:', merged.currentSession?.percent, merged.weeklyAllModels?.percent);
+        log('[CUP BG] Stored usage:', merged.currentSession?.percent, merged.weeklyAllModels?.percent);
       }
     }
     
     // Pull analytics
     const analytics = await firebaseSync.getAnalytics();
     if (analytics && usageAnalytics) {
-      console.log('[CUP BG] Pulled analytics from Firebase');
+      log('[CUP BG] Pulled analytics from Firebase');
       usageAnalytics.data = { 
         ...usageAnalytics.data, 
         ...analytics,
@@ -1217,9 +1222,9 @@ async function pullFromFirebase() {
     
     // Pull settings (including anthropicApiKey)
     const syncedSettings = await firebaseSync.getSettings();
-    console.log('[CUP BG] Synced settings from Firebase:', JSON.stringify(syncedSettings));
+    log('[CUP BG] Synced settings from Firebase:', JSON.stringify(syncedSettings));
     if (syncedSettings) {
-      console.log('[CUP BG] Pulled settings from Firebase, has anthropicApiKey:', !!syncedSettings.anthropicApiKey);
+      log('[CUP BG] Pulled settings from Firebase, has anthropicApiKey:', !!syncedSettings.anthropicApiKey);
       const currentSettings = await getSettings();
       
       // Merge synced settings, but don't overwrite Firebase credentials
@@ -1234,7 +1239,7 @@ async function pullFromFirebase() {
       // Always sync anthropicApiKey from Firebase if available
       if (syncedSettings.anthropicApiKey) {
         mergedSettings.anthropicApiKey = syncedSettings.anthropicApiKey;
-        console.log('[CUP BG] Pulled Anthropic API key from Firebase');
+        log('[CUP BG] Pulled Anthropic API key from Firebase');
         
         // Initialize token counter with pulled key
         if (!tokenCounter) {
@@ -1246,7 +1251,7 @@ async function pullFromFirebase() {
       await chrome.storage.local.set({ settings: mergedSettings });
     }
     
-    console.log('[CUP BG] Firebase pull complete');
+    log('[CUP BG] Firebase pull complete');
   } catch (e) {
     console.error('[CUP BG] Firebase pull error:', e.message);
   }
@@ -1257,7 +1262,7 @@ async function pullFromFirebase() {
 // ============================================================================
 
 async function initializeExtension() {
-  console.log('[CUP BG] Initializing Claude Usage Pro v2.1.6...');
+  log('[CUP BG] Initializing Claude Usage Pro v2.1.6...');
 
   // Initialize hybrid tracker
   hybridTracker = new HybridTracker();
@@ -1274,7 +1279,7 @@ async function initializeExtension() {
   if (settings.anthropicApiKey) {
     tokenCounter = new AnthropicTokenCounter();
     tokenCounter.setApiKey(settings.anthropicApiKey);
-    console.log('[CUP BG] Anthropic token counter configured');
+    log('[CUP BG] Anthropic token counter configured');
   }
 
   // Initialize Firebase Auth
@@ -1288,7 +1293,7 @@ async function initializeExtension() {
       
       // Auto-pull data from Firebase on startup
       if (syncInitialized) {
-        console.log('[CUP BG] Firebase connected, pulling data from cloud...');
+        log('[CUP BG] Firebase connected, pulling data from cloud...');
         await pullFromFirebase();
       }
     }
@@ -1307,7 +1312,7 @@ async function initializeExtension() {
   const usageData = await getUsageData();
   await updateBadge(usageData);
 
-  console.log('[CUP BG] Initialization complete');
+  log('[CUP BG] Initialization complete');
 }
 
 // Run initialization
@@ -1320,4 +1325,10 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     const usageData = await getUsageData();
     await updateBadge(usageData);
   }
+});
+
+// Global error handler for unhandled promise rejections
+self.addEventListener('unhandledrejection', (event) => {
+  logError('Unhandled rejection:', event.reason);
+  event.preventDefault();
 });
