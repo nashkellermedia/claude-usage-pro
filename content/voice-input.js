@@ -47,14 +47,52 @@ class VoiceInput {
   }
   
   setupKeyboardShortcut() {
+    // Ctrl+Shift+V to toggle
     document.addEventListener('keydown', (e) => {
-      // Ctrl+Shift+V (Windows/Linux) or Cmd+Shift+V (Mac)
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'v') {
         e.preventDefault();
         e.stopPropagation();
         this.toggle();
       }
     });
+    
+    // Hold-to-talk with X key (when not typing in an input)
+    this.holdToTalkActive = false;
+    
+    document.addEventListener('keydown', (e) => {
+      // Only X key, not in an input field, not repeating
+      if (e.key.toLowerCase() !== 'x' || e.repeat) return;
+      if (this.isTypingInInput()) return;
+      
+      e.preventDefault();
+      if (!this.holdToTalkActive && !this.isListening) {
+        this.holdToTalkActive = true;
+        this.start();
+        window.CUP.log('VoiceInput: Hold-to-talk started');
+      }
+    });
+    
+    document.addEventListener('keyup', (e) => {
+      if (e.key.toLowerCase() !== 'x') return;
+      
+      if (this.holdToTalkActive) {
+        this.holdToTalkActive = false;
+        this.stop();
+        window.CUP.log('VoiceInput: Hold-to-talk ended');
+      }
+    });
+  }
+  
+  isTypingInInput() {
+    const active = document.activeElement;
+    if (!active) return false;
+    
+    const tagName = active.tagName.toLowerCase();
+    if (tagName === 'input' || tagName === 'textarea') return true;
+    if (active.contentEditable === 'true') return true;
+    if (active.closest('[contenteditable="true"]')) return true;
+    
+    return false;
   }
   
   findSendButton() {
@@ -122,7 +160,7 @@ class VoiceInput {
     btn.className = 'cup-voice-btn';
     btn.type = 'button';
     btn.innerHTML = this.isListening ? '🔴' : '🎤';
-    btn.title = this.isListening ? 'Listening... (Ctrl+Shift+V to stop)' : 'Voice Input (Ctrl+Shift+V)';
+    btn.title = this.isListening ? 'Listening... (Ctrl+Shift+V to stop)' : 'Voice Input (hold X or Ctrl+Shift+V)';
     if (this.isListening) btn.classList.add('listening');
     
     btn.addEventListener('click', (e) => {
@@ -239,7 +277,7 @@ class VoiceInput {
     } else {
       btn.innerHTML = '🎤';
       btn.classList.remove('listening');
-      btn.title = 'Voice Input (Ctrl+Shift+V)';
+      btn.title = 'Voice Input (hold X or Ctrl+Shift+V)';
     }
   }
 }
