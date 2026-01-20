@@ -644,3 +644,27 @@ input[type="password"].setting-input {
   margin-bottom: 6px;
   font-size: 11px;
 }
+
+/* Help Button */
+.btn-help {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: all 0.2s;
+}
+
+.btn-help:hover {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}

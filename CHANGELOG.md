@@ -1,65 +1,70 @@
-# Claude Usage Pro - Changelog
+# Changelog
 
-## v1.6.0 (Current)
+All notable changes to Claude Usage Pro.
 
-### New Features
+## [2.1.23] - 2025-01-20
 
-#### 🎯 Context Usage Indicator
-- **Visual progress bar** at the top of every Claude.ai page
-- Shows real-time estimate of context usage in current chat
-- **Color-coded warnings**:
-  - 🟢 **Green (0-60%)**: Good - Plenty of context available
-  - 🟡 **Yellow (60-85%)**: Warning - Getting full, consider wrapping up
-  - 🔴 **Red (85-100%)**: Danger - High usage, start new session for best performance
-- Displays estimated tokens used vs. total (e.g., "45K / 200K tokens")
-- Updates every 2 seconds
-- Helps you know when to start a new chat session to maintain Claude's performance
+### Fixed
+- Sidebar/overlay now populate with data immediately when enabled via settings (no refresh needed)
 
-#### 🔥 Firebase Settings Restored
-- Added back Firebase configuration in Settings panel
-- Input field for Firebase Realtime Database URL
-- Built-in help button (ℹ️) with complete setup instructions
-- Optional cross-device sync capability
-- Instructions include:
-  - How to create a Firebase project
-  - Setting up Realtime Database
-  - Configuring security rules
-  - Getting your database URL
+## [2.1.22] - 2025-01-20
 
-### Technical Changes
-- Added `content/context-indicator.js` for context tracking
-- Enhanced CSS for Firebase fields and help tooltips
-- Updated popup.js to handle Firebase URL storage
-- Improved manifest structure
+### Changed
+- All usage metrics now use consistent semantic colors (green/orange/red based on %)
+- Removed purple color for Sonnet - now uses same health-based coloring
 
-### Files Modified
-- `popup/popup.html` - Added Firebase settings section
-- `popup/popup.js` - Added Firebase handling and help toggle
-- `popup/popup.css` - Added styles for Firebase inputs and help icon
-- `content/styles.css` - Added context indicator styles
-- `content/main.js` - Initialize context indicator
-- `manifest.json` - Added context-indicator.js, bumped to v1.6.0
+## [2.1.21] - 2025-01-20
 
----
+### Improved
+- Better file attachment detection for .md, .doc, .pdf and other file types
+- Detection now finds file chips by looking for remove buttons + filename patterns
 
-## v1.5.0
+## [2.1.20] - 2025-01-20
 
-### Features
-- Voice-to-text input with microphone button
-- Customizable badge display options
-- Independent UI component toggles
-- Enhanced sidebar positioning
-- Improved model detection
+### Fixed
+- Ultra-conservative attachment detection to eliminate false positives
+- Added clear button (✕) next to file count for manual reset
 
-### Bug Fixes
-- Fixed Opus 4.5 model detection
-- Corrected sidebar placement between Code and Starred sections
-- Improved data scraping accuracy
+## [2.1.19] - 2025-01-20
 
----
+### Fixed
+- Data structure mismatch in Firebase sync causing popup to show 0% while sidebar showed correct data
+- Settings changes now create UI elements immediately if they were missing
 
-## v1.4.0 and Earlier
-- Initial release with usage tracking
-- Sidebar widget implementation
-- Chat overlay stats
-- Weekly usage limits tracking
+## [2.1.18] - 2025-01-20
+
+### Added
+- Auto-pull from Firebase every 60 seconds for cross-device sync
+
+## [2.1.17] - 2025-01-20
+
+### Added
+- Push button to manually upload data to Firebase
+- Better logic for Sync ID changes (push if has data, pull if empty)
+
+## [2.1.16] - 2025-01-20
+
+### Fixed
+- Simplified voice button injection for more reliable persistence
+
+## [2.1.15] - 2025-01-20
+
+### Added
+- **Sync ID** for cross-device/cross-profile sync via Firebase
+- Same Sync ID on multiple devices = shared data
+
+## [2.1.0] - 2025-01-20
+
+### Added
+- Firebase sync for cross-device usage tracking
+- Anthropic API integration for accurate token counting
+- Voice input with speech-to-text (Ctrl+Shift+V)
+- Usage analytics with daily snapshots
+- Sidebar widget and chat overlay
+
+## [1.0.0] - 2025-01-13
+
+### Initial Release
+- Basic usage tracking via page scraping
+- Popup dashboard with usage stats
+- Local storage for data persistence
