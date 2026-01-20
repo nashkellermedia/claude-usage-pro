@@ -56,62 +56,65 @@ class VoiceInput {
       }
     });
     
-    // Hold-to-talk with V key (when not typing in an input)
+    // Hold-to-talk with V key - uses long-press detection (300ms)
+    // Quick tap = types V normally, hold = voice input
     this.holdToTalkActive = false;
+    this.vKeyDownTime = 0;
+    this.vKeyTimer = null;
     
     document.addEventListener('keydown', (e) => {
       // Only plain V key (no modifiers), not repeating
       if (e.key.toLowerCase() !== 'v' || e.repeat) return;
       if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
       
-      // Skip if actively typing in an input field
-      if (this.isTypingInInput()) return;
+      // Record when V was pressed
+      this.vKeyDownTime = Date.now();
       
-      // Prevent the V character from being typed
-      e.preventDefault();
-      e.stopPropagation();
-      
-      // Start recording if not already in hold-to-talk mode
-      if (!this.holdToTalkActive) {
-        this.holdToTalkActive = true;
-        this.isListening = false;
-        
-        // Force stop any existing session, then start fresh
-        if (this.recognition) {
-          try { this.recognition.stop(); } catch(err) {}
+      // After 300ms of holding, trigger voice input
+      this.vKeyTimer = setTimeout(() => {
+        if (this.vKeyDownTime > 0) {
+          this.holdToTalkActive = true;
+          
+          // Delete the V character that was typed
+          const input = document.querySelector('[contenteditable="true"]');
+          if (input) {
+            const p = input.querySelector('p') || input;
+            const text = p.innerText || '';
+            // Remove trailing V (or v)
+            if (text.endsWith('v') || text.endsWith('V')) {
+              p.innerText = text.slice(0, -1);
+              input.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+          }
+          
+          // Start voice recording
+          this.isListening = false;
+          if (this.recognition) {
+            try { this.recognition.stop(); } catch(err) {}
+          }
+          setTimeout(() => this.start(), 50);
+          window.CUP.log('VoiceInput: Hold-to-talk started (long press)');
         }
-        
-        setTimeout(() => {
-          this.start();
-        }, 100);
-        window.CUP.log('VoiceInput: Hold-to-talk started');
-      }
-    }, true);  // Capture phase to intercept before page
+      }, 300);
+    }, true);
     
     document.addEventListener('keyup', (e) => {
       if (e.key.toLowerCase() !== 'v') return;
       
+      // Clear the timer if released before 300ms
+      if (this.vKeyTimer) {
+        clearTimeout(this.vKeyTimer);
+        this.vKeyTimer = null;
+      }
+      this.vKeyDownTime = 0;
+      
+      // Stop recording if it was active
       if (this.holdToTalkActive) {
         this.holdToTalkActive = false;
         this.stop();
-        // Blur the input so next V press works
-        const input = document.querySelector('[contenteditable="true"]');
-        if (input) input.blur();
         window.CUP.log('VoiceInput: Hold-to-talk ended');
       }
     }, true);
-  }
-  
-  isTypingInInput() {
-    const active = document.activeElement;
-    if (!active) return false;
-    
-    const tagName = active.tagName.toLowerCase();
-    if (tagName === 'input' || tagName === 'textarea') return true;
-    if (active.contentEditable === 'true') return true;
-    if (active.closest('[contenteditable="true"]')) return true;
-    
-    return false;
   }
   
   findSendButton() {
@@ -179,7 +182,7 @@ class VoiceInput {
     btn.className = 'cup-voice-btn';
     btn.type = 'button';
     btn.innerHTML = this.isListening ? '🔴' : '🎤';
-    btn.title = this.isListening ? 'Listening... (Ctrl+Shift+V to stop)' : 'Voice Input (hold V or Ctrl+Shift+V)';
+    btn.title = this.isListening ? 'Listening... (Ctrl+Shift+V to stop)' : 'Voice Input (long-press V or Ctrl+Shift+V)';
     if (this.isListening) btn.classList.add('listening');
     
     btn.addEventListener('click', (e) => {
@@ -296,7 +299,7 @@ class VoiceInput {
     } else {
       btn.innerHTML = '🎤';
       btn.classList.remove('listening');
-      btn.title = 'Voice Input (hold V or Ctrl+Shift+V)';
+      btn.title = 'Voice Input (long-press V or Ctrl+Shift+V)';
     }
   }
 }
