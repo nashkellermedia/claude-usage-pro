@@ -180,10 +180,10 @@ class ChatUI {
     if (!form) return attachments;
     
     // File extension pattern
-    const fileExtensions = 'pdf|txt|md|csv|json|doc|docx|xlsx|xls|py|js|ts|html|css|xml|zip|c|cpp|h|java|rb|go|rs|swift|kt';
+    const fileExtensions = 'pdf|txt|md|csv|json|doc|docx|xlsx|xls|py|js|ts|html|css|xml|zip|c|cpp|h|java|rb|go|rs|swift|kt|png|jpg|jpeg|gif|webp|svg|bmp|ico';
     const fileRegex = new RegExp(`([^\\s\\/\\\\<>"']+\\.(${fileExtensions}))`, 'i');
     
-    // Helper: is element actually visible and in composer area (ABOVE text input)
+    // Helper: is element actually visible and in composer area
     const isValidAttachment = (el) => {
       if (!el) return false;
       
@@ -194,16 +194,56 @@ class ChatUI {
       
       const rect = el.getBoundingClientRect();
       if (rect.width < 20 || rect.height < 20) return false;
-      if (rect.bottom > composerRect.top + 20) return false;
-      if (rect.top < composerRect.top - 300) return false;
+      
+      // Check if element is reasonably near the composer (within 400px above or 100px below)
+      // Claude's UI may position attachments above OR within the form area
+      if (rect.top < composerRect.top - 400) return false;
+      if (rect.top > composerRect.bottom + 100) return false;
       
       return true;
     };
     
-    // METHOD 1: Images with Claude API file URLs - these are DEFINITELY uploads
+    // METHOD 0: Any image in the form that has a remove/close button as sibling or in parent
+    // This is the most reliable way to detect uploaded images regardless of src format
+    const allFormImages = form.querySelectorAll('img');
+    for (const img of allFormImages) {
+      if (!isValidAttachment(img)) continue;
+      if (attachments.some(a => a.id === img.src)) continue;
+      
+      // Check for remove button in parent hierarchy (up to 3 levels)
+      let hasRemove = false;
+      let container = img.parentElement;
+      for (let i = 0; i < 3 && container && container !== form; i++) {
+        const buttons = container.querySelectorAll('button');
+        for (const btn of buttons) {
+          const label = (btn.getAttribute('aria-label') || btn.textContent || '').toLowerCase();
+          const svg = btn.querySelector('svg');
+          const hasX = svg && (btn.innerHTML.includes('M6') || btn.innerHTML.includes('close') || btn.innerHTML.includes('x'));
+          if (label.includes('remove') || label.includes('delete') || label.includes('close') || hasX) {
+            hasRemove = true;
+            break;
+          }
+        }
+        if (hasRemove) break;
+        container = container.parentElement;
+      }
+      
+      if (hasRemove) {
+        const tokens = this.estimateImageTokens(img.naturalWidth || img.width || 400, img.naturalHeight || img.height || 400);
+        attachments.push({
+          id: img.src,
+          name: 'uploaded image',
+          type: 'image',
+          tokens
+        });
+        window.CUP.log('ChatUI: Found image with remove button:', img.src.substring(0, 50));
+      }
+    }
+    
+    // METHOD 1: Images with Claude API file URLs - these are DEFINITELY uploads (backup)
     const apiImages = form.querySelectorAll('img[src*="/api/"][src*="/files/"]');
     for (const img of apiImages) {
-      if (isValidAttachment(img)) {
+      if (isValidAttachment(img) && !attachments.some(a => a.id === img.src)) {
         const tokens = this.estimateImageTokens(img.naturalWidth || img.width || 400, img.naturalHeight || img.height || 400);
         attachments.push({
           id: img.src,

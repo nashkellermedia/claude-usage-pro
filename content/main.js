@@ -245,20 +245,20 @@
             window.cupChatUI.clearManualAttachments();
           });
         }
-        needsDataRefresh = true;
+        // Trigger immediate draft update to reflect new settings
+        window.cupChatUI.lastAttachmentCount = -1; // Force recount
+        window.CUP.log('Stats bar rebuilt, forcing attachment recount');
       });
     }
     
-    // If we created new UI elements, fetch and display current data
-    if (needsDataRefresh) {
-      chrome.runtime.sendMessage({ type: 'GET_USAGE_DATA' }).then(response => {
-        if (response?.usageData) {
-          if (window.cupSidebar) window.cupSidebar.update(response.usageData);
-          if (window.cupChatUI) window.cupChatUI.updateUsage(response.usageData);
-          window.CUP.log('Populated new UI with current data');
-        }
-      }).catch(() => {});
-    }
+    // Always refresh data after settings change to update UI
+    chrome.runtime.sendMessage({ type: 'GET_USAGE_DATA' }).then(response => {
+      if (response?.usageData) {
+        if (window.cupSidebar) window.cupSidebar.update(response.usageData);
+        if (window.cupChatUI) window.cupChatUI.updateUsage(response.usageData);
+        window.CUP.log('Refreshed UI with current data after settings update');
+      }
+    }).catch(() => {});
     
     // Toggle voice
     if (settings.enableVoice) {
