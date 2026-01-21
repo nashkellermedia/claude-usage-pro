@@ -150,20 +150,14 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 8px 16px;
+  padding: 6px 16px;
   font-size: 12px;
   color: inherit;
   font-family: inherit;
-  margin-top: 4px;
-  background-color: #292929;
-  border-radius: 8px;
-}
-
-/* Light mode background */
-@media (prefers-color-scheme: light) {
-  #cup-input-stats {
-    background-color: #f5f4ef;
-  }
+  margin-top: -8px;
+  border-radius: 0 0 24px 24px;
+  position: relative;
+  z-index: 1;
 }
 
 #cup-input-stats .cup-stat-item {
