@@ -321,81 +321,71 @@ async function loadTrackingStatus() {
 function updateTrackingStatus(hybrid, firebase, settings) {
   if (!els.trackingIndicator || !els.trackingText) return;
   
-  let parts = [];
   let statusColor = '#22c55e'; // Start green, downgrade if issues
-  let issues = [];
+  let statusText = '';
+  let tooltipLines = [];
   
   // Baseline status
   if (!hybrid || !hybrid.initialized) {
-    parts.push('⏳ Initializing...');
+    statusText = 'Initializing...';
     statusColor = '#888';
+    tooltipLines.push('Extension is starting up');
   } else if (!hybrid.hasBaseline) {
-    parts.push('⚠️ No baseline');
-    issues.push('Click 🔄 to sync usage data');
+    statusText = 'Click 🔄 to sync';
     statusColor = '#f59e0b';
+    tooltipLines.push('No usage data yet - click refresh to sync');
   } else {
     const ageMin = Math.floor((hybrid.baselineAge || 0) / 60000);
-    const deltaTokens = hybrid.deltaTokens || 0;
     
-    // Show baseline age with icon
     if (hybrid.isStale) {
-      parts.push(`📊 ${ageMin}m ago (stale)`);
-      issues.push('Baseline is stale - click 🔄 to refresh');
-      if (statusColor === '#22c55e') statusColor = '#f59e0b';
+      statusText = 'Data is stale - click 🔄';
+      statusColor = '#f59e0b';
+      tooltipLines.push('Usage data is ' + ageMin + ' minutes old (stale)');
     } else {
-      parts.push(`📊 ${ageMin}m ago`);
+      // All good - show a simple status
+      statusText = 'Tracking active';
+      tooltipLines.push('Usage data synced ' + ageMin + ' minutes ago');
     }
     
-    // Show tracked tokens if any
-    if (deltaTokens > 0) {
-      parts.push(`+${deltaTokens.toLocaleString()}`);
+    // Add token delta info to tooltip
+    if (hybrid.deltaTokens > 0) {
+      tooltipLines.push('Tracked +' + hybrid.deltaTokens.toLocaleString() + ' tokens this session');
     }
   }
   
-  // Token counting status
+  // Add feature info to tooltip
   if (settings?.anthropicApiKey) {
-    parts.push('🎯'); // Accurate counting enabled
+    tooltipLines.push('✓ Accurate token counting enabled');
+  } else {
+    tooltipLines.push('○ Using estimated token counts');
   }
   
   // Firebase status
-  if (firebase?.enabled || firebase?.authenticated) {
-    if (firebase.authenticated) {
-      const pushAge = firebase.lastPush ? Math.floor((Date.now() - firebase.lastPush) / 1000) : null;
-      const pullAge = firebase.lastPull ? Math.floor((Date.now() - firebase.lastPull) / 1000) : null;
-      
-      if (pushAge !== null || pullAge !== null) {
-        const recentSync = Math.min(pushAge || 9999, pullAge || 9999);
-        if (recentSync < 60) {
-          parts.push(`☁️ ${recentSync}s`);
-        } else if (recentSync < 3600) {
-          parts.push(`☁️ ${Math.floor(recentSync / 60)}m`);
-        } else {
-          parts.push('☁️ >1h');
-          if (statusColor === '#22c55e') statusColor = '#f59e0b';
-        }
+  if (firebase?.authenticated) {
+    const pushAge = firebase.lastPush ? Math.floor((Date.now() - firebase.lastPush) / 1000) : null;
+    const pullAge = firebase.lastPull ? Math.floor((Date.now() - firebase.lastPull) / 1000) : null;
+    
+    if (pushAge !== null || pullAge !== null) {
+      const recentSync = Math.min(pushAge || 9999, pullAge || 9999);
+      if (recentSync > 3600) {
+        statusColor = '#f59e0b';
+        tooltipLines.push('⚠️ Firebase sync stale (>' + Math.floor(recentSync / 3600) + 'h ago)');
+      } else if (recentSync > 60) {
+        tooltipLines.push('✓ Firebase synced ' + Math.floor(recentSync / 60) + 'm ago');
       } else {
-        parts.push('☁️ ✓');
+        tooltipLines.push('✓ Firebase synced ' + recentSync + 's ago');
       }
     } else {
-      parts.push('☁️ ✗');
-      issues.push('Firebase not authenticated - check settings');
-      if (statusColor === '#22c55e') statusColor = '#f59e0b';
+      tooltipLines.push('✓ Firebase connected');
     }
+  } else if (settings?.firebaseDatabaseUrl) {
+    tooltipLines.push('⚠️ Firebase not connected');
   }
   
   els.trackingIndicator.style.color = statusColor;
-  els.trackingText.textContent = parts.join(' • ');
-  
-  // Set tooltip with detailed status
-  let tooltip = 'Tracking Status:\n';
-  tooltip += hybrid?.hasBaseline ? '✓ Baseline data loaded\n' : '✗ No baseline data\n';
-  tooltip += settings?.anthropicApiKey ? '✓ Accurate token counting (API)\n' : '○ Estimated token counting\n';
-  tooltip += firebase?.authenticated ? '✓ Firebase sync enabled\n' : '○ Firebase sync disabled\n';
-  if (issues.length > 0) {
-    tooltip += '\nIssues:\n• ' + issues.join('\n• ');
-  }
-  els.trackingText.title = tooltip;
-  els.trackingIndicator.title = tooltip;
+  els.trackingText.textContent = statusText;
+  els.trackingText.title = tooltipLines.join('\n');
+  els.trackingIndicator.title = tooltipLines.join('\n');
 }
 
 async function triggerRefresh() {
