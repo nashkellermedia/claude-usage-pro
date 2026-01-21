@@ -510,7 +510,7 @@ class APIInterceptorClass {
           inputTokens: tokens,
           outputTokens: 0,
           model: model
-        }).catch(() => {});
+        }).catch(e => window.CUP.logError("Message send failed:", e));
         
         // Store model for output token tracking
         this.lastModel = model;
@@ -702,7 +702,7 @@ class APIInterceptorClass {
           inputTokens: 0,
           outputTokens: outputTotal,
           model: this.lastModel
-        }).catch(() => {});
+        }).catch(e => window.CUP.logError("Message send failed:", e));
       } catch (e) {
         window.CUP.logError('Failed to send output tokens:', e);
       }
@@ -780,24 +780,37 @@ class APIInterceptorClass {
    */
   getCurrentModelFromUI() {
     try {
-      // Try to find the model selector button
+      // Try to find the model selector button - Claude.ai uses various selectors
       const modelButton = document.querySelector('[data-testid="model-selector-button"]') || 
-                         document.querySelector('button[aria-label*="model"]');
+                         document.querySelector('button[aria-label*="model"]') ||
+                         document.querySelector('[class*="model-selector"]') ||
+                         document.querySelector('button[class*="ModelSelector"]');
       
       if (modelButton) {
-        const text = modelButton.textContent || modelButton.innerText || '';
+        const text = (modelButton.textContent || modelButton.innerText || '').toLowerCase();
+        window.CUP.log('[DEBUG] Model button text:', text);
         
-        // Map UI text to model IDs  
-        if (text.includes('Opus')) return 'claude-opus-4-5-20251101';
-        if (text.includes('Sonnet')) return 'claude-sonnet-4-5-20250929';
-        if (text.includes('Haiku')) return 'claude-haiku-4-5-20251001';
+        // Map UI text to model names (will be normalized by backend)
+        // Check for 4.5 first (newer)
+        if (text.includes('4.5') || text.includes('4-5')) {
+          if (text.includes('opus')) return 'claude-opus-4-5';
+          if (text.includes('sonnet')) return 'claude-sonnet-4-5';
+          if (text.includes('haiku')) return 'claude-haiku-4-5';
+        }
+        
+        // Then check for 4 (could be 4 or 4.5 depending on display)
+        if (text.includes('opus')) return 'claude-opus-4';
+        if (text.includes('sonnet')) return 'claude-sonnet-4';
+        if (text.includes('haiku')) return 'claude-haiku-4';
+      } else {
+        window.CUP.log('[DEBUG] No model button found in DOM');
       }
     } catch (e) {
       window.CUP.logError('Failed to get model from UI:', e);
     }
     
     // Ultimate fallback - Sonnet is most common
-    return 'claude-sonnet-4-5-20250929';
+    return 'claude-sonnet-4';
   }
 
 

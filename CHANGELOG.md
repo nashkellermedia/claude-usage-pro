@@ -1,5 +1,24 @@
 # Changelog
 
+## [2.3.4] - 2026-01-21
+
+### Fixed
+- **Model Tracking Not Updating** (Issue reported)
+  - Fixed model usage count not incrementing after first message
+  - Added proper error handling for message sends (was silently failing)
+  - Model names now normalized to friendly display names (e.g., "Claude Sonnet 4.5" instead of "claude-sonnet-4-5-20250929")
+  - Added `normalizeModelName()` method to map API model IDs to human-readable names
+  - Fixed `recordModelUsage()` to properly await save operation
+
+### Changed
+- **Debug Mode Enabled** - Temporarily enabled to help diagnose tracking issues
+- **Improved Model Detection** - Updated `getCurrentModelFromUI()` with better DOM selectors and debug logging
+
+### Technical
+- Added normalizeModelName() for consistent model tracking across different API responses
+- Fixed `.catch(() => {})` silent error swallowing - now logs errors properly
+- Model tracking now works for Claude 3, 3.5, 4, and 4.5 variants
+
 ## [2.3.3] - 2026-01-21
 
 ### Fixed

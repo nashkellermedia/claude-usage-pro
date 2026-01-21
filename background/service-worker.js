@@ -10,7 +10,7 @@
  */
 
 // Debug mode - set to true for verbose logging
-const DEBUG = false;
+const DEBUG = true;
 
 function log(...args) {
   if (DEBUG) {
@@ -979,10 +979,47 @@ class UsageAnalytics {
       log('[UsageAnalytics] recordModelUsage called with no model');
       return;
     }
-    const oldCount = this.data.modelUsage[model] || 0;
-    this.data.modelUsage[model] = oldCount + 1;
-    log('[UsageAnalytics] Model usage recorded:', model, '- count:', this.data.modelUsage[model]);
-    this.save();
+    // Normalize model name for consistent tracking
+    const normalizedModel = this.normalizeModelName(model);
+    const oldCount = this.data.modelUsage[normalizedModel] || 0;
+    this.data.modelUsage[normalizedModel] = oldCount + 1;
+    log('[UsageAnalytics] Model usage recorded:', normalizedModel, '(raw:', model, ') - count:', this.data.modelUsage[normalizedModel]);
+    // Must await the save to ensure it completes
+    this.save().catch(e => logError('[UsageAnalytics] Save failed:', e.message));
+  }
+  
+  normalizeModelName(model) {
+    // Map API model IDs to friendly display names
+    if (!model) return 'unknown';
+    const m = model.toLowerCase();
+    
+    // Claude 4.5 models (latest)
+    if (m.includes('opus-4-5') || m.includes('opus-4.5')) return 'Claude Opus 4.5';
+    if (m.includes('sonnet-4-5') || m.includes('sonnet-4.5')) return 'Claude Sonnet 4.5';
+    if (m.includes('haiku-4-5') || m.includes('haiku-4.5')) return 'Claude Haiku 4.5';
+    
+    // Claude 4 models  
+    if (m.includes('opus-4') || m === 'claude-opus-4-20250514') return 'Claude Opus 4';
+    if (m.includes('sonnet-4') || m === 'claude-sonnet-4-20250514') return 'Claude Sonnet 4';
+    if (m.includes('haiku-4') || m === 'claude-haiku-4-20250514') return 'Claude Haiku 4';
+    
+    // Claude 3.5 models
+    if (m.includes('opus-3-5') || m.includes('opus-3.5')) return 'Claude Opus 3.5';
+    if (m.includes('sonnet-3-5') || m.includes('sonnet-3.5')) return 'Claude Sonnet 3.5';
+    if (m.includes('haiku-3-5') || m.includes('haiku-3.5')) return 'Claude Haiku 3.5';
+    
+    // Claude 3 models
+    if (m.includes('opus-3')) return 'Claude Opus 3';
+    if (m.includes('sonnet-3')) return 'Claude Sonnet 3';
+    if (m.includes('haiku-3')) return 'Claude Haiku 3';
+    
+    // Generic fallbacks
+    if (m.includes('opus')) return 'Claude Opus';
+    if (m.includes('sonnet')) return 'Claude Sonnet';
+    if (m.includes('haiku')) return 'Claude Haiku';
+    
+    // Return original if no match
+    return model;
   }
 
   async save() {
