@@ -18,7 +18,7 @@ class SidebarUI {
     
     // Check if user prefers minimized and load thresholds
     try {
-      const response = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
+      const response = await window.CUP.sendToBackground({ type: 'GET_SETTINGS' });
       if (response?.settings?.sidebarMinimized) {
         this.expanded = false;
       }
@@ -30,7 +30,7 @@ class SidebarUI {
     
     // Load rate limit state
     try {
-      const response = await chrome.runtime.sendMessage({ type: 'GET_RATE_LIMIT_STATE' });
+      const response = await window.CUP.sendToBackground({ type: 'GET_RATE_LIMIT_STATE' });
       if (response?.rateLimitState) {
         this.rateLimitState = response.rateLimitState;
       }
@@ -369,7 +369,7 @@ class SidebarUI {
   
   async updateTimeDisplay() {
     try {
-      const response = await chrome.runtime.sendMessage({ type: 'GET_TIME_DATA' });
+      const response = await window.CUP.sendToBackground({ type: 'GET_TIME_DATA' });
       if (response?.timeData) {
         const td = response.timeData;
         

@@ -509,7 +509,7 @@ class APIInterceptorClass {
       window.CUP.log("Sending input tokens to background:", tokens, "model:", model);
       window.CUP.log('Sending input tokens to background:', tokens);
       try {
-        chrome.runtime.sendMessage({
+        window.CUP.sendToBackground({
           type: 'ADD_TOKEN_DELTA',
           inputTokens: tokens,
           outputTokens: 0,
@@ -701,7 +701,7 @@ class APIInterceptorClass {
         window.CUP.log('Sending output tokens to background:', outputTotal, '(text:', textTokens, 'thinking:', thinkingTokens + ')');
       }
       try {
-        chrome.runtime.sendMessage({
+        window.CUP.sendToBackground({
           type: 'ADD_TOKEN_DELTA',
           inputTokens: 0,
           outputTokens: outputTotal,

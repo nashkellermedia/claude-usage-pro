@@ -19,7 +19,7 @@ class AutoContinue {
     
     // Load settings
     try {
-      const response = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
+      const response = await window.CUP.sendToBackground({ type: 'GET_SETTINGS' });
       if (response?.settings) {
         this.enabled = response.settings.enableAutoContinue || false;
         this.delay = response.settings.autoContinueDelay || 1500;

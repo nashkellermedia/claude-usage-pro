@@ -3,24 +3,23 @@
  */
 
 (async function() {
-  // Initialize CUP namespace
-  window.CUP = {
-    debug: false,
-    log: (...args) => {
+  // Extend CUP namespace (utils.js loads first and has the proper sendToBackground)
+  window.CUP = window.CUP || {};
+  window.CUP.debug = false;
+  
+  // Only add log functions if utils.js didn't define them
+  if (!window.CUP.log) {
+    window.CUP.log = (...args) => {
       if (window.CUP.debug) console.log('[Claude Usage Pro]', ...args);
-    },
-    logError: (...args) => {
+    };
+  }
+  if (!window.CUP.logError) {
+    window.CUP.logError = (...args) => {
       console.error('[Claude Usage Pro]', ...args);
-    },
-    sendToBackground: (message) => {
-      return chrome.runtime.sendMessage(message).catch(e => {
-        // Don't log extension context errors - normal after extension reload
-        if (!e.message?.includes('Extension context invalidated')) {
-          window.CUP.logError('sendToBackground failed:', e);
-        }
-      });
-    }
-  };
+    };
+  }
+  
+  window.CUP.log('Initializing...');
   
   window.CUP.log('Initializing...');
   
@@ -32,7 +31,7 @@
   };
   
   try {
-    const response = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
+    const response = await window.CUP.sendToBackground({ type: 'GET_SETTINGS' });
     if (response?.settings) {
       settings = { ...settings, ...response.settings };
       window.CUP.log('Loaded settings:', settings);
@@ -87,7 +86,7 @@
   
   // Load initial data
   try {
-    const response = await chrome.runtime.sendMessage({ type: 'GET_USAGE_DATA' });
+    const response = await window.CUP.sendToBackground({ type: 'GET_USAGE_DATA' });
     if (response?.usageData) {
       updateAllUI(response.usageData);
     }
@@ -96,7 +95,7 @@
   // Periodic refresh every 10 seconds to catch changes
   setInterval(async () => {
     try {
-      const response = await chrome.runtime.sendMessage({ type: 'GET_USAGE_DATA' });
+      const response = await window.CUP.sendToBackground({ type: 'GET_USAGE_DATA' });
       if (response?.usageData) {
         updateAllUI(response.usageData);
       }
@@ -252,7 +251,7 @@
     }
     
     // Always refresh data after settings change to update UI
-    chrome.runtime.sendMessage({ type: 'GET_USAGE_DATA' }).then(response => {
+    window.CUP.sendToBackground({ type: 'GET_USAGE_DATA' }).then(response => {
       if (response?.usageData) {
         if (window.cupSidebar) window.cupSidebar.update(response.usageData);
         if (window.cupChatUI) window.cupChatUI.updateUsage(response.usageData);

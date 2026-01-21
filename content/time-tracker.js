@@ -100,7 +100,7 @@ class TimeTracker {
   
   async loadTimeData() {
     try {
-      const response = await chrome.runtime.sendMessage({ type: 'GET_TIME_DATA' });
+      const response = await window.CUP.sendToBackground({ type: 'GET_TIME_DATA' });
       if (response?.timeData) {
         window.CUP.log('TimeTracker: Loaded time data', response.timeData);
       }
@@ -125,7 +125,7 @@ class TimeTracker {
   
   async saveTimeData() {
     try {
-      await chrome.runtime.sendMessage({
+      await window.CUP.sendToBackground({
         type: 'UPDATE_TIME_DATA',
         sessionId: this.sessionId,
         sessionTime: this.sessionTime
@@ -140,7 +140,7 @@ class TimeTracker {
   
   broadcastTime() {
     try {
-      chrome.runtime.sendMessage({
+      window.CUP.sendToBackground({
         type: 'TIME_UPDATE',
         sessionTime: this.sessionTime
       }).catch(() => {});

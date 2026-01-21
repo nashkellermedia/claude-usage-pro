@@ -45,7 +45,7 @@ class ChatUI {
   
   async checkTokenCountingAvailable() {
     try {
-      const response = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
+      const response = await window.CUP.sendToBackground({ type: 'GET_SETTINGS' });
       this.useAccurateCount = !!(response?.settings?.anthropicApiKey);
       window.CUP.log('ChatUI: Accurate token counting:', this.useAccurateCount ? 'ENABLED' : 'disabled');
     } catch (e) {
@@ -55,7 +55,7 @@ class ChatUI {
   
   async loadThresholds() {
     try {
-      const response = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
+      const response = await window.CUP.sendToBackground({ type: 'GET_SETTINGS' });
       if (response?.settings) {
         this.thresholdWarning = response.settings.thresholdWarning || 70;
         this.thresholdDanger = response.settings.thresholdDanger || 90;
@@ -458,7 +458,7 @@ class ChatUI {
     if (!text || text.length === 0) return 0;
     
     try {
-      const response = await chrome.runtime.sendMessage({ 
+      const response = await window.CUP.sendToBackground({ 
         type: 'COUNT_TOKENS', 
         text: text 
       });
@@ -699,7 +699,7 @@ class ChatUI {
     
     // Send to background for model tracking
     try {
-      chrome.runtime.sendMessage({
+      window.CUP.sendToBackground({
         type: "ADD_TOKEN_DELTA",
         inputTokens: inputTokens,
         outputTokens: 0,
