@@ -433,8 +433,53 @@ class FirebaseSync {
     const devices = Object.values(allUsage);
     if (!devices.length) return null;
 
-    // Return freshest data
-    return devices.sort((a, b) => (b.syncedAt || 0) - (a.syncedAt || 0))[0];
+    // Merge by taking HIGHEST usage values across all devices
+    // Usage can only go up (or reset), so max is always correct
+    const merged = {
+      currentSession: { percent: 0, resetsIn: '--' },
+      weeklyAllModels: { percent: 0, resetsAt: '--' },
+      weeklySonnet: { percent: 0, resetsIn: '--' },
+      syncedAt: 0,
+      deviceId: this.deviceId
+    };
+    
+    for (const device of devices) {
+      // Get usage from estimatedUsage or baseline or direct properties
+      const source = device.estimatedUsage || device.baseline || device;
+      
+      // Take highest session percent
+      const sessionPct = source.currentSession?.percent || 0;
+      if (sessionPct > (merged.currentSession.percent || 0)) {
+        merged.currentSession = { ...source.currentSession };
+      }
+      
+      // Take highest weekly all models percent
+      const weeklyAllPct = source.weeklyAllModels?.percent || 0;
+      if (weeklyAllPct > (merged.weeklyAllModels.percent || 0)) {
+        merged.weeklyAllModels = { ...source.weeklyAllModels };
+      }
+      
+      // Take highest weekly sonnet percent
+      const sonnetPct = source.weeklySonnet?.percent || 0;
+      if (sonnetPct > (merged.weeklySonnet.percent || 0)) {
+        merged.weeklySonnet = { ...source.weeklySonnet };
+      }
+      
+      // Also merge baseline/delta if present (for hybrid tracker)
+      if (device.baseline && (!merged.baseline || device.baseline.timestamp > merged.baseline.timestamp)) {
+        merged.baseline = device.baseline;
+        merged.delta = device.delta;
+        merged.tokenRates = device.tokenRates;
+      }
+      
+      // Track most recent sync time
+      if ((device.syncedAt || 0) > merged.syncedAt) {
+        merged.syncedAt = device.syncedAt;
+      }
+    }
+    
+    log('[FirebaseSync] Merged usage from', devices.length, 'devices: Session', merged.currentSession.percent + '%, Weekly', merged.weeklyAllModels.percent + '%');
+    return merged;
   }
 
   // Get synced analytics
