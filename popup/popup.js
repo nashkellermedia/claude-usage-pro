@@ -57,6 +57,36 @@ const els = {
 // Store original values to detect real changes
 let originalSettings = {};
 
+// Format reset time from timestamp or string
+function formatResetTime(timestamp, fallbackStr) {
+  // If timestamp is a valid future timestamp (> year 2020 in ms), calculate countdown
+  if (timestamp && typeof timestamp === 'number' && timestamp > 1577836800000) {
+    const now = Date.now();
+    const remaining = timestamp - now;
+    
+    if (remaining <= 0) return 'now';
+    
+    const minutes = Math.floor(remaining / (60 * 1000));
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    
+    if (days > 0) {
+      return `${days}d ${hours % 24}h`;
+    } else if (hours > 0) {
+      return `${hours}h ${minutes % 60}m`;
+    } else {
+      return `${minutes}m`;
+    }
+  }
+  
+  // If fallback is also a large number (raw timestamp), don't use it
+  if (fallbackStr && typeof fallbackStr === 'number') {
+    return null;
+  }
+  
+  return fallbackStr || null;
+}
+
 function updateUsageDisplay(el, barEl, percent) {
   if (!el || !barEl) return;
   
@@ -80,31 +110,25 @@ function updateUI(usageData) {
   
   if (usageData.currentSession) {
     updateUsageDisplay(els.sessionPercent, els.sessionBar, usageData.currentSession.percent || 0);
-    if (usageData.currentSession.resetsIn && usageData.currentSession.resetsIn !== '--') {
-      const val = usageData.currentSession.resetsIn;
-      const startsWithIn = /^in\s/i.test(val);
-      els.sessionMeta.textContent = startsWithIn ? `Resets ${val}` : `Resets in ${val}`;
+    const sessionReset = formatResetTime(usageData.currentSession.resetsAt, usageData.currentSession.resetsIn);
+    if (sessionReset) {
+      els.sessionMeta.textContent = `Resets in ${sessionReset}`;
     }
   }
   
   if (usageData.weeklyAllModels) {
     updateUsageDisplay(els.weeklyAllPercent, els.weeklyAllBar, usageData.weeklyAllModels.percent || 0);
-    if (usageData.weeklyAllModels.resetsAt) {
-      const val = usageData.weeklyAllModels.resetsAt;
-      // Check if already contains "in" or starts with day name
-      const startsWithIn = /^in\s/i.test(val);
-      const isDayTime = /^[A-Za-z]{3,}/.test(val);
-      els.weeklyAllMeta.textContent = (isDayTime || startsWithIn) ? `Resets ${val}` : `Resets in ${val}`;
+    const weeklyReset = formatResetTime(usageData.weeklyAllModels.resetsAt, usageData.weeklyAllModels.resetsAtStr);
+    if (weeklyReset) {
+      els.weeklyAllMeta.textContent = `Resets in ${weeklyReset}`;
     }
   }
   
   if (usageData.weeklySonnet) {
     updateUsageDisplay(els.weeklySonnetPercent, els.weeklySonnetBar, usageData.weeklySonnet.percent || 0);
-    if (usageData.weeklySonnet.resetsIn) {
-      const val = usageData.weeklySonnet.resetsIn;
-      const startsWithIn = /^in\s/i.test(val);
-      const isDayTime = /^[A-Za-z]{3,}/.test(val);
-      els.weeklySonnetMeta.textContent = (isDayTime || startsWithIn) ? `Resets ${val}` : `Resets in ${val}`;
+    const sonnetReset = formatResetTime(usageData.weeklySonnet.resetsAt, usageData.weeklySonnet.resetsIn);
+    if (sonnetReset) {
+      els.weeklySonnetMeta.textContent = `Resets in ${sonnetReset}`;
     }
   }
 }
