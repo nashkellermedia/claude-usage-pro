@@ -478,6 +478,19 @@ class ChatUI {
       if (pct >= 90) sessionEl.style.color = '#ef4444';
       else if (pct >= 70) sessionEl.style.color = '#f59e0b';
       else sessionEl.style.color = '#22c55e';
+      
+      // Add prediction tooltip
+      if (usageData.predictions?.session?.formatted) {
+        const pred = usageData.predictions.session.formatted;
+        const rate = usageData.predictions.burnRate?.tokensPerHour;
+        let tooltip = `At current rate, limit in ~${pred}`;
+        if (rate) tooltip += ` (${Math.round(rate).toLocaleString()} tokens/hr)`;
+        sessionEl.title = tooltip;
+        sessionEl.style.cursor = 'help';
+      } else {
+        sessionEl.title = 'Session usage';
+        sessionEl.style.cursor = 'default';
+      }
     }
     
     const resetEl = document.getElementById('cup-reset-timer');

@@ -571,6 +571,9 @@ class HybridTracker {
       sessionTokensPer1Percent: 3000,
       weeklyTokensPer1Percent: 45000
     };
+    // Burn rate tracking - stores recent token events for rate calculation
+    this.tokenHistory = []; // Array of { tokens, timestamp }
+    this.burnRateWindowMs = 60 * 60 * 1000; // 1 hour window for burn rate calc
   }
 
   async initialize() {
@@ -635,8 +638,16 @@ class HybridTracker {
   }
 
   async addTokenDelta(inputTokens = 0, outputTokens = 0) {
-    if (inputTokens > 0 || outputTokens > 0) {
+    const totalNew = inputTokens + outputTokens;
+    if (totalNew > 0) {
       log('[HybridTracker] +' + inputTokens + ' input, +' + outputTokens + ' output tokens');
+      
+      // Track for burn rate calculation
+      this.tokenHistory.push({ tokens: totalNew, timestamp: Date.now() });
+      
+      // Clean up old entries outside the window
+      const cutoff = Date.now() - this.burnRateWindowMs;
+      this.tokenHistory = this.tokenHistory.filter(h => h.timestamp > cutoff);
     }
     
     this.delta.inputTokens += inputTokens;
@@ -645,7 +656,7 @@ class HybridTracker {
     
     // Save every 500 tokens or immediately if significant
     const total = this.delta.inputTokens + this.delta.outputTokens;
-    if ((inputTokens + outputTokens) > 100 || total % 500 < (inputTokens + outputTokens)) {
+    if (totalNew > 100 || total % 500 < totalNew) {
       await this.save();
     }
     return this.estimatedUsage;
@@ -694,6 +705,108 @@ class HybridTracker {
     if (totalDeltaTokens > 0) {
       log('[HybridTracker] Estimate: Session', sessionPercent.toFixed(2) + '%, Delta tokens:', totalDeltaTokens);
     }
+    
+    // Calculate predictions based on burn rate
+    this.calculatePredictions();
+  }
+  
+  calculatePredictions() {
+    if (!this.estimatedUsage) return;
+    
+    // Calculate burn rate from recent history
+    const burnRate = this.getBurnRate();
+    
+    if (burnRate.tokensPerHour > 0) {
+      const sessionPercent = this.estimatedUsage.currentSession?.percentExact || 0;
+      const weeklyPercent = this.estimatedUsage.weeklyAllModels?.percentExact || 0;
+      const sonnetPercent = this.estimatedUsage.weeklySonnet?.percentExact || 0;
+      
+      // Calculate remaining percentage and time to 100%
+      const sessionRemaining = 100 - sessionPercent;
+      const weeklyRemaining = 100 - weeklyPercent;
+      const sonnetRemaining = 100 - sonnetPercent;
+      
+      // Tokens needed to reach 100%
+      const sessionTokensRemaining = sessionRemaining * this.tokenRates.sessionTokensPer1Percent;
+      const weeklyTokensRemaining = weeklyRemaining * this.tokenRates.weeklyTokensPer1Percent;
+      const sonnetTokensRemaining = sonnetRemaining * this.tokenRates.weeklyTokensPer1Percent;
+      
+      // Hours until limit (at current rate)
+      const sessionHoursRemaining = sessionTokensRemaining / burnRate.tokensPerHour;
+      const weeklyHoursRemaining = weeklyTokensRemaining / burnRate.tokensPerHour;
+      const sonnetHoursRemaining = sonnetTokensRemaining / burnRate.tokensPerHour;
+      
+      this.estimatedUsage.predictions = {
+        burnRate: burnRate,
+        session: {
+          hoursRemaining: sessionHoursRemaining,
+          predictedLimitTime: sessionHoursRemaining < 168 ? Date.now() + (sessionHoursRemaining * 60 * 60 * 1000) : null,
+          formatted: this.formatTimeRemaining(sessionHoursRemaining)
+        },
+        weeklyAll: {
+          hoursRemaining: weeklyHoursRemaining,
+          predictedLimitTime: weeklyHoursRemaining < 168 ? Date.now() + (weeklyHoursRemaining * 60 * 60 * 1000) : null,
+          formatted: this.formatTimeRemaining(weeklyHoursRemaining)
+        },
+        weeklySonnet: {
+          hoursRemaining: sonnetHoursRemaining,
+          predictedLimitTime: sonnetHoursRemaining < 168 ? Date.now() + (sonnetHoursRemaining * 60 * 60 * 1000) : null,
+          formatted: this.formatTimeRemaining(sonnetHoursRemaining)
+        }
+      };
+      
+      log('[HybridTracker] Predictions - Burn rate:', burnRate.tokensPerHour.toFixed(0), 'tokens/hr, Session limit in:', this.estimatedUsage.predictions.session.formatted);
+    } else {
+      this.estimatedUsage.predictions = null;
+    }
+  }
+  
+  getBurnRate() {
+    if (this.tokenHistory.length < 2) {
+      return { tokensPerHour: 0, sampleSize: this.tokenHistory.length, windowMinutes: 0 };
+    }
+    
+    const now = Date.now();
+    const cutoff = now - this.burnRateWindowMs;
+    const recentHistory = this.tokenHistory.filter(h => h.timestamp > cutoff);
+    
+    if (recentHistory.length < 2) {
+      return { tokensPerHour: 0, sampleSize: recentHistory.length, windowMinutes: 0 };
+    }
+    
+    // Calculate total tokens and time span
+    const totalTokens = recentHistory.reduce((sum, h) => sum + h.tokens, 0);
+    const oldestTimestamp = Math.min(...recentHistory.map(h => h.timestamp));
+    const timeSpanMs = now - oldestTimestamp;
+    const timeSpanHours = timeSpanMs / (60 * 60 * 1000);
+    
+    // Avoid division by very small numbers
+    if (timeSpanHours < 0.01) { // Less than 36 seconds
+      return { tokensPerHour: 0, sampleSize: recentHistory.length, windowMinutes: 0 };
+    }
+    
+    const tokensPerHour = totalTokens / timeSpanHours;
+    
+    return {
+      tokensPerHour: tokensPerHour,
+      sampleSize: recentHistory.length,
+      windowMinutes: Math.round(timeSpanMs / 60000)
+    };
+  }
+  
+  formatTimeRemaining(hours) {
+    if (!hours || hours <= 0) return 'now';
+    if (hours > 168) return '7+ days'; // More than a week
+    if (hours > 48) return Math.round(hours / 24) + ' days';
+    if (hours > 24) return '1-2 days';
+    if (hours >= 1) {
+      const h = Math.floor(hours);
+      const m = Math.round((hours - h) * 60);
+      return m > 0 ? h + 'h ' + m + 'm' : h + 'h';
+    }
+    // Less than an hour
+    const minutes = Math.round(hours * 60);
+    return minutes + 'm';
   }
 
   async save() {

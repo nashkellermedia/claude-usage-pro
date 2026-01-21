@@ -111,25 +111,51 @@ function updateUI(usageData) {
   if (usageData.currentSession) {
     updateUsageDisplay(els.sessionPercent, els.sessionBar, usageData.currentSession.percent || 0);
     const sessionReset = formatResetTime(usageData.currentSession.resetsAt, usageData.currentSession.resetsIn);
-    if (sessionReset) {
-      els.sessionMeta.textContent = `Resets in ${sessionReset}`;
+    let metaText = sessionReset ? `Resets in ${sessionReset}` : '';
+    
+    // Add prediction if available
+    if (usageData.predictions?.session?.formatted && usageData.currentSession.percent < 100) {
+      const pred = usageData.predictions.session.formatted;
+      metaText += metaText ? ` · Limit in ~${pred}` : `Limit in ~${pred}`;
     }
+    if (metaText) els.sessionMeta.textContent = metaText;
   }
   
   if (usageData.weeklyAllModels) {
     updateUsageDisplay(els.weeklyAllPercent, els.weeklyAllBar, usageData.weeklyAllModels.percent || 0);
     const weeklyReset = formatResetTime(usageData.weeklyAllModels.resetsAt, usageData.weeklyAllModels.resetsAtStr);
-    if (weeklyReset) {
-      els.weeklyAllMeta.textContent = `Resets in ${weeklyReset}`;
+    let metaText = weeklyReset ? `Resets in ${weeklyReset}` : '';
+    
+    // Add prediction if available
+    if (usageData.predictions?.weeklyAll?.formatted && usageData.weeklyAllModels.percent < 100) {
+      const pred = usageData.predictions.weeklyAll.formatted;
+      metaText += metaText ? ` · Limit in ~${pred}` : `Limit in ~${pred}`;
     }
+    if (metaText) els.weeklyAllMeta.textContent = metaText;
   }
   
   if (usageData.weeklySonnet) {
     updateUsageDisplay(els.weeklySonnetPercent, els.weeklySonnetBar, usageData.weeklySonnet.percent || 0);
     const sonnetReset = formatResetTime(usageData.weeklySonnet.resetsAt, usageData.weeklySonnet.resetsIn);
-    if (sonnetReset) {
-      els.weeklySonnetMeta.textContent = `Resets in ${sonnetReset}`;
+    let metaText = sonnetReset ? `Resets in ${sonnetReset}` : '';
+    
+    // Add prediction if available
+    if (usageData.predictions?.weeklySonnet?.formatted && usageData.weeklySonnet.percent < 100) {
+      const pred = usageData.predictions.weeklySonnet.formatted;
+      metaText += metaText ? ` · Limit in ~${pred}` : `Limit in ~${pred}`;
     }
+    if (metaText) els.weeklySonnetMeta.textContent = metaText;
+  }
+  
+  // Show burn rate in tracking status area if available
+  const burnRateStatus = document.getElementById('burnRateStatus');
+  const burnRateEl = document.getElementById('burnRate');
+  if (usageData.predictions?.burnRate?.tokensPerHour > 0) {
+    const rate = Math.round(usageData.predictions.burnRate.tokensPerHour).toLocaleString();
+    if (burnRateEl) burnRateEl.textContent = `${rate} tokens/hr`;
+    if (burnRateStatus) burnRateStatus.style.display = '';
+  } else {
+    if (burnRateStatus) burnRateStatus.style.display = 'none';
   }
 }
 
