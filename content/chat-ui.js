@@ -261,12 +261,16 @@ class ChatUI {
         this.inputStats = document.createElement('div');
         this.inputStats.id = 'cup-input-stats';
         
-        // Detect dark/light mode and set background
-        const isDark = document.documentElement.classList.contains('dark') ||
-                       document.body.classList.contains('dark') ||
-                       window.matchMedia('(prefers-color-scheme: dark)').matches ||
-                       getComputedStyle(document.body).backgroundColor.match(/^rgb\((\d+),/)?.[1] < 128;
-        this.inputStats.style.backgroundColor = isDark ? '#2a2a2a' : '#f5f5f5';
+        // Get background color from the main content area
+        let bgColor = '#2a2a2a'; // fallback
+        const mainContent = document.querySelector('main') || document.querySelector('[class*="conversation"]') || document.body;
+        if (mainContent) {
+          const computedBg = getComputedStyle(mainContent).backgroundColor;
+          if (computedBg && computedBg !== 'rgba(0, 0, 0, 0)' && computedBg !== 'transparent') {
+            bgColor = computedBg;
+          }
+        }
+        this.inputStats.style.backgroundColor = bgColor;
         
         this.inputStats.innerHTML = `
           <span class="cup-stat-item">
