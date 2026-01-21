@@ -1827,7 +1827,26 @@ async function pullFromFirebase() {
       
       if (Object.keys(usageForStorage).length > 0) {
         const current = await getUsageData();
-        const merged = { ...current, ...usageForStorage, lastUpdated: Date.now() };
+        // Take the higher percentage for each metric
+        const merged = {
+          ...current,
+          currentSession: {
+            ...(current.currentSession || {}),
+            ...(usageForStorage.currentSession || {}),
+            percent: Math.max(current.currentSession?.percent || 0, usageForStorage.currentSession?.percent || 0)
+          },
+          weeklyAllModels: {
+            ...(current.weeklyAllModels || {}),
+            ...(usageForStorage.weeklyAllModels || {}),
+            percent: Math.max(current.weeklyAllModels?.percent || 0, usageForStorage.weeklyAllModels?.percent || 0)
+          },
+          weeklySonnet: {
+            ...(current.weeklySonnet || {}),
+            ...(usageForStorage.weeklySonnet || {}),
+            percent: Math.max(current.weeklySonnet?.percent || 0, usageForStorage.weeklySonnet?.percent || 0)
+          },
+          lastUpdated: Date.now()
+        };
         await chrome.storage.local.set({ usageData: merged });
         await updateBadge(merged);
         log('[CUP BG] Stored usage:', merged.currentSession?.percent, merged.weeklyAllModels?.percent);
@@ -1838,6 +1857,7 @@ async function pullFromFirebase() {
     const analytics = await firebaseSync.getAnalytics();
     if (analytics && usageAnalytics) {
       log('[CUP BG] Pulled analytics from Firebase');
+      
       // Merge modelUsage by taking the higher count for each model
       const mergedModelUsage = { ...usageAnalytics.data.modelUsage };
       if (analytics.modelUsage) {
@@ -1848,17 +1868,56 @@ async function pullFromFirebase() {
         }
       }
       
+      // Merge peakUsage by taking the higher values
+      const mergedPeakUsage = {
+        session: Math.max(usageAnalytics.data.peakUsage?.session || 0, analytics.peakUsage?.session || 0),
+        weeklyAll: Math.max(usageAnalytics.data.peakUsage?.weeklyAll || 0, analytics.peakUsage?.weeklyAll || 0),
+        weeklySonnet: Math.max(usageAnalytics.data.peakUsage?.weeklySonnet || 0, analytics.peakUsage?.weeklySonnet || 0)
+      };
+      
+      // Merge dailySnapshots by combining arrays for each date
+      const mergedDailySnapshots = { ...usageAnalytics.data.dailySnapshots };
+      if (analytics.dailySnapshots) {
+        for (const [date, snapshots] of Object.entries(analytics.dailySnapshots)) {
+          if (Array.isArray(snapshots)) {
+            if (!mergedDailySnapshots[date]) {
+              mergedDailySnapshots[date] = [];
+            }
+            // Add snapshots that don't already exist (by timestamp)
+            const existingTimestamps = new Set(mergedDailySnapshots[date].map(s => s.timestamp));
+            for (const snap of snapshots) {
+              if (!existingTimestamps.has(snap.timestamp)) {
+                mergedDailySnapshots[date].push(snap);
+              }
+            }
+          }
+        }
+      }
+      
+      // Merge thresholdEvents by deduplicating (by date + threshold)
+      const mergedThresholdEvents = [...(usageAnalytics.data.thresholdEvents || [])];
+      if (Array.isArray(analytics.thresholdEvents)) {
+        const existingKeys = new Set(mergedThresholdEvents.map(e => `${e.date}-${e.threshold}`));
+        for (const event of analytics.thresholdEvents) {
+          const key = `${event.date}-${event.threshold}`;
+          if (!existingKeys.has(key)) {
+            mergedThresholdEvents.push(event);
+          }
+        }
+      }
+      
       usageAnalytics.data = { 
         ...usageAnalytics.data, 
         ...analytics,
-        // Ensure arrays are arrays
-        dailySnapshots: analytics.dailySnapshots || {},
-        thresholdEvents: Array.isArray(analytics.thresholdEvents) ? analytics.thresholdEvents : [],
         modelUsage: mergedModelUsage,
+        peakUsage: mergedPeakUsage,
+        dailySnapshots: mergedDailySnapshots,
+        thresholdEvents: mergedThresholdEvents,
       };
       await usageAnalytics.save();
+      log('[CUP BG] Analytics merged - models:', Object.keys(mergedModelUsage).length, 'days:', Object.keys(mergedDailySnapshots).length);
     }
-    
+
     // Pull settings (including anthropicApiKey)
     const syncedSettings = await firebaseSync.getSettings();
     log('[CUP BG] Synced settings from Firebase:', JSON.stringify(syncedSettings));
