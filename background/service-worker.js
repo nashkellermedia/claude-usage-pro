@@ -1895,29 +1895,32 @@ async function pullFromFirebase() {
       
       if (Object.keys(usageForStorage).length > 0) {
         const current = await getUsageData();
-        // Take the higher percentage for each metric
-        const merged = {
-          ...current,
-          currentSession: {
-            ...(current.currentSession || {}),
-            ...(usageForStorage.currentSession || {}),
-            percent: Math.max(current.currentSession?.percent || 0, usageForStorage.currentSession?.percent || 0)
-          },
-          weeklyAllModels: {
-            ...(current.weeklyAllModels || {}),
-            ...(usageForStorage.weeklyAllModels || {}),
-            percent: Math.max(current.weeklyAllModels?.percent || 0, usageForStorage.weeklyAllModels?.percent || 0)
-          },
-          weeklySonnet: {
-            ...(current.weeklySonnet || {}),
-            ...(usageForStorage.weeklySonnet || {}),
-            percent: Math.max(current.weeklySonnet?.percent || 0, usageForStorage.weeklySonnet?.percent || 0)
-          },
-          lastUpdated: Date.now()
-        };
+        const localIsNewer = (current.lastUpdated || 0) > (syncedData.syncedAt || 0);
+        
+        // Prefer the more recently updated data source
+        // Usage can go down (resets), so we cannot just take max
+        let merged;
+        if (localIsNewer) {
+          // Local data is newer - keep it, but merge any missing fields from Firebase
+          merged = {
+            ...usageForStorage,
+            ...current,
+            lastUpdated: Date.now()
+          };
+          log("[CUP BG] Keeping local data (newer) - local:", current.weeklyAllModels?.percent, "firebase:", usageForStorage.weeklyAllModels?.percent);
+        } else {
+          // Firebase data is newer - use it
+          merged = {
+            ...current,
+            ...usageForStorage,
+            lastUpdated: Date.now()
+          };
+          log("[CUP BG] Using Firebase data (newer) - local:", current.weeklyAllModels?.percent, "firebase:", usageForStorage.weeklyAllModels?.percent);
+        }
+        
         await chrome.storage.local.set({ usageData: merged });
         await updateBadge(merged);
-        log('[CUP BG] Stored usage:', merged.currentSession?.percent, merged.weeklyAllModels?.percent);
+        log("[CUP BG] Stored usage:", merged.currentSession?.percent, merged.weeklyAllModels?.percent);
       }
     }
     
