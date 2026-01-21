@@ -155,13 +155,20 @@
   color: inherit;
   font-family: inherit;
   margin-top: 4px;
-  background: transparent;
+  background: var(--bg-100, #1a1a1a);
   border-radius: 8px;
-  opacity: 0.7;
+  opacity: 0.9;
 }
 
 #cup-input-stats:hover {
   opacity: 1;
+}
+
+/* Light mode background */
+@media (prefers-color-scheme: light) {
+  #cup-input-stats {
+    background: var(--bg-100, #f5f5f5);
+  }
 }
 
 #cup-input-stats .cup-stat-item {
