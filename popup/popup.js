@@ -309,64 +309,91 @@ async function loadTrackingStatus() {
   try {
     const hybridStatus = await chrome.runtime.sendMessage({ type: 'GET_HYBRID_STATUS' });
     const firebaseStatus = await chrome.runtime.sendMessage({ type: 'GET_FIREBASE_STATUS' });
-    updateTrackingStatus(hybridStatus, firebaseStatus);
+    const settingsResp = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
+    updateTrackingStatus(hybridStatus, firebaseStatus, settingsResp?.settings);
   } catch (e) {
     console.error('[CUP Popup] Status error:', e);
   }
 }
 
-function updateTrackingStatus(hybrid, firebase) {
+function updateTrackingStatus(hybrid, firebase, settings) {
   if (!els.trackingIndicator || !els.trackingText) return;
   
   let parts = [];
-  let statusColor = '#888';
+  let statusColor = '#22c55e'; // Start green, downgrade if issues
+  let issues = [];
   
   // Baseline status
   if (!hybrid || !hybrid.initialized) {
-    parts.push('Initializing...');
+    parts.push('⏳ Initializing...');
+    statusColor = '#888';
   } else if (!hybrid.hasBaseline) {
-    parts.push('No baseline - click 🔄');
+    parts.push('⚠️ No baseline');
+    issues.push('Click 🔄 to sync usage data');
     statusColor = '#f59e0b';
   } else {
     const ageMin = Math.floor((hybrid.baselineAge || 0) / 60000);
     const deltaTokens = hybrid.deltaTokens || 0;
     
-    // Show baseline age
+    // Show baseline age with icon
     if (hybrid.isStale) {
-      parts.push(`Baseline: ${ageMin}m (stale)`);
-      statusColor = '#f59e0b';
+      parts.push(`📊 ${ageMin}m ago (stale)`);
+      issues.push('Baseline is stale - click 🔄 to refresh');
+      if (statusColor === '#22c55e') statusColor = '#f59e0b';
     } else {
-      parts.push(`Baseline: ${ageMin}m`);
-      statusColor = '#22c55e';
+      parts.push(`📊 ${ageMin}m ago`);
     }
     
     // Show tracked tokens if any
     if (deltaTokens > 0) {
-      parts.push(`+${deltaTokens.toLocaleString()} tokens`);
+      parts.push(`+${deltaTokens.toLocaleString()}`);
     }
   }
   
+  // Token counting status
+  if (settings?.anthropicApiKey) {
+    parts.push('🎯'); // Accurate counting enabled
+  }
+  
   // Firebase status
-  if (firebase?.authenticated) {
-    const pushAge = firebase.lastPush ? Math.floor((Date.now() - firebase.lastPush) / 1000) : null;
-    const pullAge = firebase.lastPull ? Math.floor((Date.now() - firebase.lastPull) / 1000) : null;
-    
-    let fbStatus = 'Firebase';
-    if (pushAge !== null && pullAge !== null) {
-      // Show recent activity
-      const recentSync = Math.min(pushAge, pullAge);
-      if (recentSync < 60) {
-        fbStatus += ` ↕${recentSync}s`;
+  if (firebase?.enabled || firebase?.authenticated) {
+    if (firebase.authenticated) {
+      const pushAge = firebase.lastPush ? Math.floor((Date.now() - firebase.lastPush) / 1000) : null;
+      const pullAge = firebase.lastPull ? Math.floor((Date.now() - firebase.lastPull) / 1000) : null;
+      
+      if (pushAge !== null || pullAge !== null) {
+        const recentSync = Math.min(pushAge || 9999, pullAge || 9999);
+        if (recentSync < 60) {
+          parts.push(`☁️ ${recentSync}s`);
+        } else if (recentSync < 3600) {
+          parts.push(`☁️ ${Math.floor(recentSync / 60)}m`);
+        } else {
+          parts.push('☁️ >1h');
+          if (statusColor === '#22c55e') statusColor = '#f59e0b';
+        }
       } else {
-        fbStatus += ` ↕${Math.floor(recentSync / 60)}m`;
+        parts.push('☁️ ✓');
       }
+    } else {
+      parts.push('☁️ ✗');
+      issues.push('Firebase not authenticated - check settings');
+      if (statusColor === '#22c55e') statusColor = '#f59e0b';
     }
-    fbStatus += ' ✓';
-    parts.push(fbStatus);
   }
   
   els.trackingIndicator.style.color = statusColor;
   els.trackingText.textContent = parts.join(' • ');
+  
+  // Set tooltip with detailed status
+  let tooltip = 'Tracking Status:\n';
+  tooltip += hybrid?.hasBaseline ? '✓ Baseline data loaded\n' : '✗ No baseline data\n';
+  tooltip += settings?.anthropicApiKey ? '✓ Accurate token counting (API)\n' : '○ Estimated token counting\n';
+  tooltip += firebase?.authenticated ? '✓ Firebase sync enabled\n' : '○ Firebase sync disabled\n';
+  if (issues.length > 0) {
+    tooltip += '\nIssues:\n• ' + issues.join('\n• ');
+  }
+  els.trackingText.title = tooltip;
+  els.trackingIndicator.title = tooltip;
 }
 
 async function triggerRefresh() {
