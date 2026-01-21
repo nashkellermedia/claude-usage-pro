@@ -364,6 +364,9 @@ class ChatUI {
   async injectInputStats() {
     if (document.getElementById('cup-input-stats')) return;
     
+    // Always load fresh settings before building stats bar
+    await this.loadThresholds();
+    
     for (let attempt = 0; attempt < 10; attempt++) {
       const contentEditable = document.querySelector('[contenteditable="true"]');
       
