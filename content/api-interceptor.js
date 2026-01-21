@@ -37,6 +37,7 @@ class APIInterceptorClass {
     
     this.interceptFetch();
     this.interceptXHR();
+    this.interceptWebSocket();
     // DOM observer disabled for now - too many false positives
     // Rate limits are reliably detected via HTTP 429 responses
     // this.startDOMObserver();
@@ -495,6 +496,37 @@ class APIInterceptorClass {
             Math.ceil(att.extracted_content.length / 4);
         }
       }
+
+  interceptWebSocket() {
+    const self = this;
+    const OriginalWebSocket = window.WebSocket;
+    
+    window.WebSocket = function(url, protocols) {
+      window.CUP.log('[WS DEBUG] WebSocket connection:', url?.substring?.(0, 100));
+      
+      const ws = protocols ? new OriginalWebSocket(url, protocols) : new OriginalWebSocket(url);
+      
+      // Intercept messages
+      const originalSend = ws.send.bind(ws);
+      ws.send = function(data) {
+        window.CUP.log('[WS DEBUG] WebSocket send:', typeof data, data?.substring?.(0, 200));
+        return originalSend(data);
+      };
+      
+      ws.addEventListener('message', function(event) {
+        window.CUP.log('[WS DEBUG] WebSocket receive:', typeof event.data, event.data?.substring?.(0, 200));
+      });
+      
+      return ws;
+    };
+    window.WebSocket.prototype = OriginalWebSocket.prototype;
+    window.WebSocket.CONNECTING = OriginalWebSocket.CONNECTING;
+    window.WebSocket.OPEN = OriginalWebSocket.OPEN;
+    window.WebSocket.CLOSING = OriginalWebSocket.CLOSING;
+    window.WebSocket.CLOSED = OriginalWebSocket.CLOSED;
+    
+    window.CUP.log('[WS DEBUG] WebSocket interceptor installed');
+  }
       
       // Get model from request or fallback to UI detection
       const model = data.model || data.rendering_model || data.selectedModel || this.getCurrentModelFromUI();
