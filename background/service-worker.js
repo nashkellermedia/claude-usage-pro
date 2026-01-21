@@ -1838,12 +1838,23 @@ async function pullFromFirebase() {
     const analytics = await firebaseSync.getAnalytics();
     if (analytics && usageAnalytics) {
       log('[CUP BG] Pulled analytics from Firebase');
+      // Merge modelUsage by taking the higher count for each model
+      const mergedModelUsage = { ...usageAnalytics.data.modelUsage };
+      if (analytics.modelUsage) {
+        for (const [model, count] of Object.entries(analytics.modelUsage)) {
+          if (typeof count === "number") {
+            mergedModelUsage[model] = Math.max(mergedModelUsage[model] || 0, count);
+          }
+        }
+      }
+      
       usageAnalytics.data = { 
         ...usageAnalytics.data, 
         ...analytics,
         // Ensure arrays are arrays
         dailySnapshots: analytics.dailySnapshots || {},
         thresholdEvents: Array.isArray(analytics.thresholdEvents) ? analytics.thresholdEvents : [],
+        modelUsage: mergedModelUsage,
       };
       await usageAnalytics.save();
     }
