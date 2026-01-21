@@ -1122,16 +1122,20 @@ async function updateBadge(usageData) {
   const settings = await getSettings();
   let percent = 0;
   let color = '#4CAF50';
+  let hasData = false;
 
   switch (settings.badgeDisplay) {
     case 'session':
       percent = usageData?.currentSession?.percent || 0;
+      hasData = usageData?.currentSession?.percent !== undefined;
       break;
     case 'weekly-all':
       percent = usageData?.weeklyAllModels?.percent || 0;
+      hasData = usageData?.weeklyAllModels?.percent !== undefined;
       break;
     case 'weekly-sonnet':
       percent = usageData?.weeklySonnet?.percent || 0;
+      hasData = usageData?.weeklySonnet?.percent !== undefined;
       break;
     case 'none':
       chrome.action.setBadgeText({ text: '' });
@@ -1141,7 +1145,13 @@ async function updateBadge(usageData) {
   if (percent >= 90) color = '#f44336';
   else if (percent >= 70) color = '#ff9800';
 
-  chrome.action.setBadgeText({ text: percent > 0 ? `${percent}` : '' });
+  // Always show badge - "0" if we have data with 0%, "--" if no data yet
+  let badgeText = '--';
+  if (hasData) {
+    badgeText = String(percent);
+  }
+  
+  chrome.action.setBadgeText({ text: badgeText });
   chrome.action.setBadgeBackgroundColor({ color });
 }
 
