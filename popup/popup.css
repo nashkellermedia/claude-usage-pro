@@ -717,3 +717,8 @@ input[type="password"].setting-input {
 .analytics-stat .value.success {
   color: #10b981;
 }
+
+.setting-toggle.sub-setting {
+  margin-left: 20px;
+  opacity: 0.85;
+}

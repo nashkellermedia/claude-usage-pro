@@ -11,8 +11,17 @@ class SidebarUI {
   
   async initialize() {
     window.CUP.log('SidebarUI: Initializing...');
+    
+    // Check if user prefers minimized
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
+      if (response?.settings?.sidebarMinimized) {
+        this.expanded = false;
+      }
+    } catch (e) {}
+    
     await this.injectWidget();
-    window.CUP.log('SidebarUI: Initialized');
+    window.CUP.log('SidebarUI: Initialized, expanded:', this.expanded);
   }
   
   async injectWidget() {
@@ -32,14 +41,16 @@ class SidebarUI {
         // Create widget
         this.widget = document.createElement('div');
         this.widget.id = 'cup-sidebar-widget';
+        const expandedClass = this.expanded ? 'expanded' : '';
+        const expandIcon = this.expanded ? '▼' : '▶';
         this.widget.innerHTML = `
           <div class="cup-widget-inner">
-            <div class="cup-widget-header expanded" id="cup-widget-toggle">
+            <div class="cup-widget-header ${expandedClass}" id="cup-widget-toggle">
               <span class="cup-widget-icon">📊</span>
               <span class="cup-widget-title">Usage</span>
-              <span class="cup-widget-expand">▼</span>
+              <span class="cup-widget-expand">${expandIcon}</span>
             </div>
-            <div class="cup-widget-details expanded" id="cup-widget-details">
+            <div class="cup-widget-details ${expandedClass}" id="cup-widget-details">
               <div class="cup-usage-section">
                 <div class="cup-usage-header">
                   <span class="cup-usage-label">Current Session</span>

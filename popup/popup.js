@@ -26,6 +26,7 @@ const els = {
   // Settings
   badgeDisplay: document.getElementById('badgeDisplay'),
   showSidebar: document.getElementById('showSidebar'),
+  sidebarMinimized: document.getElementById('sidebarMinimized'),
   showChatOverlay: document.getElementById('showChatOverlay'),
   enableVoice: document.getElementById('enableVoice'),
   enableResetNotifications: document.getElementById('enableResetNotifications'),
@@ -290,6 +291,7 @@ async function loadSettings() {
     
     if (settings.badgeDisplay) els.badgeDisplay.value = settings.badgeDisplay;
     els.showSidebar.checked = settings.showSidebar !== false;
+    els.sidebarMinimized.checked = settings.sidebarMinimized === true;
     els.showChatOverlay.checked = settings.showChatOverlay !== false;
     els.enableVoice.checked = settings.enableVoice === true;
     els.enableResetNotifications.checked = settings.enableResetNotifications !== false; // default true
@@ -335,6 +337,7 @@ async function saveSettings() {
   const settings = {
     badgeDisplay: els.badgeDisplay.value,
     showSidebar: els.showSidebar.checked,
+    sidebarMinimized: els.sidebarMinimized.checked,
     showChatOverlay: els.showChatOverlay.checked,
     enableVoice: els.enableVoice.checked,
     enableResetNotifications: els.enableResetNotifications.checked,

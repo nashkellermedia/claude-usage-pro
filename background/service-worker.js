@@ -1066,6 +1066,7 @@ const DEFAULT_SETTINGS = {
   badgeDisplay: 'session',
   showSidebar: true,
   showChatOverlay: true,
+  sidebarMinimized: false,
   enableVoice: false,
   enableResetNotifications: true,
   firebaseDatabaseUrl: '',
