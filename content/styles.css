@@ -16,14 +16,14 @@
 
 /* ========== SIDEBAR WIDGET ========== */
 #cup-sidebar-widget {
-  padding: 12px;
-  margin-bottom: 8px;
+  padding: 8px 12px;
+  margin-bottom: 0;
 }
 
 #cup-sidebar-widget .cup-widget-inner {
   background: transparent;
   border-radius: 10px;
-  padding: 12px;
+  padding: 8px;
   border: none;
 }
 
@@ -118,16 +118,14 @@
   color: inherit;
   opacity: 0.6;
   text-decoration: none;
-  padding-top: 8px;
-  margin-top: 8px;
+  padding-top: 6px;
+  margin-top: 6px;
+  margin-bottom: 0;
   border-top: 1px solid rgba(128, 128, 128, 0.15);
 }
 
 .cup-usage-link:hover {
   opacity: 1;
-}
-
-.cup-usage-link:hover {
   text-decoration: underline;
 }
 

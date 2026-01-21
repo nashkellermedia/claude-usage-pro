@@ -241,26 +241,32 @@ class SidebarUI {
   
   // Calculate remaining time from timestamp
   formatResetTime(timestamp, fallbackStr) {
-    if (!timestamp || typeof timestamp !== 'number') {
-      return fallbackStr || '--';
+    // If timestamp is a valid future timestamp (> year 2020 in ms), calculate countdown
+    if (timestamp && typeof timestamp === 'number' && timestamp > 1577836800000) {
+      const now = Date.now();
+      const remaining = timestamp - now;
+      
+      if (remaining <= 0) return 'now';
+      
+      const minutes = Math.floor(remaining / (60 * 1000));
+      const hours = Math.floor(minutes / 60);
+      const days = Math.floor(hours / 24);
+      
+      if (days > 0) {
+        return `${days}d ${hours % 24}h`;
+      } else if (hours > 0) {
+        return `${hours}h ${minutes % 60}m`;
+      } else {
+        return `${minutes}m`;
+      }
     }
     
-    const now = Date.now();
-    const remaining = timestamp - now;
-    
-    if (remaining <= 0) return 'now';
-    
-    const minutes = Math.floor(remaining / (60 * 1000));
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
-    
-    if (days > 0) {
-      return `${days}d ${hours % 24}h`;
-    } else if (hours > 0) {
-      return `${hours}h ${minutes % 60}m`;
-    } else {
-      return `${minutes}m`;
+    // If fallback is also a large number (raw timestamp), don't use it
+    if (fallbackStr && typeof fallbackStr === 'number') {
+      return '--';
     }
+    
+    return fallbackStr || '--';
   }
 
   updateElement(id, value) {
@@ -298,7 +304,23 @@ class SidebarUI {
   }
   
   checkAndReinject() {
-    if (!document.getElementById('cup-sidebar-widget')) {
+    const widget = document.getElementById('cup-sidebar-widget');
+    const sidebar = document.querySelector('nav[class*="flex-col"]');
+    
+    // Check if sidebar is collapsed/minimized (narrow width)
+    if (sidebar) {
+      const sidebarWidth = sidebar.offsetWidth;
+      if (sidebarWidth < 150) {
+        // Sidebar is collapsed - hide our widget
+        if (widget) widget.style.display = 'none';
+        return;
+      } else {
+        // Sidebar is expanded - show our widget
+        if (widget) widget.style.display = '';
+      }
+    }
+    
+    if (!widget) {
       this.injectWidget();
     }
   }
