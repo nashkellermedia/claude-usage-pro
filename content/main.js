@@ -1,3 +1,4 @@
+console.log("[CUP RAW] main.js loading...");
 /**
  * Claude Usage Pro - Main Content Script
  */
