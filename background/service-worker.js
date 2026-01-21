@@ -1875,55 +1875,57 @@ async function pullFromFirebase() {
     if (syncedData) {
       log('[CUP BG] Usage data keys:', Object.keys(syncedData));
       
-      // Merge into hybrid tracker
+      // Merge into hybrid tracker - this updates the baseline but PRESERVES local deltas
       if (syncedData.baseline && hybridTracker) {
         await hybridTracker.mergeFromFirebase(syncedData);
       }
       
-      // Extract the actual usage percentages for storage
-      // The UI expects { currentSession, weeklyAllModels, weeklySonnet }
-      const usageForStorage = {};
-      
-      // getMergedUsage returns { currentSession, weeklyAllModels, weeklySonnet } directly
-      // The merged data has usage directly on it, or in estimatedUsage/baseline
-      const source = syncedData.currentSession ? syncedData : (syncedData.estimatedUsage || syncedData.baseline || syncedData);
-      if (source) {
-        if (source.currentSession) usageForStorage.currentSession = source.currentSession;
-        if (source.weeklyAllModels) usageForStorage.weeklyAllModels = source.weeklyAllModels;
-        if (source.weeklySonnet) usageForStorage.weeklySonnet = source.weeklySonnet;
-      }
-      
-      if (Object.keys(usageForStorage).length > 0) {
+      // IMPORTANT: Use HybridTracker's estimate (which includes local deltas)
+      // rather than raw Firebase percentages, to avoid losing tracked progress
+      if (hybridTracker?.estimatedUsage) {
+        const estimate = hybridTracker.estimatedUsage;
         const current = await getUsageData();
-        const localIsNewer = (current.lastUpdated || 0) > (syncedData.syncedAt || 0);
         
-        // Prefer the more recently updated data source
-        // Usage can go down (resets), so we cannot just take max
-        let merged;
-        if (localIsNewer) {
-          // Local data is newer - keep it, but merge any missing fields from Firebase
-          merged = {
-            ...usageForStorage,
+        // Only update if we have meaningful data
+        if (estimate.currentSession?.percent > 0 || estimate.weeklyAllModels?.percent > 0) {
+          const merged = {
             ...current,
+            currentSession: estimate.currentSession,
+            weeklyAllModels: estimate.weeklyAllModels,
+            weeklySonnet: estimate.weeklySonnet,
+            isEstimate: true,
+            deltaTokens: estimate.deltaTokens,
             lastUpdated: Date.now()
           };
-          log("[CUP BG] Keeping local data (newer) - local:", current.weeklyAllModels?.percent, "firebase:", usageForStorage.weeklyAllModels?.percent);
-        } else {
-          // Firebase data is newer - use it
-          merged = {
-            ...current,
-            ...usageForStorage,
-            lastUpdated: Date.now()
-          };
-          log("[CUP BG] Using Firebase data (newer) - local:", current.weeklyAllModels?.percent, "firebase:", usageForStorage.weeklyAllModels?.percent);
+          
+          await chrome.storage.local.set({ usageData: merged });
+          await updateBadge(merged);
+          log("[CUP BG] Stored usage from HybridTracker estimate:", merged.currentSession?.percent + "%", merged.weeklyAllModels?.percent + "%", "delta:", estimate.deltaTokens);
+        }
+      } else {
+        // Fallback: no hybrid tracker, use Firebase data directly
+        const usageForStorage = {};
+        const source = syncedData.currentSession ? syncedData : (syncedData.estimatedUsage || syncedData.baseline || syncedData);
+        if (source) {
+          if (source.currentSession) usageForStorage.currentSession = source.currentSession;
+          if (source.weeklyAllModels) usageForStorage.weeklyAllModels = source.weeklyAllModels;
+          if (source.weeklySonnet) usageForStorage.weeklySonnet = source.weeklySonnet;
         }
         
-        await chrome.storage.local.set({ usageData: merged });
-        await updateBadge(merged);
-        log("[CUP BG] Stored usage:", merged.currentSession?.percent, merged.weeklyAllModels?.percent);
+        if (Object.keys(usageForStorage).length > 0) {
+          const current = await getUsageData();
+          const merged = {
+            ...current,
+            ...usageForStorage,
+            lastUpdated: Date.now()
+          };
+          
+          await chrome.storage.local.set({ usageData: merged });
+          await updateBadge(merged);
+          log("[CUP BG] Stored usage from Firebase (no HybridTracker):", merged.currentSession?.percent + "%", merged.weeklyAllModels?.percent + "%");
+        }
       }
     }
-    
     // Pull analytics
     const analytics = await firebaseSync.getAnalytics();
     if (analytics && usageAnalytics) {
