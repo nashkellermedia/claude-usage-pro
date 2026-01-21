@@ -1,6 +1,7 @@
 /**
  * Claude Usage Pro - Time Tracker
  * Tracks actual time spent on Claude
+ * Pauses on: tab blur, visibility hidden, or 2 min idle
  */
 
 class TimeTracker {
@@ -9,7 +10,10 @@ class TimeTracker {
     this.sessionTime = 0; // ms
     this.isActive = true;
     this.lastTick = Date.now();
+    this.lastActivity = Date.now();
     this.tickInterval = null;
+    this.idleTimeout = 2 * 60 * 1000; // 2 minutes idle = pause
+    this.isIdle = false;
   }
   
   initialize() {
@@ -18,14 +22,20 @@ class TimeTracker {
     // Track tab focus/blur
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
-        this.pause();
+        this.pause('visibility');
       } else {
-        this.resume();
+        this.resume('visibility');
       }
     });
     
-    window.addEventListener('focus', () => this.resume());
-    window.addEventListener('blur', () => this.pause());
+    window.addEventListener('focus', () => this.resume('focus'));
+    window.addEventListener('blur', () => this.pause('blur'));
+    
+    // Track user activity for idle detection
+    const activityEvents = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart'];
+    activityEvents.forEach(event => {
+      document.addEventListener(event, () => this.onActivity(), { passive: true });
+    });
     
     // Start ticking
     this.startTicking();
@@ -33,12 +43,30 @@ class TimeTracker {
     // Load existing time data
     this.loadTimeData();
     
-    window.CUP.log('TimeTracker: Initialized');
+    window.CUP.log('TimeTracker: Initialized with 2min idle timeout');
+  }
+  
+  onActivity() {
+    this.lastActivity = Date.now();
+    
+    // Resume if we were idle
+    if (this.isIdle && !document.hidden) {
+      this.isIdle = false;
+      this.resume('activity');
+    }
   }
   
   startTicking() {
     // Tick every second when active
     this.tickInterval = setInterval(() => {
+      // Check for idle
+      const timeSinceActivity = Date.now() - this.lastActivity;
+      if (timeSinceActivity > this.idleTimeout && !this.isIdle) {
+        this.isIdle = true;
+        this.pause('idle');
+        return;
+      }
+      
       if (this.isActive) {
         const now = Date.now();
         const elapsed = now - this.lastTick;
@@ -54,18 +82,18 @@ class TimeTracker {
     }, 1000);
   }
   
-  pause() {
+  pause(reason = '') {
     if (this.isActive) {
       this.isActive = false;
-      window.CUP.log('TimeTracker: Paused');
+      window.CUP.log('TimeTracker: Paused (' + reason + ')');
     }
   }
   
-  resume() {
-    if (!this.isActive) {
+  resume(reason = '') {
+    if (!this.isActive && !document.hidden && !this.isIdle) {
       this.isActive = true;
       this.lastTick = Date.now();
-      window.CUP.log('TimeTracker: Resumed');
+      window.CUP.log('TimeTracker: Resumed (' + reason + ')');
     }
   }
   
