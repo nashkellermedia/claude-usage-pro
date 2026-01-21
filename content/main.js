@@ -1,4 +1,3 @@
-console.log("[CUP RAW] main.js loading...");
 /**
  * Claude Usage Pro - Main Content Script
  */
@@ -6,7 +5,7 @@ console.log("[CUP RAW] main.js loading...");
 (async function() {
   // Initialize CUP namespace
   window.CUP = {
-    debug: true,
+    debug: false,
     log: (...args) => {
       if (window.CUP.debug) console.log('[Claude Usage Pro]', ...args);
     },

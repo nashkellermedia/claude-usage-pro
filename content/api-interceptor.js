@@ -1,4 +1,3 @@
-console.log("[CUP RAW] api-interceptor.js loading...");
 /**
  * Claude Usage Pro - API Interceptor
  * 

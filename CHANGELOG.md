@@ -117,3 +117,23 @@
 - Voice input
 - Time tracking
 - Analytics and sparklines
+
+## [2.4.0] - 2026-01-21
+
+### Added
+- DOM-based message send detection for model tracking (since fetch intercept doesn't work with Claude.ai's architecture)
+- Firebase-safe model keys with display name conversion
+- Comprehensive data merge strategy for Firebase sync (takes higher values instead of overwriting)
+- Global handler to suppress common connection errors after extension reload
+- CLEAN_MODEL_USAGE message handler for clearing bad data
+
+### Fixed
+- Model tracking now correctly detects Opus 4.5, Sonnet 4.5, etc. from UI selector
+- Firebase sync no longer overwrites local data with older remote data
+- Model usage, peak usage, daily snapshots, and threshold events all merge properly
+- Invalid Firebase keys (spaces, dots, colons) are now sanitized
+- Fixed usage data extraction from Firebase merged response
+
+### Changed
+- Disabled debug logging for production
+- Removed development console.log statements

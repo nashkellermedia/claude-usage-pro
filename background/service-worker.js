@@ -10,7 +10,7 @@
  */
 
 // Debug mode - set to true for verbose logging
-const DEBUG = true;
+const DEBUG = false;
 
 
 // Global handler for unhandled promise rejections (suppress connection errors)
