@@ -381,6 +381,21 @@ class FirebaseSync {
 
   // Sync analytics
   async syncAnalytics(analytics) {
+    // Sanitize modelUsage keys for Firebase (remove invalid characters)
+    if (analytics.modelUsage) {
+      const sanitizedModelUsage = {};
+      for (const [key, value] of Object.entries(analytics.modelUsage)) {
+        // Skip keys with invalid Firebase characters or old format
+        if (key.includes(" ") || key.includes(".") || key.includes(":") || key.includes("20250") || key.includes("$") || key.includes("#") || key.includes("[") || key.includes("]") || key.includes("/")) {
+          log("[FirebaseSync] Skipping invalid modelUsage key:", key);
+          continue;
+        }
+        if (typeof value === "number") {
+          sanitizedModelUsage[key] = value;
+        }
+      }
+      analytics = { ...analytics, modelUsage: sanitizedModelUsage };
+    }
     if (!this.syncEnabled) return { success: false };
 
     const result = await this.makeAuthenticatedRequest('analytics', 'PUT', {
@@ -892,14 +907,23 @@ class UsageAnalytics {
           }
         }
 
-        // Clean up corrupted modelUsage entries
+        // Clean up corrupted and old format modelUsage entries
         if (this.data.modelUsage) {
+          const cleanedModelUsage = {};
           for (const [model, count] of Object.entries(this.data.modelUsage)) {
+            // Skip non-numeric counts
             if (typeof count !== "number") {
               log("[UsageAnalytics] Removing corrupted modelUsage entry for", model);
-              delete this.data.modelUsage[model];
+              continue;
             }
+            // Skip old format keys (with spaces, dots, or raw API date IDs)
+            if (model.includes(" ") || model.includes(".") || model.includes("20250")) {
+              log("[UsageAnalytics] Removing old format modelUsage entry:", model);
+              continue;
+            }
+            cleanedModelUsage[model] = count;
           }
+          this.data.modelUsage = cleanedModelUsage;
         }
       }
       log('[UsageAnalytics] modelUsage entries:', Object.keys(this.data.modelUsage || {}).length);
@@ -989,39 +1013,38 @@ class UsageAnalytics {
   }
   
   normalizeModelName(model) {
-    // Map API model IDs to friendly display names
-    if (!model) return 'unknown';
+    // Map API model IDs to Firebase-safe keys (no spaces, dots, $, #, [, ], /)
+    if (!model) return "unknown";
     const m = model.toLowerCase();
     
     // Claude 4.5 models (latest)
-    if (m.includes('opus-4-5') || m.includes('opus-4.5')) return 'Claude Opus 4.5';
-    if (m.includes('sonnet-4-5') || m.includes('sonnet-4.5')) return 'Claude Sonnet 4.5';
-    if (m.includes('haiku-4-5') || m.includes('haiku-4.5')) return 'Claude Haiku 4.5';
+    if (m.includes("opus-4-5") || m.includes("opus-4.5")) return "claude-opus-4-5";
+    if (m.includes("sonnet-4-5") || m.includes("sonnet-4.5")) return "claude-sonnet-4-5";
+    if (m.includes("haiku-4-5") || m.includes("haiku-4.5")) return "claude-haiku-4-5";
     
-    // Claude 4 models  
-    if (m.includes('opus-4') || m === 'claude-opus-4-20250514') return 'Claude Opus 4';
-    if (m.includes('sonnet-4') || m === 'claude-sonnet-4-20250514') return 'Claude Sonnet 4';
-    if (m.includes('haiku-4') || m === 'claude-haiku-4-20250514') return 'Claude Haiku 4';
+    // Claude 4 models
+    if (m.includes("opus-4") || m === "claude-opus-4-20250514") return "claude-opus-4";
+    if (m.includes("sonnet-4") || m === "claude-sonnet-4-20250514") return "claude-sonnet-4";
+    if (m.includes("haiku-4") || m === "claude-haiku-4-20250514") return "claude-haiku-4";
     
     // Claude 3.5 models
-    if (m.includes('opus-3-5') || m.includes('opus-3.5')) return 'Claude Opus 3.5';
-    if (m.includes('sonnet-3-5') || m.includes('sonnet-3.5')) return 'Claude Sonnet 3.5';
-    if (m.includes('haiku-3-5') || m.includes('haiku-3.5')) return 'Claude Haiku 3.5';
+    if (m.includes("opus-3-5") || m.includes("opus-3.5")) return "claude-opus-3-5";
+    if (m.includes("sonnet-3-5") || m.includes("sonnet-3.5")) return "claude-sonnet-3-5";
+    if (m.includes("haiku-3-5") || m.includes("haiku-3.5")) return "claude-haiku-3-5";
     
     // Claude 3 models
-    if (m.includes('opus-3')) return 'Claude Opus 3';
-    if (m.includes('sonnet-3')) return 'Claude Sonnet 3';
-    if (m.includes('haiku-3')) return 'Claude Haiku 3';
+    if (m.includes("opus-3")) return "claude-opus-3";
+    if (m.includes("sonnet-3")) return "claude-sonnet-3";
+    if (m.includes("haiku-3")) return "claude-haiku-3";
     
     // Generic fallbacks
-    if (m.includes('opus')) return 'Claude Opus';
-    if (m.includes('sonnet')) return 'Claude Sonnet';
-    if (m.includes('haiku')) return 'Claude Haiku';
+    if (m.includes("opus")) return "claude-opus";
+    if (m.includes("sonnet")) return "claude-sonnet";
+    if (m.includes("haiku")) return "claude-haiku";
     
-    // Return original if no match
-    return model;
+    // Sanitize any remaining model name for Firebase
+    return model.replace(/[.\s$#\[\]\/]/g, "-").toLowerCase();
   }
-
   async save() {
     try {
       await chrome.storage.local.set({ usageAnalytics: this.data });
@@ -1862,7 +1885,7 @@ async function pullFromFirebase() {
       const mergedModelUsage = { ...usageAnalytics.data.modelUsage };
       if (analytics.modelUsage) {
         for (const [model, count] of Object.entries(analytics.modelUsage)) {
-          if (typeof count === "number") {
+          if (typeof count === "number" && !model.includes(" ") && !model.includes(".") && !model.includes(":") && !model.includes("20250")) {
             mergedModelUsage[model] = Math.max(mergedModelUsage[model] || 0, count);
           }
         }

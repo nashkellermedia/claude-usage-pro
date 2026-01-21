@@ -2,6 +2,29 @@
  * Claude Usage Pro - Popup v2.1.0
  */
 
+
+// Convert Firebase-safe model keys to display names
+function modelKeyToDisplayName(key) {
+  const displayNames = {
+    "claude-opus-4-5": "Claude Opus 4.5",
+    "claude-sonnet-4-5": "Claude Sonnet 4.5",
+    "claude-haiku-4-5": "Claude Haiku 4.5",
+    "claude-opus-4": "Claude Opus 4",
+    "claude-sonnet-4": "Claude Sonnet 4",
+    "claude-haiku-4": "Claude Haiku 4",
+    "claude-opus-3-5": "Claude Opus 3.5",
+    "claude-sonnet-3-5": "Claude Sonnet 3.5",
+    "claude-haiku-3-5": "Claude Haiku 3.5",
+    "claude-opus-3": "Claude Opus 3",
+    "claude-sonnet-3": "Claude Sonnet 3",
+    "claude-haiku-3": "Claude Haiku 3",
+    "claude-opus": "Claude Opus",
+    "claude-sonnet": "Claude Sonnet",
+    "claude-haiku": "Claude Haiku",
+  };
+  return displayNames[key] || key;
+}
+
 const els = {
   refreshBtn: document.getElementById('refreshBtn'),
   settingsBtn: document.getElementById('settingsBtn'),
@@ -699,7 +722,7 @@ function displayAnalytics(summary, timeData = null) {
       .filter(([model, count]) => typeof count === "number") // Filter out corrupted data
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)
-      .map(([model, count]) => `<div class="analytics-stat"><span class="label">${model}:</span><span class="value">${count}</span></div>`)
+      .map(([model, count]) => `<div class="analytics-stat"><span class="label">${modelKeyToDisplayName(model)}:</span><span class="value">${count}</span></div>`)
       .join('');
     modelHtml = `<div class="analytics-card"><h4>🤖 Models Used</h4>${models}</div>`;
   }
