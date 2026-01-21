@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.3.0] - 2026-01-21
+
+### Added
+- **Auto-Continue Feature**
+  - Automatically clicks the "Continue" button when Claude's response is truncated
+  - Configurable delay before clicking (default: 1500ms)
+  - Maximum auto-continues limit per response chain (default: 10)
+  - Visual indicator showing countdown before auto-click
+  - Cancel button to stop auto-continue if needed
+  - Notification when max continues limit is reached
+  - Toggle on/off in settings
+
+### Technical
+- New `content/auto-continue.js` module
+- DOM MutationObserver for detecting Continue button appearance
+- Settings: `enableAutoContinue`, `autoContinueDelay`, `maxAutoContinues`
+
 ## [2.2.0] - 2026-01-21
 
 ### Added

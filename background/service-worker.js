@@ -1283,6 +1283,10 @@ const DEFAULT_SETTINGS = {
   // Auto-refresh baseline settings
   autoRefreshEnabled: false,
   autoRefreshMinutes: 30
+  // Auto-continue settings
+  enableAutoContinue: false,
+  autoContinueDelay: 1500,
+  maxAutoContinues: 10
 };
 
 // ============================================================================

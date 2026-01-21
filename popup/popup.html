@@ -124,6 +124,25 @@
           <p class="setting-hint">Hold <kbd>V</kbd> to talk, or <kbd>Ctrl+Shift+V</kbd> to toggle, or click 🎤</p>
         </div>
         
+        <!-- Auto Continue -->
+        <div class="setting-group">
+          <label class="setting-label">Auto Continue</label>
+          <div class="setting-toggle">
+            <input type="checkbox" id="enableAutoContinue">
+            <label for="enableAutoContinue">Auto-click Continue button</label>
+          </div>
+          <div class="threshold-row sub-setting" style="margin-top: 8px;">
+            <label for="autoContinueDelay">Delay:</label>
+            <input type="number" id="autoContinueDelay" min="500" max="10000" value="1500" class="threshold-input" style="width: 70px;">
+            <span>ms</span>
+          </div>
+          <div class="threshold-row sub-setting">
+            <label for="maxAutoContinues">Max continues:</label>
+            <input type="number" id="maxAutoContinues" min="1" max="50" value="10" class="threshold-input" style="width: 50px;">
+          </div>
+          <p class="setting-hint">Automatically clicks Continue when Claude's response is truncated</p>
+        </div>
+        
         <div class="setting-group">
           <label class="setting-label">Alert Thresholds</label>
           <div class="threshold-inputs">

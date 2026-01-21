@@ -555,3 +555,69 @@ body.cup-context-active {
     color: #f87171;
   }
 }
+
+/* ========== AUTO CONTINUE ========== */
+@keyframes cup-fade-in {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+#cup-auto-continue-indicator .cup-auto-continue-inner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#cup-auto-continue-indicator .cup-auto-continue-icon {
+  animation: cup-spin 1s linear infinite;
+}
+
+@keyframes cup-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+#cup-auto-continue-indicator .cup-auto-continue-cancel {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  margin-left: 4px;
+  transition: background 0.2s;
+}
+
+#cup-auto-continue-indicator .cup-auto-continue-cancel:hover {
+  background: rgba(255, 255, 255, 0.4);
+}
+
+#cup-max-continues-notice .cup-notice-inner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+#cup-max-continues-notice .cup-notice-close {
+  background: rgba(0, 0, 0, 0.1);
+  border: none;
+  color: #1a1a1a;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  transition: background 0.2s;
+}
+
+#cup-max-continues-notice .cup-notice-close:hover {
+  background: rgba(0, 0, 0, 0.2);
+}

@@ -29,6 +29,9 @@ const els = {
   sidebarMinimized: document.getElementById('sidebarMinimized'),
   showChatOverlay: document.getElementById('showChatOverlay'),
   enableVoice: document.getElementById('enableVoice'),
+  enableAutoContinue: document.getElementById('enableAutoContinue'),
+  autoContinueDelay: document.getElementById('autoContinueDelay'),
+  maxAutoContinues: document.getElementById('maxAutoContinues'),
   enableResetNotifications: document.getElementById('enableResetNotifications'),
   thresholdWarning: document.getElementById('thresholdWarning'),
   thresholdDanger: document.getElementById('thresholdDanger'),
@@ -497,6 +500,9 @@ async function loadSettings() {
     els.sidebarMinimized.checked = settings.sidebarMinimized === true;
     els.showChatOverlay.checked = settings.showChatOverlay !== false;
     els.enableVoice.checked = settings.enableVoice === true;
+    els.enableAutoContinue.checked = settings.enableAutoContinue === true;
+    els.autoContinueDelay.value = settings.autoContinueDelay || 1500;
+    els.maxAutoContinues.value = settings.maxAutoContinues || 10;
     els.enableResetNotifications.checked = settings.enableResetNotifications !== false; // default true
     
     // Thresholds
@@ -559,6 +565,9 @@ async function saveSettings() {
     sidebarMinimized: els.sidebarMinimized.checked,
     showChatOverlay: els.showChatOverlay.checked,
     enableVoice: els.enableVoice.checked,
+    enableAutoContinue: els.enableAutoContinue.checked,
+    autoContinueDelay: parseInt(els.autoContinueDelay.value) || 1500,
+    maxAutoContinues: parseInt(els.maxAutoContinues.value) || 10,
     enableResetNotifications: els.enableResetNotifications.checked,
     thresholdWarning: parseInt(els.thresholdWarning.value) || 70,
     thresholdDanger: parseInt(els.thresholdDanger.value) || 90,

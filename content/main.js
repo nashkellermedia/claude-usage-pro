@@ -75,6 +75,12 @@
   
   // Initialize time tracker
   if (window.TimeTracker) {
+  
+  // Initialize auto-continue if enabled
+  if (window.AutoContinue) {
+    window.cupAutoContinue = new AutoContinue();
+    window.cupAutoContinue.initialize();
+  }
     window.cupTimeTracker = new TimeTracker();
     window.cupTimeTracker.initialize();
   }
@@ -186,6 +192,11 @@
   
   function handleSettingsUpdate(newSettings) {
     settings = { ...settings, ...newSettings };
+    
+    // Update auto-continue settings
+    if (window.cupAutoContinue) {
+      window.cupAutoContinue.updateSettings(newSettings);
+    }
     window.CUP.log('Applied settings:', settings);
     
     // Toggle sidebar - create if needed and enabled
