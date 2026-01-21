@@ -1816,8 +1816,9 @@ async function pullFromFirebase() {
       // The UI expects { currentSession, weeklyAllModels, weeklySonnet }
       const usageForStorage = {};
       
-      // Prefer estimatedUsage (has deltas applied), fall back to baseline
-      const source = syncedData.estimatedUsage || syncedData.baseline;
+      // getMergedUsage returns { currentSession, weeklyAllModels, weeklySonnet } directly
+      // The merged data has usage directly on it, or in estimatedUsage/baseline
+      const source = syncedData.currentSession ? syncedData : (syncedData.estimatedUsage || syncedData.baseline || syncedData);
       if (source) {
         if (source.currentSession) usageForStorage.currentSession = source.currentSession;
         if (source.weeklyAllModels) usageForStorage.weeklyAllModels = source.weeklyAllModels;
