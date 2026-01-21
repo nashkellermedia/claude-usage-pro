@@ -1282,7 +1282,7 @@ const DEFAULT_SETTINGS = {
   statsBarShowTimer: true,
   // Auto-refresh baseline settings
   autoRefreshEnabled: false,
-  autoRefreshMinutes: 30
+  autoRefreshMinutes: 30,
   // Auto-continue settings
   enableAutoContinue: false,
   autoContinueDelay: 1500,
