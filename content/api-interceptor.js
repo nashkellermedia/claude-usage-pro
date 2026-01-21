@@ -43,7 +43,12 @@ class APIInterceptorClass {
     // this.startDOMObserver();
     this.isActive = true;
     
-    window.CUP.log('API interceptor started - monitoring Claude API calls');
+    window.CUP.log("API interceptor started - monitoring Claude API calls");
+    
+    // Test that our intercepts work
+    window.CUP.log("[TEST] About to make test fetch...");
+    fetch("https://claude.ai/api/test-intercept-check").catch(() => {});
+    window.CUP.log("[TEST] Test fetch initiated");
   }
   
   on(event, callback) {
