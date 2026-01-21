@@ -144,20 +144,19 @@
   width: 220px;
 }
 
-/* ========== INPUT STATS BAR (Below Chat Input) ========== */
+/* ========== INPUT STATS BAR (Inside Chat Input) ========== */
 #cup-input-stats {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 6px 16px;
+  padding: 4px 16px 8px 16px;
   font-size: 12px;
   color: inherit;
   font-family: inherit;
-  margin-top: -8px;
-  border-radius: 0 0 24px 24px;
-  position: relative;
-  z-index: 1;
+  background: transparent;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 #cup-input-stats .cup-stat-item {

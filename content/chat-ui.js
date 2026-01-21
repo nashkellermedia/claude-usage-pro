@@ -261,22 +261,6 @@ class ChatUI {
         this.inputStats = document.createElement('div');
         this.inputStats.id = 'cup-input-stats';
         
-        // Find the input box container to get its background color and match it
-        let inputContainer = contentEditable;
-        for (let i = 0; i < 6; i++) {
-          if (inputContainer.parentElement) inputContainer = inputContainer.parentElement;
-        }
-        
-        // Get the background color from the input container
-        let bgColor = '#2f2f2f'; // Default dark fallback
-        if (inputContainer) {
-          const computedBg = getComputedStyle(inputContainer).backgroundColor;
-          if (computedBg && computedBg !== 'rgba(0, 0, 0, 0)' && computedBg !== 'transparent') {
-            bgColor = computedBg;
-          }
-        }
-        this.inputStats.style.backgroundColor = bgColor;
-        
         this.inputStats.innerHTML = `
           <span class="cup-stat-item">
             <span class="cup-stat-icon">✏️</span>
@@ -314,14 +298,16 @@ class ChatUI {
           </span>
         `;
         
+        // Find the input box container (walk up ~4 levels to find the rounded box)
         let container = contentEditable;
-        for (let i = 0; i < 6; i++) {
+        for (let i = 0; i < 4; i++) {
           if (container.parentElement) container = container.parentElement;
         }
         
-        if (container && container.parentElement) {
-          container.parentElement.insertBefore(this.inputStats, container.nextSibling);
-          window.CUP.log('ChatUI: Input stats injected');
+        if (container) {
+          // Inject INSIDE the container at the bottom
+          container.appendChild(this.inputStats);
+          window.CUP.log('ChatUI: Input stats injected inside container');
           
           // Add click handler for clear button
           const clearBtn = document.getElementById('cup-clear-files');
