@@ -1503,20 +1503,28 @@ async function handleMessage(message, sender) {
       // We want stored data as base, then estimates can add delta tracking
       let merged = { ...usageData };
       
-      if (hybridTracker?.estimatedUsage) {
-        // Only use estimates if they're newer or have valid data
+      if (hybridTracker?.estimatedUsage && hybridTracker?.baseline) {
         const est = hybridTracker.estimatedUsage;
-        if (est.currentSession?.percent > 0 || !usageData.currentSession?.percent) {
+        const baselineAge = Date.now() - (hybridTracker.baseline.timestamp || 0);
+        
+        // Only use estimates if baseline is recent (< 10 min) and newer than stored data
+        const baselineIsRecent = baselineAge < 10 * 60 * 1000;
+        const baselineIsNewer = (hybridTracker.baseline.timestamp || 0) > (usageData.lastUpdated || 0);
+        
+        if (baselineIsRecent && baselineIsNewer) {
+          // Use estimates - they are based on fresher data
+          if (est.currentSession) merged.currentSession = est.currentSession;
+          if (est.weeklyAllModels) merged.weeklyAllModels = est.weeklyAllModels;
+          if (est.weeklySonnet) merged.weeklySonnet = est.weeklySonnet;
+          merged.isEstimate = true;
+          merged.deltaTokens = est.deltaTokens;
+        } else if (!usageData.currentSession?.percent && est.currentSession?.percent) {
+          // Fallback: use estimates only if stored data is empty
           merged.currentSession = est.currentSession;
-        }
-        if (est.weeklyAllModels?.percent > 0 || !usageData.weeklyAllModels?.percent) {
           merged.weeklyAllModels = est.weeklyAllModels;
-        }
-        if (est.weeklySonnet?.percent > 0 || !usageData.weeklySonnet?.percent) {
           merged.weeklySonnet = est.weeklySonnet;
+          merged.isEstimate = true;
         }
-        merged.isEstimate = est.isEstimate;
-        merged.deltaTokens = est.deltaTokens;
       }
       
       // Record analytics snapshot if requested and we have valid data
