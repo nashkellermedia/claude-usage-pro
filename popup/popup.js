@@ -30,6 +30,8 @@ const els = {
   showChatOverlay: document.getElementById('showChatOverlay'),
   enableVoice: document.getElementById('enableVoice'),
   enableResetNotifications: document.getElementById('enableResetNotifications'),
+  thresholdWarning: document.getElementById('thresholdWarning'),
+  thresholdDanger: document.getElementById('thresholdDanger'),
   
   // Anthropic
   anthropicApiKey: document.getElementById('anthropicApiKey'),
@@ -90,16 +92,20 @@ function formatResetTime(timestamp, fallbackStr) {
 function updateUsageDisplay(el, barEl, percent) {
   if (!el || !barEl) return;
   
+  // Get custom thresholds from settings inputs (fallback to defaults)
+  const warningThreshold = parseInt(els.thresholdWarning?.value) || 70;
+  const dangerThreshold = parseInt(els.thresholdDanger?.value) || 90;
+  
   el.textContent = percent + '%';
   barEl.style.width = Math.min(percent, 100) + '%';
   
   el.classList.remove('warning', 'danger');
   barEl.classList.remove('warning', 'danger');
   
-  if (percent >= 90) {
+  if (percent >= dangerThreshold) {
     el.classList.add('danger');
     barEl.classList.add('danger');
-  } else if (percent >= 70) {
+  } else if (percent >= warningThreshold) {
     el.classList.add('warning');
     barEl.classList.add('warning');
   }
@@ -346,6 +352,10 @@ async function loadSettings() {
     els.enableVoice.checked = settings.enableVoice === true;
     els.enableResetNotifications.checked = settings.enableResetNotifications !== false; // default true
     
+    // Thresholds
+    els.thresholdWarning.value = settings.thresholdWarning || 70;
+    els.thresholdDanger.value = settings.thresholdDanger || 90;
+    
     // Anthropic API key
     if (settings.anthropicApiKey) {
       els.anthropicApiKey.value = '••••••••' + settings.anthropicApiKey.slice(-8);
@@ -391,6 +401,8 @@ async function saveSettings() {
     showChatOverlay: els.showChatOverlay.checked,
     enableVoice: els.enableVoice.checked,
     enableResetNotifications: els.enableResetNotifications.checked,
+    thresholdWarning: parseInt(els.thresholdWarning.value) || 70,
+    thresholdDanger: parseInt(els.thresholdDanger.value) || 90,
     firebaseDatabaseUrl: els.firebaseDatabaseUrl.value.trim().replace(/\/+$/, ''),  // Strip trailing slashes
     firebaseSyncId: els.firebaseSyncId.value.trim()
   };

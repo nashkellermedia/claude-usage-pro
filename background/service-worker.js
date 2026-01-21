@@ -1230,7 +1230,10 @@ const DEFAULT_SETTINGS = {
   firebaseDatabaseUrl: '',
   firebaseApiKey: '',
   anthropicApiKey: '',
-  firebaseSyncId: ''
+  firebaseSyncId: '',
+  // Custom alert thresholds (percentage)
+  thresholdWarning: 70,
+  thresholdDanger: 90
 };
 
 // ============================================================================

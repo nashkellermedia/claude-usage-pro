@@ -18,6 +18,11 @@ class ChatUI {
     this.tokenCountDebounce = null;
     this.useAccurateCount = false;
     this.lastAccurateTextTokens = 0;
+    
+    // Alert thresholds (loaded from settings)
+    this.thresholdWarning = 70;
+    this.thresholdDanger = 90;
+    this.loadThresholds();
   }
   
   initialize() {
@@ -34,6 +39,23 @@ class ChatUI {
     } catch (e) {
       this.useAccurateCount = false;
     }
+  }
+  
+  async loadThresholds() {
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
+      if (response?.settings) {
+        this.thresholdWarning = response.settings.thresholdWarning || 70;
+        this.thresholdDanger = response.settings.thresholdDanger || 90;
+        window.CUP.log('ChatUI: Thresholds loaded - Warning:', this.thresholdWarning, 'Danger:', this.thresholdDanger);
+      }
+    } catch (e) {}
+  }
+  
+  getColorForPercent(pct) {
+    if (pct >= this.thresholdDanger) return '#ef4444';
+    if (pct >= this.thresholdWarning) return '#f59e0b';
+    return '#22c55e';
   }
   
   /**
@@ -475,9 +497,7 @@ class ChatUI {
     if (sessionEl && usageData.currentSession) {
       sessionEl.textContent = usageData.currentSession.percent + '%';
       const pct = usageData.currentSession.percent;
-      if (pct >= 90) sessionEl.style.color = '#ef4444';
-      else if (pct >= 70) sessionEl.style.color = '#f59e0b';
-      else sessionEl.style.color = '#22c55e';
+      sessionEl.style.color = this.getColorForPercent(pct);
       
       // Add prediction tooltip
       if (usageData.predictions?.session?.formatted) {
@@ -503,19 +523,15 @@ class ChatUI {
     const weeklyAllEl = document.getElementById('cup-weekly-all-pct');
     if (weeklyAllEl && usageData.weeklyAllModels) {
       weeklyAllEl.textContent = usageData.weeklyAllModels.percent + '%';
-      const pct = usageData.weeklyAllModels.percent;
-      if (pct >= 90) weeklyAllEl.style.color = '#ef4444';
-      else if (pct >= 70) weeklyAllEl.style.color = '#f59e0b';
-      else weeklyAllEl.style.color = '#22c55e';
+      const weeklyPct = usageData.weeklyAllModels.percent;
+      weeklyAllEl.style.color = this.getColorForPercent(weeklyPct);
     }
     
     const weeklySonnetEl = document.getElementById('cup-weekly-sonnet-pct');
     if (weeklySonnetEl && usageData.weeklySonnet) {
       weeklySonnetEl.textContent = usageData.weeklySonnet.percent + '%';
-      const pct = usageData.weeklySonnet.percent;
-      if (pct >= 90) weeklySonnetEl.style.color = '#ef4444';
-      else if (pct >= 70) weeklySonnetEl.style.color = '#f59e0b';
-      else weeklySonnetEl.style.color = '#22c55e';
+      const sonnetPct = usageData.weeklySonnet.percent;
+      weeklySonnetEl.style.color = this.getColorForPercent(sonnetPct);
     }
   }
   

@@ -122,6 +122,23 @@
         </div>
         
         <div class="setting-group">
+          <label class="setting-label">Alert Thresholds</label>
+          <div class="threshold-inputs">
+            <div class="threshold-row">
+              <label for="thresholdWarning">⚠️ Warning at</label>
+              <input type="number" id="thresholdWarning" min="10" max="95" value="70" class="threshold-input">
+              <span>%</span>
+            </div>
+            <div class="threshold-row">
+              <label for="thresholdDanger">🔴 Danger at</label>
+              <input type="number" id="thresholdDanger" min="20" max="100" value="90" class="threshold-input">
+              <span>%</span>
+            </div>
+          </div>
+          <p class="setting-hint">Customize when usage colors change to yellow/red</p>
+        </div>
+        
+        <div class="setting-group">
           <label class="setting-label">Notifications</label>
           <div class="setting-toggle">
             <input type="checkbox" id="enableResetNotifications" checked>

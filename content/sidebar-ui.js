@@ -7,16 +7,22 @@ class SidebarUI {
   constructor() {
     this.widget = null;
     this.expanded = true;
+    this.thresholdWarning = 70;
+    this.thresholdDanger = 90;
   }
   
   async initialize() {
     window.CUP.log('SidebarUI: Initializing...');
     
-    // Check if user prefers minimized
+    // Check if user prefers minimized and load thresholds
     try {
       const response = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
       if (response?.settings?.sidebarMinimized) {
         this.expanded = false;
+      }
+      if (response?.settings) {
+        this.thresholdWarning = response.settings.thresholdWarning || 70;
+        this.thresholdDanger = response.settings.thresholdDanger || 90;
       }
     } catch (e) {}
     
@@ -292,10 +298,10 @@ class SidebarUI {
     if (el) {
       el.style.width = Math.min(percent, 100) + '%';
       
-      // Color the bar based on percentage
-      if (percent >= 90) {
+      // Color the bar based on percentage using custom thresholds
+      if (percent >= this.thresholdDanger) {
         el.style.background = '#ef4444';
-      } else if (percent >= 70) {
+      } else if (percent >= this.thresholdWarning) {
         el.style.background = '#f59e0b';
       } else {
         el.style.background = '#22c55e';
@@ -307,9 +313,9 @@ class SidebarUI {
     const el = document.getElementById(id);
     if (!el) return;
     
-    if (percent >= 90) {
+    if (percent >= this.thresholdDanger) {
       el.style.color = '#ef4444';
-    } else if (percent >= 70) {
+    } else if (percent >= this.thresholdWarning) {
       el.style.color = '#f59e0b';
     } else {
       el.style.color = '#22c55e';
