@@ -9,6 +9,8 @@ class SidebarUI {
     this.expanded = true;
     this.thresholdWarning = 70;
     this.thresholdDanger = 90;
+    this.rateLimitState = null;
+    this.countdownInterval = null;
   }
   
   async initialize() {
@@ -26,8 +28,34 @@ class SidebarUI {
       }
     } catch (e) {}
     
+    // Load rate limit state
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'GET_RATE_LIMIT_STATE' });
+      if (response?.rateLimitState) {
+        this.rateLimitState = response.rateLimitState;
+      }
+    } catch (e) {}
+    
     await this.injectWidget();
+    
+    // Listen for rate limit updates
+    this.setupRateLimitListener();
+    
     window.CUP.log('SidebarUI: Initialized, expanded:', this.expanded);
+  }
+  
+  setupRateLimitListener() {
+    // Register callback with API interceptor
+    if (window.APIInterceptor) {
+      window.APIInterceptor.on('onRateLimited', (state) => {
+        this.handleRateLimitUpdate(state);
+      });
+    }
+  }
+  
+  handleRateLimitUpdate(state) {
+    this.rateLimitState = state;
+    this.updateRateLimitDisplay();
   }
   
   async injectWidget() {
@@ -54,9 +82,25 @@ class SidebarUI {
             <div class="cup-widget-header ${expandedClass}" id="cup-widget-toggle">
               <span class="cup-widget-icon">📊</span>
               <span class="cup-widget-title">Usage</span>
+              <span class="cup-rate-limit-badge" id="cup-rate-limit-badge" style="display: none;">LIMITED</span>
               <span class="cup-widget-expand">${expandIcon}</span>
             </div>
             <div class="cup-widget-details ${expandedClass}" id="cup-widget-details">
+              <!-- Rate limit banner (hidden by default) -->
+              <div class="cup-rate-limit-banner" id="cup-rate-limit-banner" style="display: none;">
+                <div class="cup-rate-limit-title">
+                  <span class="cup-rate-limit-icon">⛔</span>
+                  Rate Limit Reached
+                </div>
+                <div class="cup-rate-limit-message" id="cup-rate-limit-message">
+                  You've reached your usage limit.
+                </div>
+                <div class="cup-rate-limit-countdown" id="cup-rate-limit-countdown">
+                  <span class="cup-countdown-icon">⏱️</span>
+                  <span id="cup-rate-limit-time">Calculating...</span>
+                </div>
+              </div>
+              
               <div class="cup-usage-section">
                 <div class="cup-usage-header">
                   <span class="cup-usage-label">Current Session</span>
@@ -130,6 +174,11 @@ class SidebarUI {
           this.toggleExpand();
         });
         
+        // Update rate limit display if we have state
+        if (this.rateLimitState?.isLimited) {
+          this.updateRateLimitDisplay();
+        }
+        
         return;
       }
       
@@ -154,6 +203,93 @@ class SidebarUI {
     }
   }
   
+  updateRateLimitDisplay() {
+    const banner = document.getElementById('cup-rate-limit-banner');
+    const badge = document.getElementById('cup-rate-limit-badge');
+    const message = document.getElementById('cup-rate-limit-message');
+    const countdown = document.getElementById('cup-rate-limit-countdown');
+    const timeEl = document.getElementById('cup-rate-limit-time');
+    
+    if (!this.rateLimitState?.isLimited) {
+      // Clear rate limit display
+      if (banner) banner.style.display = 'none';
+      if (badge) badge.style.display = 'none';
+      if (this.countdownInterval) {
+        clearInterval(this.countdownInterval);
+        this.countdownInterval = null;
+      }
+      return;
+    }
+    
+    // Show rate limit banner
+    if (banner) banner.style.display = 'block';
+    if (badge) badge.style.display = 'inline-block';
+    
+    // Set message
+    if (message) {
+      let msg = this.rateLimitState.message || "You've reached your usage limit.";
+      // Clean up the message
+      if (msg.length > 100) {
+        msg = msg.substring(0, 100) + '...';
+      }
+      message.textContent = msg;
+    }
+    
+    // Update countdown
+    if (this.rateLimitState.resetTime && countdown && timeEl) {
+      countdown.style.display = 'flex';
+      
+      // Clear existing interval
+      if (this.countdownInterval) {
+        clearInterval(this.countdownInterval);
+      }
+      
+      // Update immediately
+      this.updateCountdown(timeEl);
+      
+      // Start countdown interval
+      this.countdownInterval = setInterval(() => {
+        this.updateCountdown(timeEl);
+      }, 1000);
+    } else if (countdown) {
+      countdown.style.display = 'none';
+    }
+  }
+  
+  updateCountdown(timeEl) {
+    if (!this.rateLimitState?.resetTime || !timeEl) return;
+    
+    const now = Date.now();
+    const remaining = this.rateLimitState.resetTime - now;
+    
+    if (remaining <= 0) {
+      timeEl.textContent = 'Resetting now...';
+      // Clear the interval and state
+      if (this.countdownInterval) {
+        clearInterval(this.countdownInterval);
+        this.countdownInterval = null;
+      }
+      // Notify that limit should be cleared
+      window.CUP.sendToBackground({ type: 'RATE_LIMIT_CLEARED' });
+      return;
+    }
+    
+    const hours = Math.floor(remaining / (60 * 60 * 1000));
+    const minutes = Math.floor((remaining % (60 * 60 * 1000)) / (60 * 1000));
+    const seconds = Math.floor((remaining % (60 * 1000)) / 1000);
+    
+    let timeStr = '';
+    if (hours > 0) {
+      timeStr = `${hours}h ${minutes}m`;
+    } else if (minutes > 0) {
+      timeStr = `${minutes}m ${seconds}s`;
+    } else {
+      timeStr = `${seconds}s`;
+    }
+    
+    timeEl.textContent = `Resets in ${timeStr}`;
+  }
+  
   update(usageData) {
     if (!usageData) return;
     
@@ -163,6 +299,16 @@ class SidebarUI {
       this.updateElement('cup-sidebar-session', pct + '%');
       this.updateBar('cup-sidebar-session-bar', pct);
       this.colorizePercent('cup-sidebar-session', pct);
+      
+      // Auto-detect rate limit from 100% usage
+      if (pct >= 100 && !this.rateLimitState?.isLimited) {
+        this.handleRateLimitUpdate({
+          isLimited: true,
+          resetTime: usageData.currentSession.resetsAt,
+          message: "You've reached 100% of your session limit.",
+          source: 'usage'
+        });
+      }
     }
     
     // Always update session reset time (use timestamp for dynamic countdown)

@@ -416,3 +416,142 @@ body.cup-context-active {
   font-weight: 500;
   color: var(--cup-text);
 }
+
+/* ========== RATE LIMIT BANNER ========== */
+.cup-rate-limit-banner {
+  background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+  border: 1px solid #fca5a5;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  animation: cup-pulse-warning 2s ease-in-out infinite;
+}
+
+@media (prefers-color-scheme: dark) {
+  .cup-rate-limit-banner {
+    background: linear-gradient(135deg, #450a0a 0%, #7f1d1d 100%);
+    border-color: #991b1b;
+  }
+}
+
+@keyframes cup-pulse-warning {
+  0%, 100% { 
+    opacity: 1; 
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+  }
+  50% { 
+    opacity: 0.95; 
+    box-shadow: 0 0 0 4px rgba(239, 68, 68, 0);
+  }
+}
+
+.cup-rate-limit-icon {
+  font-size: 16px;
+  margin-right: 6px;
+}
+
+.cup-rate-limit-title {
+  font-weight: 600;
+  font-size: 12px;
+  color: #dc2626;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+}
+
+@media (prefers-color-scheme: dark) {
+  .cup-rate-limit-title {
+    color: #fca5a5;
+  }
+}
+
+.cup-rate-limit-message {
+  font-size: 11px;
+  color: #991b1b;
+  line-height: 1.4;
+}
+
+@media (prefers-color-scheme: dark) {
+  .cup-rate-limit-message {
+    color: #fecaca;
+  }
+}
+
+.cup-rate-limit-countdown {
+  font-weight: 600;
+  color: #dc2626;
+  font-size: 13px;
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .cup-rate-limit-countdown {
+    color: #f87171;
+  }
+}
+
+.cup-rate-limit-countdown .cup-countdown-icon {
+  font-size: 14px;
+}
+
+/* Stats bar rate limit indicator */
+#cup-input-stats .cup-stat-rate-limited {
+  color: #ef4444;
+  font-weight: 600;
+  animation: cup-blink 1s ease-in-out infinite;
+}
+
+@keyframes cup-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Badge overlay for rate limit in sidebar header */
+.cup-widget-header .cup-rate-limit-badge {
+  background: #ef4444;
+  color: white;
+  font-size: 9px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-weight: 600;
+  margin-left: auto;
+  animation: cup-blink 1.5s ease-in-out infinite;
+}
+
+/* Predictions section styling when rate limited */
+.cup-predictions-warning {
+  background: rgba(239, 68, 68, 0.1);
+  border-radius: 6px;
+  padding: 8px;
+  margin-top: 8px;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.cup-predictions-warning .cup-prediction-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #dc2626;
+  margin-bottom: 4px;
+}
+
+.cup-predictions-warning .cup-prediction-time {
+  font-size: 12px;
+  color: #b91c1c;
+  font-weight: 500;
+}
+
+@media (prefers-color-scheme: dark) {
+  .cup-predictions-warning {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.3);
+  }
+  .cup-predictions-warning .cup-prediction-title {
+    color: #fca5a5;
+  }
+  .cup-predictions-warning .cup-prediction-time {
+    color: #f87171;
+  }
+}

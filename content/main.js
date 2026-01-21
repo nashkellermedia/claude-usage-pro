@@ -127,6 +127,16 @@
         }
         break;
         
+      case 'RATE_LIMIT_UPDATED':
+        window.CUP.log('Rate limit updated:', message.rateLimitState);
+        if (window.cupSidebar) {
+          window.cupSidebar.handleRateLimitUpdate(message.rateLimitState);
+        }
+        if (window.cupChatUI) {
+          window.cupChatUI.handleRateLimitUpdate(message.rateLimitState);
+        }
+        break;
+
       case 'SETTINGS_UPDATED':
         window.CUP.log('Settings updated:', message.settings);
         handleSettingsUpdate(message.settings);

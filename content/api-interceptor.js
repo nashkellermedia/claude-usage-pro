@@ -5,6 +5,7 @@
  * 1. Track token usage from conversations
  * 2. Capture usage/billing data when available
  * 3. Detect when messages are sent (to clear attachment tracking)
+ * 4. Detect rate limiting (429 responses) and notify the user
  */
 
 class APIInterceptorClass {
@@ -15,10 +16,20 @@ class APIInterceptorClass {
       onMessageSent: null,
       onMessageReceived: null,
       onConversationLoaded: null,
-      onUsageDataReceived: null
+      onUsageDataReceived: null,
+      onRateLimited: null  // New callback for rate limit events
     };
     this.lastUsageData = null;
     this.lastModel = null;  // Track model for output tokens
+    this.rateLimitState = {
+      isLimited: false,
+      retryAfter: null,
+      resetTime: null,
+      message: null,
+      detectedAt: null,
+      source: null  // 'api' or 'dom'
+    };
+    this.domObserver = null;
   }
   
   start() {
@@ -26,9 +37,10 @@ class APIInterceptorClass {
     
     this.interceptFetch();
     this.interceptXHR();
+    this.startDOMObserver();
     this.isActive = true;
     
-    window.CUP.log('API interceptor started - monitoring Claude API calls');
+    window.CUP.log('API interceptor started - monitoring Claude API calls and rate limits');
   }
   
   on(event, callback) {
@@ -36,6 +48,248 @@ class APIInterceptorClass {
       this.callbacks[event] = callback;
       window.CUP.log('Registered callback for:', event);
     }
+  }
+  
+  /**
+   * Start observing DOM for rate limit banners
+   */
+  startDOMObserver() {
+    if (this.domObserver) return;
+    
+    // Check for existing rate limit banner on page load
+    this.checkForRateLimitBanner();
+    
+    // Observe for new banners being added
+    this.domObserver = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.type === 'childList') {
+          for (const node of mutation.addedNodes) {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              this.checkNodeForRateLimit(node);
+            }
+          }
+        }
+        // Also check for text content changes
+        if (mutation.type === 'characterData') {
+          this.checkNodeForRateLimit(mutation.target.parentElement);
+        }
+      }
+    });
+    
+    this.domObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true
+    });
+    
+    window.CUP.log('Rate limit DOM observer started');
+  }
+  
+  /**
+   * Check if a DOM node contains rate limit messaging
+   */
+  checkNodeForRateLimit(node) {
+    if (!node || !node.textContent) return;
+    
+    const text = node.textContent.toLowerCase();
+    
+    // Common rate limit phrases from Claude.ai
+    const rateLimitPhrases = [
+      "you've reached your usage limit",
+      "you've reached your message limit",
+      "usage limit reached",
+      "message limit reached",
+      "rate limit",
+      "limit will reset",
+      "try again later",
+      "too many requests",
+      "please wait"
+    ];
+    
+    for (const phrase of rateLimitPhrases) {
+      if (text.includes(phrase)) {
+        // Don't trigger on our own UI elements
+        if (node.closest('#cup-sidebar-widget') || 
+            node.closest('#cup-input-stats') ||
+            node.closest('.cup-rate-limit-banner')) {
+          return;
+        }
+        
+        // Extract reset time if mentioned
+        let resetTime = null;
+        const resetMatch = text.match(/reset(?:s)?\s+(?:at|in)\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?|\d+\s*(?:hours?|hr?s?|minutes?|mins?|m|h))/i);
+        if (resetMatch) {
+          resetTime = this.parseResetTime(resetMatch[1]);
+        }
+        
+        // Check for countdown pattern like "4h 30m" or "in 2 hours"
+        const countdownMatch = text.match(/(\d+)\s*(?:hours?|hr?s?|h)\s*(?:(\d+)\s*(?:minutes?|mins?|m))?/i);
+        if (countdownMatch && !resetTime) {
+          const hours = parseInt(countdownMatch[1]) || 0;
+          const minutes = parseInt(countdownMatch[2]) || 0;
+          resetTime = Date.now() + (hours * 60 + minutes) * 60 * 1000;
+        }
+        
+        this.handleRateLimitDetected({
+          source: 'dom',
+          message: text.substring(0, 200),
+          resetTime: resetTime,
+          retryAfter: resetTime ? Math.ceil((resetTime - Date.now()) / 1000) : null
+        });
+        
+        return;
+      }
+    }
+  }
+  
+  /**
+   * Check the current page for existing rate limit banners
+   */
+  checkForRateLimitBanner() {
+    // Look for common banner elements
+    const possibleBanners = document.querySelectorAll([
+      '[class*="banner"]',
+      '[class*="alert"]',
+      '[class*="warning"]',
+      '[class*="error"]',
+      '[class*="limit"]',
+      '[role="alert"]'
+    ].join(','));
+    
+    for (const banner of possibleBanners) {
+      this.checkNodeForRateLimit(banner);
+    }
+    
+    // Also check body text for rate limit messages
+    const bodyText = document.body?.innerText || '';
+    if (bodyText.includes("you've reached") || bodyText.includes("limit reached")) {
+      this.checkNodeForRateLimit(document.body);
+    }
+  }
+  
+  /**
+   * Parse reset time string to timestamp
+   */
+  parseResetTime(resetStr) {
+    if (!resetStr) return null;
+    
+    const str = resetStr.toLowerCase().trim();
+    const now = Date.now();
+    
+    // Match "4h 30m" or "4 hours" or "30 minutes" pattern
+    const hourMatch = str.match(/(\d+)\s*(?:hours?|hr?s?|h)/i);
+    const minMatch = str.match(/(\d+)\s*(?:minutes?|mins?|m)(?!o)/i);
+    
+    if (hourMatch || minMatch) {
+      const hours = hourMatch ? parseInt(hourMatch[1]) : 0;
+      const minutes = minMatch ? parseInt(minMatch[1]) : 0;
+      return now + (hours * 60 + minutes) * 60 * 1000;
+    }
+    
+    // Match "3:00 PM" or "3pm" pattern
+    const timeMatch = str.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i);
+    if (timeMatch) {
+      let hours = parseInt(timeMatch[1]);
+      const minutes = parseInt(timeMatch[2]) || 0;
+      const isPM = timeMatch[3].toLowerCase() === 'pm';
+      
+      if (isPM && hours !== 12) hours += 12;
+      if (!isPM && hours === 12) hours = 0;
+      
+      const resetDate = new Date();
+      resetDate.setHours(hours, minutes, 0, 0);
+      
+      // If time has passed today, it's for tomorrow
+      if (resetDate.getTime() < now) {
+        resetDate.setDate(resetDate.getDate() + 1);
+      }
+      
+      return resetDate.getTime();
+    }
+    
+    return null;
+  }
+  
+  /**
+   * Handle rate limit detection from any source
+   */
+  handleRateLimitDetected(info) {
+    const { source, message, resetTime, retryAfter, errorType } = info;
+    
+    // Don't re-fire if we already know we're limited
+    if (this.rateLimitState.isLimited && 
+        Date.now() - this.rateLimitState.detectedAt < 60000) {
+      return;
+    }
+    
+    this.rateLimitState = {
+      isLimited: true,
+      retryAfter: retryAfter,
+      resetTime: resetTime,
+      message: message,
+      detectedAt: Date.now(),
+      source: source,
+      errorType: errorType
+    };
+    
+    window.CUP.log('Rate limit detected!', {
+      source,
+      retryAfter,
+      resetTime: resetTime ? new Date(resetTime).toLocaleTimeString() : null,
+      message: message ? message.substring(0, 100) : null
+    });
+    
+    // Fire callback
+    if (this.callbacks.onRateLimited) {
+      this.callbacks.onRateLimited(this.rateLimitState);
+    }
+    
+    // Send to background for tracking
+    window.CUP.sendToBackground({
+      type: 'RATE_LIMIT_DETECTED',
+      rateLimitState: this.rateLimitState
+    });
+  }
+  
+  /**
+   * Clear rate limit state (called when limit resets)
+   */
+  clearRateLimitState() {
+    if (!this.rateLimitState.isLimited) return;
+    
+    window.CUP.log('Rate limit cleared');
+    
+    this.rateLimitState = {
+      isLimited: false,
+      retryAfter: null,
+      resetTime: null,
+      message: null,
+      detectedAt: null,
+      source: null
+    };
+    
+    // Notify background
+    window.CUP.sendToBackground({
+      type: 'RATE_LIMIT_CLEARED'
+    });
+    
+    // Fire callback with null to indicate cleared
+    if (this.callbacks.onRateLimited) {
+      this.callbacks.onRateLimited(null);
+    }
+  }
+  
+  /**
+   * Get current rate limit state
+   */
+  getRateLimitState() {
+    // Check if limit should have expired
+    if (this.rateLimitState.isLimited && this.rateLimitState.resetTime) {
+      if (Date.now() > this.rateLimitState.resetTime) {
+        this.clearRateLimitState();
+      }
+    }
+    return this.rateLimitState;
   }
   
   interceptFetch() {
@@ -64,6 +318,15 @@ class APIInterceptorClass {
           }
           
           const response = await originalFetch.apply(this, args);
+          
+          // Check for rate limit response (429)
+          if (response.status === 429) {
+            self.handleHttpRateLimit(response, urlString);
+          } else if (response.ok && self.rateLimitState.isLimited) {
+            // Successful response while we thought we were limited - clear state
+            self.clearRateLimitState();
+          }
+          
           const clonedResponse = response.clone();
           self.processResponse(urlString, clonedResponse, requestId);
           
@@ -78,6 +341,47 @@ class APIInterceptorClass {
       
       return originalFetch.apply(this, args);
     };
+  }
+  
+  /**
+   * Handle HTTP 429 rate limit response
+   */
+  async handleHttpRateLimit(response, url) {
+    window.CUP.log('HTTP 429 Rate Limit Response detected');
+    
+    // Get retry-after header
+    const retryAfter = response.headers.get('retry-after');
+    let retrySeconds = retryAfter ? parseInt(retryAfter) : null;
+    let resetTime = retrySeconds ? Date.now() + retrySeconds * 1000 : null;
+    let errorMessage = null;
+    let errorType = null;
+    
+    // Try to get more details from response body
+    try {
+      const cloned = response.clone();
+      const data = await cloned.json();
+      
+      if (data.error) {
+        errorMessage = data.error.message || data.error;
+        errorType = data.error.type; // e.g., "rate_limit_error"
+      }
+      
+      // Some responses include reset time in body
+      if (data.retry_after) {
+        retrySeconds = data.retry_after;
+        resetTime = Date.now() + retrySeconds * 1000;
+      }
+    } catch (e) {
+      // Body might not be JSON
+    }
+    
+    this.handleRateLimitDetected({
+      source: 'api',
+      message: errorMessage || 'Rate limit exceeded (HTTP 429)',
+      resetTime: resetTime,
+      retryAfter: retrySeconds,
+      errorType: errorType
+    });
   }
   
   interceptXHR() {
@@ -101,7 +405,18 @@ class APIInterceptorClass {
         }
         
         xhr.addEventListener('load', function() {
-          self.processXHRResponse(url, xhr);
+          // Check for rate limit
+          if (xhr.status === 429) {
+            const retryAfter = xhr.getResponseHeader('retry-after');
+            self.handleRateLimitDetected({
+              source: 'api',
+              message: 'Rate limit exceeded (HTTP 429)',
+              retryAfter: retryAfter ? parseInt(retryAfter) : null,
+              resetTime: retryAfter ? Date.now() + parseInt(retryAfter) * 1000 : null
+            });
+          } else {
+            self.processXHRResponse(url, xhr);
+          }
         });
       }
       
@@ -236,6 +551,15 @@ class APIInterceptorClass {
           if (data.usage || data.rate_limit || data.quota || data.billing) {
             this.processUsageData(url, data);
           }
+          
+          // Check for rate limit error in JSON response body
+          if (data.error && data.error.type === 'rate_limit_error') {
+            this.handleRateLimitDetected({
+              source: 'api',
+              message: data.error.message || 'Rate limit exceeded',
+              errorType: 'rate_limit_error'
+            });
+          }
         } catch (e) {}
       }
       
@@ -333,6 +657,15 @@ class APIInterceptorClass {
               // Check for usage info in streaming response
               if (data.usage || data.rate_limit) {
                 this.processUsageData('streaming', data);
+              }
+              
+              // Check for rate limit error in streaming
+              if (data.error && data.error.type === 'rate_limit_error') {
+                this.handleRateLimitDetected({
+                  source: 'api',
+                  message: data.error.message || 'Rate limit exceeded',
+                  errorType: 'rate_limit_error'
+                });
               }
               
             } catch (e) {}

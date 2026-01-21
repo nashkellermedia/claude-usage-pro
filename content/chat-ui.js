@@ -33,6 +33,7 @@ class ChatUI {
       showTimer: true
     };
     this.loadThresholds();
+    this.rateLimitState = null;
   }
   
   initialize() {
@@ -366,6 +367,7 @@ class ChatUI {
     
     // Always load fresh settings before building stats bar
     await this.loadThresholds();
+    this.rateLimitState = null;
     
     for (let attempt = 0; attempt < 10; attempt++) {
       const contentEditable = document.querySelector('[contenteditable="true"]');
@@ -598,6 +600,46 @@ class ChatUI {
     }
   }
 }
+
+
+  handleRateLimitUpdate(state) {
+    // Add rate limit indicator to stats bar
+    const statsBar = document.getElementById("cup-input-stats");
+    if (!statsBar) return;
+    
+    let indicator = document.getElementById("cup-stats-rate-limit");
+    
+    if (!state || !state.isLimited) {
+      // Remove indicator if exists
+      if (indicator) indicator.remove();
+      return;
+    }
+    
+    // Create or update indicator
+    if (!indicator) {
+      indicator = document.createElement("span");
+      indicator.id = "cup-stats-rate-limit";
+      indicator.className = "cup-stat-item cup-stat-rate-limited";
+      // Insert at the beginning of stats bar
+      statsBar.insertBefore(indicator, statsBar.firstChild);
+    }
+    
+    let timeStr = "";
+    if (state.resetTime) {
+      const remaining = state.resetTime - Date.now();
+      if (remaining > 0) {
+        const minutes = Math.floor(remaining / 60000);
+        const hours = Math.floor(minutes / 60);
+        if (hours > 0) {
+          timeStr = ` (${hours}h ${minutes % 60}m)`;
+        } else {
+          timeStr = ` (${minutes}m)`;
+        }
+      }
+    }
+    
+    indicator.innerHTML = `<span class="cup-stat-icon">⛔</span> RATE LIMITED${timeStr}`;
+  }
 
 window.ChatUI = ChatUI;
 window.CUP.log('ChatUI loaded');

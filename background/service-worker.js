@@ -1470,6 +1470,26 @@ async function handleMessage(message, sender) {
       return { success: true };
     }
 
+    case 'RATE_LIMIT_DETECTED': {
+      await handleRateLimitDetected(message.rateLimitState);
+      return { success: true };
+    }
+
+    case 'RATE_LIMIT_CLEARED': {
+      await handleRateLimitCleared();
+      return { success: true };
+    }
+
+    case 'GET_RATE_LIMIT_STATE': {
+      // Check if it should have expired
+      if (rateLimitState.isLimited && rateLimitState.resetTime) {
+        if (Date.now() > rateLimitState.resetTime) {
+          await handleRateLimitCleared();
+        }
+      }
+      return { rateLimitState };
+    }
+
     case 'GET_HYBRID_STATUS': {
       return hybridTracker?.getStatus() || { initialized: false };
     }
@@ -2011,4 +2031,132 @@ async function checkAndAutoRefresh() {
 self.addEventListener('unhandledrejection', (event) => {
   logError('Unhandled rejection:', event.reason);
   event.preventDefault();
+});
+
+// ============================================================================
+// Rate Limit Detection & Tracking
+// ============================================================================
+
+let rateLimitState = {
+  isLimited: false,
+  retryAfter: null,
+  resetTime: null,
+  message: null,
+  detectedAt: null,
+  source: null,
+  history: []  // Track rate limit events for analytics
+};
+
+async function handleRateLimitDetected(state) {
+  log('[CUP BG] Rate limit detected:', state.source, state.resetTime ? new Date(state.resetTime).toLocaleTimeString() : 'unknown reset');
+  
+  rateLimitState = {
+    ...state,
+    history: [...(rateLimitState.history || []).slice(-19), {
+      detectedAt: state.detectedAt || Date.now(),
+      source: state.source,
+      resetTime: state.resetTime
+    }]
+  };
+  
+  // Save to storage
+  await chrome.storage.local.set({ rateLimitState });
+  
+  // Update badge to show rate limited status
+  chrome.action.setBadgeText({ text: '⛔' });
+  chrome.action.setBadgeBackgroundColor({ color: '#f44336' });
+  
+  // Show notification if enabled
+  const settings = await getSettings();
+  if (settings.enableResetNotifications) {
+    try {
+      await chrome.notifications.create('rateLimited', {
+        type: 'basic',
+        iconUrl: 'icons/icon128.png',
+        title: 'Claude Rate Limit Reached',
+        message: state.resetTime 
+          ? `Usage limit reached. Resets at ${new Date(state.resetTime).toLocaleTimeString()}`
+          : 'Usage limit reached. Please wait before sending more messages.',
+        priority: 2
+      });
+    } catch (e) {
+      logError('[CUP BG] Notification error:', e.message);
+    }
+  }
+  
+  // Schedule alarm for when limit resets
+  if (state.resetTime) {
+    const resetDelay = Math.max(1, Math.ceil((state.resetTime - Date.now()) / 60000));
+    chrome.alarms.create('rateLimitReset', { delayInMinutes: resetDelay });
+    log('[CUP BG] Scheduled rate limit reset alarm in', resetDelay, 'minutes');
+  }
+  
+  // Notify all tabs
+  chrome.tabs.query({ url: 'https://claude.ai/*' }).then(tabs => {
+    for (const tab of tabs) {
+      chrome.tabs.sendMessage(tab.id, { 
+        type: 'RATE_LIMIT_UPDATED', 
+        rateLimitState 
+      }).catch(() => {});
+    }
+  }).catch(() => {});
+}
+
+async function handleRateLimitCleared() {
+  log('[CUP BG] Rate limit cleared');
+  
+  rateLimitState.isLimited = false;
+  await chrome.storage.local.set({ rateLimitState });
+  
+  // Restore normal badge
+  const usageData = await getUsageData();
+  await updateBadge(usageData);
+  
+  // Clear the alarm
+  chrome.alarms.clear('rateLimitReset');
+  
+  // Notify tabs
+  chrome.tabs.query({ url: 'https://claude.ai/*' }).then(tabs => {
+    for (const tab of tabs) {
+      chrome.tabs.sendMessage(tab.id, { 
+        type: 'RATE_LIMIT_UPDATED', 
+        rateLimitState: { isLimited: false }
+      }).catch(() => {});
+    }
+  }).catch(() => {});
+  
+  // Show reset notification
+  const settings = await getSettings();
+  if (settings.enableResetNotifications) {
+    try {
+      await chrome.notifications.create('rateLimitCleared', {
+        type: 'basic',
+        iconUrl: 'icons/icon128.png',
+        title: 'Rate Limit Reset',
+        message: 'Your usage limit has reset. You can continue chatting!',
+        priority: 1
+      });
+    } catch (e) {}
+  }
+}
+
+// Load stored rate limit state on startup
+chrome.storage.local.get('rateLimitState').then(result => {
+  if (result.rateLimitState) {
+    rateLimitState = result.rateLimitState;
+    
+    // Check if it should have expired
+    if (rateLimitState.isLimited && rateLimitState.resetTime) {
+      if (Date.now() > rateLimitState.resetTime) {
+        handleRateLimitCleared();
+      }
+    }
+  }
+});
+
+// Handle rate limit reset alarm
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name === 'rateLimitReset') {
+    await handleRateLimitCleared();
+  }
 });
