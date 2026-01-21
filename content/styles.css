@@ -3,15 +3,15 @@
  */
 
 :root {
-  --cup-bg: #2b2b2b;
-  --cup-bg-secondary: #353535;
-  --cup-text: #e0e0e0;
-  --cup-text-muted: #888;
+  --cup-bg: transparent;
+  --cup-bg-secondary: rgba(128, 128, 128, 0.1);
+  --cup-text: inherit;
+  --cup-text-muted: inherit;
   --cup-accent: #6b8afd;
   --cup-success: #22c55e;
   --cup-warning: #f59e0b;
   --cup-danger: #ef4444;
-  --cup-border: #454545;
+  --cup-border: rgba(128, 128, 128, 0.2);
 }
 
 /* ========== SIDEBAR WIDGET ========== */
@@ -21,10 +21,10 @@
 }
 
 #cup-sidebar-widget .cup-widget-inner {
-  background: var(--cup-bg);
+  background: transparent;
   border-radius: 10px;
   padding: 12px;
-  border: 1px solid var(--cup-border);
+  border: none;
 }
 
 .cup-widget-header {
@@ -33,7 +33,7 @@
   gap: 8px;
   cursor: pointer;
   padding-bottom: 8px;
-  border-bottom: 1px solid var(--cup-border);
+  border-bottom: 1px solid rgba(128, 128, 128, 0.15);
   margin-bottom: 10px;
 }
 
@@ -44,13 +44,14 @@
 .cup-widget-title {
   font-size: 13px;
   font-weight: 600;
-  color: var(--cup-text);
+  color: inherit;
   flex: 1;
 }
 
 .cup-widget-expand {
   font-size: 10px;
-  color: var(--cup-text-muted);
+  color: inherit;
+  opacity: 0.5;
   transition: transform 0.2s;
 }
 
@@ -74,8 +75,9 @@
 }
 
 .cup-usage-label {
-  font-size: 11px;
-  color: var(--cup-text-muted);
+  font-size: 12px;
+  color: inherit;
+  opacity: 0.8;
 }
 
 .cup-usage-percent {
@@ -103,8 +105,9 @@
 }
 
 .cup-usage-meta {
-  font-size: 10px;
-  color: var(--cup-text-muted);
+  font-size: 11px;
+  color: inherit;
+  opacity: 0.6;
   margin-top: 2px;
 }
 
@@ -112,11 +115,16 @@
   display: block;
   text-align: center;
   font-size: 11px;
-  color: var(--cup-accent);
+  color: inherit;
+  opacity: 0.6;
   text-decoration: none;
   padding-top: 8px;
   margin-top: 8px;
-  border-top: 1px solid var(--cup-border);
+  border-top: 1px solid rgba(128, 128, 128, 0.15);
+}
+
+.cup-usage-link:hover {
+  opacity: 1;
 }
 
 .cup-usage-link:hover {
@@ -139,25 +147,16 @@
   gap: 8px;
   padding: 8px 16px;
   font-size: 12px;
-  color: #6b7280;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: inherit;
+  font-family: inherit;
   margin-top: 4px;
-  background: rgba(255, 255, 255, 0.95);
+  background: transparent;
   border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  backdrop-filter: blur(10px);
+  opacity: 0.7;
 }
 
-/* Dark mode for input stats */
-@media (prefers-color-scheme: dark) {
-  #cup-input-stats {
-    background: rgba(30, 30, 30, 0.95);
-    color: #9ca3af;
-  }
-  
-  #cup-input-stats .cup-stat-label {
-    color: #9ca3af;
-  }
+#cup-input-stats:hover {
+  opacity: 1;
 }
 
 #cup-input-stats .cup-stat-item {
@@ -172,20 +171,22 @@
 }
 
 #cup-input-stats .cup-stat-label {
-  color: #6b7280;
+  color: inherit;
+  opacity: 0.7;
 }
 
 #cup-input-stats .cup-stat-value {
   font-weight: 500;
-  color: #9ca3af;
+  color: inherit;
 }
 
 #cup-input-stats .cup-stat-unit {
-  color: #6b7280;
+  color: inherit;
+  opacity: 0.7;
 }
 
 #cup-input-stats .cup-stat-divider {
-  color: #4b5563;
+  opacity: 0.4;
   margin: 0 4px;
 }
 
@@ -389,7 +390,7 @@ body.cup-context-active {
 
 /* Time tracking section */
 .cup-time-section {
-  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  border-top: 1px solid var(--cup-border);
   padding-top: 8px;
   margin-top: 4px;
 }
@@ -404,14 +405,14 @@ body.cup-context-active {
 .cup-time-row {
   display: flex;
   justify-content: space-between;
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .cup-time-label {
-  color: #666;
+  color: var(--cup-text-muted);
 }
 
 .cup-time-value {
   font-weight: 500;
-  color: #333;
+  color: var(--cup-text);
 }
