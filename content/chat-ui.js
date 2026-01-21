@@ -261,14 +261,21 @@ class ChatUI {
         this.inputStats = document.createElement('div');
         this.inputStats.id = 'cup-input-stats';
         
-        // Get background color from the main content area
-        let bgColor = '#2a2a2a'; // fallback
-        const mainContent = document.querySelector('main') || document.querySelector('[class*="conversation"]') || document.body;
-        if (mainContent) {
-          const computedBg = getComputedStyle(mainContent).backgroundColor;
+        // Get background color from the area around the input box
+        let bgColor = 'transparent';
+        // Walk up from contentEditable to find a parent with a background
+        let parent = contentEditable.parentElement;
+        for (let i = 0; i < 10 && parent; i++) {
+          const computedBg = getComputedStyle(parent).backgroundColor;
           if (computedBg && computedBg !== 'rgba(0, 0, 0, 0)' && computedBg !== 'transparent') {
             bgColor = computedBg;
+            break;
           }
+          parent = parent.parentElement;
+        }
+        // If still transparent, try body
+        if (bgColor === 'transparent') {
+          bgColor = getComputedStyle(document.body).backgroundColor || '#1a1a1a';
         }
         this.inputStats.style.backgroundColor = bgColor;
         
