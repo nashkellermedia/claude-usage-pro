@@ -902,6 +902,10 @@ class UsageAnalytics {
           }
         }
       }
+      log('[UsageAnalytics] modelUsage entries:', Object.keys(this.data.modelUsage || {}).length);
+      if (this.data.modelUsage && Object.keys(this.data.modelUsage).length > 0) {
+        log('[UsageAnalytics] Models:', this.data.modelUsage);
+      }
       log('[UsageAnalytics] Initialized with', Object.keys(this.data.dailySnapshots || {}).length, 'days of data');
       return true;
     } catch (e) {
@@ -971,8 +975,13 @@ class UsageAnalytics {
   }
 
   recordModelUsage(model) {
-    if (!model) return;
-    this.data.modelUsage[model] = (this.data.modelUsage[model] || 0) + 1;
+    if (!model) {
+      log('[UsageAnalytics] recordModelUsage called with no model');
+      return;
+    }
+    const oldCount = this.data.modelUsage[model] || 0;
+    this.data.modelUsage[model] = oldCount + 1;
+    log('[UsageAnalytics] Model usage recorded:', model, '- count:', this.data.modelUsage[model]);
     this.save();
   }
 

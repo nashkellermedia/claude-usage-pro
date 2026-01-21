@@ -2,7 +2,7 @@
 
 A Chrome extension that tracks your Claude.ai usage in real-time with visual overlays, accurate token counting, voice input, auto-continue, rate limit warnings, and optional cross-device sync.
 
-![Version](https://img.shields.io/badge/version-2.3.1-blue)
+![Version](https://img.shields.io/badge/version-2.3.2-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ---

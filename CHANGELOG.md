@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.3.2] - 2026-01-21
+
+### Fixed
+- **Model Tracking Debug Logging**
+  - Added detailed logging to recordModelUsage() to diagnose tracking issues
+  - Added modelUsage summary logs on initialization
+  - Helps identify if models are being recorded correctly
+
+### Technical
+- Added logging: "[UsageAnalytics] Model usage recorded: {model} - count: {count}"
+- Added logging: "[UsageAnalytics] modelUsage entries: {count}"
+- Added logging for when recordModelUsage called with no model
+
+# Changelog
+
 ## [2.3.1] - 2026-01-21
 
 ### Fixed
