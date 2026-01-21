@@ -155,16 +155,8 @@
   color: inherit;
   font-family: inherit;
   margin-top: 4px;
-  background-color: #2a2a2a !important;
+  background-color: transparent !important;
   border-radius: 8px;
-}
-
-/* Detect light mode by checking body/html background */
-html[style*="light"] #cup-input-stats,
-body[style*="light"] #cup-input-stats,
-[data-theme="light"] #cup-input-stats,
-.light #cup-input-stats {
-  background-color: #f5f5f5 !important;
 }
 
 #cup-input-stats .cup-stat-item {
