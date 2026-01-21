@@ -387,6 +387,7 @@ class APIInterceptorClass {
     const originalSend = XMLHttpRequest.prototype.send;
     
     XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+      window.CUP.log("[XHR DEBUG] Open:", method, url?.substring?.(0, 100));
       this._cupUrl = url;
       this._cupMethod = method;
       return originalOpen.apply(this, [method, url, ...rest]);
