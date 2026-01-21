@@ -14,7 +14,10 @@
     },
     sendToBackground: (message) => {
       return chrome.runtime.sendMessage(message).catch(e => {
-        window.CUP.logError('sendToBackground failed:', e);
+        // Don't log extension context errors - normal after extension reload
+        if (!e.message?.includes('Extension context invalidated')) {
+          window.CUP.logError('sendToBackground failed:', e);
+        }
       });
     }
   };

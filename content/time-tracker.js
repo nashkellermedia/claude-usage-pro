@@ -104,8 +104,22 @@ class TimeTracker {
         window.CUP.log('TimeTracker: Loaded time data', response.timeData);
       }
     } catch (e) {
+      // Extension context invalidated - extension was reloaded
+      if (e.message?.includes('Extension context invalidated')) {
+        this.stop();
+        return;
+      }
       window.CUP.logError('TimeTracker: Load error', e);
     }
+  }
+  
+  stop() {
+    if (this.tickInterval) {
+      clearInterval(this.tickInterval);
+      this.tickInterval = null;
+    }
+    this.isActive = false;
+    window.CUP.log('TimeTracker: Stopped (extension context lost)');
   }
   
   async saveTimeData() {
@@ -115,7 +129,10 @@ class TimeTracker {
         sessionTime: this.sessionTime
       });
     } catch (e) {
-      // Ignore - might fail during page transition
+      // Extension context invalidated - stop tracking
+      if (e.message?.includes('Extension context invalidated')) {
+        this.stop();
+      }
     }
   }
   
