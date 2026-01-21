@@ -434,23 +434,50 @@ class FirebaseSync {
     return await this.makeAuthenticatedRequest("timeData", "GET");
   }
 
-  // Sync settings (non-sensitive)
+  // Sync settings (non-sensitive - excludes Firebase credentials which are device-specific)
   async syncSettings(settings) {
     if (!this.syncEnabled) return { success: false };
 
+    // Sync all user preferences except Firebase credentials (device-specific)
     const safeSettings = {
+      // Display settings
       badgeDisplay: settings.badgeDisplay,
       showSidebar: settings.showSidebar,
       showChatOverlay: settings.showChatOverlay,
+      sidebarMinimized: settings.sidebarMinimized,
       enableVoice: settings.enableVoice,
-      anthropicApiKey: settings.anthropicApiKey || '',  // Sync for cross-device token counting
+      enableResetNotifications: settings.enableResetNotifications,
+      
+      // Threshold settings
+      thresholdWarning: settings.thresholdWarning,
+      thresholdDanger: settings.thresholdDanger,
+      
+      // Stats bar visibility settings
+      statsBarShowDraft: settings.statsBarShowDraft,
+      statsBarShowFiles: settings.statsBarShowFiles,
+      statsBarShowSession: settings.statsBarShowSession,
+      statsBarShowWeekly: settings.statsBarShowWeekly,
+      statsBarShowSonnet: settings.statsBarShowSonnet,
+      statsBarShowTimer: settings.statsBarShowTimer,
+      
+      // Auto-refresh settings
+      autoRefreshEnabled: settings.autoRefreshEnabled,
+      autoRefreshMinutes: settings.autoRefreshMinutes,
+      
+      // Auto-continue settings
+      enableAutoContinue: settings.enableAutoContinue,
+      autoContinueDelay: settings.autoContinueDelay,
+      maxAutoContinues: settings.maxAutoContinues,
+      
+      // API key for token counting (shared across devices)
+      anthropicApiKey: settings.anthropicApiKey || '',
+      
       syncedAt: Date.now()
     };
 
     const result = await this.makeAuthenticatedRequest('settings', 'PUT', safeSettings);
     return { success: result !== null };
   }
-
   // Get all synced usage data
   async getAllUsage() {
     if (!this.syncEnabled) return null;
@@ -2027,13 +2054,39 @@ async function pullFromFirebase() {
       log('[CUP BG] Pulled settings from Firebase, has anthropicApiKey:', !!syncedSettings.anthropicApiKey);
       const currentSettings = await getSettings();
       
-      // Merge synced settings, but don't overwrite Firebase credentials
+      // Merge synced settings, but don't overwrite Firebase credentials (device-specific)
+      // Use ?? for booleans to handle false values correctly, || for strings
       const mergedSettings = {
         ...currentSettings,
+        
+        // Display settings
         badgeDisplay: syncedSettings.badgeDisplay || currentSettings.badgeDisplay,
         showSidebar: syncedSettings.showSidebar ?? currentSettings.showSidebar,
         showChatOverlay: syncedSettings.showChatOverlay ?? currentSettings.showChatOverlay,
+        sidebarMinimized: syncedSettings.sidebarMinimized ?? currentSettings.sidebarMinimized,
         enableVoice: syncedSettings.enableVoice ?? currentSettings.enableVoice,
+        enableResetNotifications: syncedSettings.enableResetNotifications ?? currentSettings.enableResetNotifications,
+        
+        // Threshold settings
+        thresholdWarning: syncedSettings.thresholdWarning ?? currentSettings.thresholdWarning,
+        thresholdDanger: syncedSettings.thresholdDanger ?? currentSettings.thresholdDanger,
+        
+        // Stats bar visibility settings
+        statsBarShowDraft: syncedSettings.statsBarShowDraft ?? currentSettings.statsBarShowDraft,
+        statsBarShowFiles: syncedSettings.statsBarShowFiles ?? currentSettings.statsBarShowFiles,
+        statsBarShowSession: syncedSettings.statsBarShowSession ?? currentSettings.statsBarShowSession,
+        statsBarShowWeekly: syncedSettings.statsBarShowWeekly ?? currentSettings.statsBarShowWeekly,
+        statsBarShowSonnet: syncedSettings.statsBarShowSonnet ?? currentSettings.statsBarShowSonnet,
+        statsBarShowTimer: syncedSettings.statsBarShowTimer ?? currentSettings.statsBarShowTimer,
+        
+        // Auto-refresh settings
+        autoRefreshEnabled: syncedSettings.autoRefreshEnabled ?? currentSettings.autoRefreshEnabled,
+        autoRefreshMinutes: syncedSettings.autoRefreshMinutes ?? currentSettings.autoRefreshMinutes,
+        
+        // Auto-continue settings
+        enableAutoContinue: syncedSettings.enableAutoContinue ?? currentSettings.enableAutoContinue,
+        autoContinueDelay: syncedSettings.autoContinueDelay ?? currentSettings.autoContinueDelay,
+        maxAutoContinues: syncedSettings.maxAutoContinues ?? currentSettings.maxAutoContinues,
       };
       
       // Always sync anthropicApiKey from Firebase if available
@@ -2049,8 +2102,9 @@ async function pullFromFirebase() {
       }
       
       await chrome.storage.local.set({ settings: mergedSettings });
+      log('[CUP BG] Merged and saved all synced settings');
     }
-    
+
     firebaseSync.lastPull = Date.now();
     log('[CUP BG] Firebase pull complete');
   } catch (e) {
