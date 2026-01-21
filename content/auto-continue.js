@@ -7,7 +7,7 @@ class AutoContinue {
   constructor() {
     this.enabled = false;
     this.delay = 1500;  // ms before clicking continue
-    this.maxContinues = 10;  // max auto-continues per response chain
+    this.maxContinues = 3;  // max auto-continues per response chain
     this.continueCount = 0;
     this.lastMessageId = null;
     this.observer = null;
@@ -23,7 +23,7 @@ class AutoContinue {
       if (response?.settings) {
         this.enabled = response.settings.enableAutoContinue || false;
         this.delay = response.settings.autoContinueDelay || 1500;
-        this.maxContinues = response.settings.maxAutoContinues || 10;
+        this.maxContinues = response.settings.maxAutoContinues || 3;
       }
     } catch (e) {
       window.CUP.logError('AutoContinue: Failed to load settings:', e);
@@ -40,7 +40,7 @@ class AutoContinue {
     const wasEnabled = this.enabled;
     this.enabled = settings.enableAutoContinue || false;
     this.delay = settings.autoContinueDelay || 1500;
-    this.maxContinues = settings.maxAutoContinues || 10;
+    this.maxContinues = settings.maxAutoContinues || 3;
     
     if (this.enabled && !wasEnabled) {
       this.startObserver();
