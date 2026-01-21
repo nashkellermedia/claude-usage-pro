@@ -12,6 +12,17 @@
 // Debug mode - set to true for verbose logging
 const DEBUG = true;
 
+
+// Global handler for unhandled promise rejections (suppress connection errors)
+self.addEventListener("unhandledrejection", (event) => {
+  if (event.reason?.message?.includes("Could not establish connection") ||
+      event.reason?.message?.includes("Receiving end does not exist") ||
+      event.reason?.message?.includes("Extension context invalidated")) {
+    event.preventDefault(); // Suppress these common errors
+  } else {
+    logError("Unhandled rejection:", event.reason);
+  }
+});
 function log(...args) {
   if (DEBUG) {
     try {
