@@ -16,6 +16,7 @@ class ChatUI {
     // Token counting state
     this.lastText = '';
     this.tokenCountDebounce = null;
+    this.previousNonEmptyText = "";  // For detecting message sends
     this.useAccurateCount = false;
     this.lastAccurateTextTokens = 0;
     
@@ -517,6 +518,14 @@ class ChatUI {
       const attachmentCount = this.manualAttachmentCount > 0 ? 0 : detectedAttachments.length;
       const attachmentTokens = this.manualAttachmentCount > 0 ? 0 : detectedAttachments.reduce((sum, a) => sum + a.tokens, 0);
       
+      // Detect message send: input went from having text to empty
+      if (this.previousNonEmptyText.length > 10 && text.length === 0) {
+        this.onMessageSent(this.previousNonEmptyText);
+      }
+      // Track non-empty text for send detection
+      if (text.length > 0) {
+        this.previousNonEmptyText = text;
+      }
       const textChanged = text !== this.lastText;
       
       if (textChanged || attachmentCount !== this.lastAttachmentCount) {
@@ -677,6 +686,59 @@ class ChatUI {
     }
     
     indicator.innerHTML = `<span class="cup-stat-icon">⛔</span> RATE LIMITED${timeStr}`;
+  }
+
+  /**
+   * Called when we detect a message was sent (input cleared after having text)
+   */
+  onMessageSent(text) {
+    const model = this.getCurrentModelFromUI();
+    const inputTokens = this.lastAccurateTextTokens || Math.ceil(text.length / 4);
+    
+    window.CUP.log("ChatUI: Message sent detected! Model:", model, "Input tokens:", inputTokens);
+    
+    // Send to background for model tracking
+    try {
+      chrome.runtime.sendMessage({
+        type: "ADD_TOKEN_DELTA",
+        inputTokens: inputTokens,
+        outputTokens: 0,
+        model: model
+      }).catch(e => window.CUP.logError("Failed to send token delta:", e));
+    } catch (e) {
+      window.CUP.logError("ChatUI: Failed to record message send:", e);
+    }
+    
+    // Reset for next message
+    this.previousNonEmptyText = "";
+  }
+
+  /**
+   * Get current model from the UI model selector
+   */
+  getCurrentModelFromUI() {
+    try {
+      const modelButton = document.querySelector("[data-testid=\x27model-selector-button\x27]") ||
+                         document.querySelector("button[aria-label*=\x27model\x27]") ||
+                         document.querySelector("[class*=\x27model-selector\x27]");
+      
+      if (modelButton) {
+        const text = (modelButton.textContent || modelButton.innerText || "").toLowerCase();
+        window.CUP.log("ChatUI: Model selector text:", text);
+        
+        if (text.includes("4.5") || text.includes("4-5")) {
+          if (text.includes("opus")) return "claude-opus-4-5";
+          if (text.includes("sonnet")) return "claude-sonnet-4-5";
+          if (text.includes("haiku")) return "claude-haiku-4-5";
+        }
+        if (text.includes("opus")) return "claude-opus-4";
+        if (text.includes("sonnet")) return "claude-sonnet-4";
+        if (text.includes("haiku")) return "claude-haiku-4";
+      }
+    } catch (e) {
+      window.CUP.logError("ChatUI: Failed to get model from UI:", e);
+    }
+    return "claude-sonnet-4";
   }
 }
 
