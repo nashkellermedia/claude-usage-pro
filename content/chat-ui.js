@@ -22,6 +22,16 @@ class ChatUI {
     // Alert thresholds (loaded from settings)
     this.thresholdWarning = 70;
     this.thresholdDanger = 90;
+    
+    // Stats bar visibility settings
+    this.statsBarSettings = {
+      showDraft: true,
+      showFiles: true,
+      showSession: true,
+      showWeekly: true,
+      showSonnet: true,
+      showTimer: true
+    };
     this.loadThresholds();
   }
   
@@ -47,7 +57,18 @@ class ChatUI {
       if (response?.settings) {
         this.thresholdWarning = response.settings.thresholdWarning || 70;
         this.thresholdDanger = response.settings.thresholdDanger || 90;
-        window.CUP.log('ChatUI: Thresholds loaded - Warning:', this.thresholdWarning, 'Danger:', this.thresholdDanger);
+        
+        // Load stats bar visibility settings
+        this.statsBarSettings = {
+          showDraft: response.settings.statsBarShowDraft !== false,
+          showFiles: response.settings.statsBarShowFiles !== false,
+          showSession: response.settings.statsBarShowSession !== false,
+          showWeekly: response.settings.statsBarShowWeekly !== false,
+          showSonnet: response.settings.statsBarShowSonnet !== false,
+          showTimer: response.settings.statsBarShowTimer !== false
+        };
+        
+        window.CUP.log('ChatUI: Settings loaded - Thresholds:', this.thresholdWarning + '/' + this.thresholdDanger);
       }
     } catch (e) {}
   }
@@ -56,6 +77,73 @@ class ChatUI {
     if (pct >= this.thresholdDanger) return '#ef4444';
     if (pct >= this.thresholdWarning) return '#f59e0b';
     return '#22c55e';
+  }
+  
+  buildStatsBarHTML() {
+    const parts = [];
+    const s = this.statsBarSettings;
+    
+    if (s.showDraft) {
+      parts.push(`
+        <span class="cup-stat-item">
+          <span class="cup-stat-icon">✏️</span>
+          <span class="cup-stat-label">Draft:</span>
+          <span class="cup-stat-value" id="cup-draft-tokens">0</span>
+          <span class="cup-stat-unit">tokens</span>
+          <span class="cup-accuracy-indicator" id="cup-accuracy" title="Estimated">~</span>
+        </span>
+      `);
+    }
+    
+    if (s.showFiles) {
+      parts.push(`
+        <span class="cup-stat-item">
+          <span class="cup-stat-icon">📎</span>
+          <span class="cup-stat-label">Files:</span>
+          <span class="cup-stat-value" id="cup-files-count">0</span>
+          <span class="cup-clear-files" id="cup-clear-files" title="Clear file count" style="display:none; cursor:pointer; margin-left:2px; font-size:10px; color:#888;">✕</span>
+        </span>
+      `);
+    }
+    
+    if (s.showSession) {
+      parts.push(`
+        <span class="cup-stat-item">
+          <span class="cup-stat-label">Session:</span>
+          <span class="cup-stat-value" id="cup-session-pct">--%</span>
+        </span>
+      `);
+    }
+    
+    if (s.showWeekly) {
+      parts.push(`
+        <span class="cup-stat-item">
+          <span class="cup-stat-label">Weekly:</span>
+          <span class="cup-stat-value" id="cup-weekly-all-pct">--%</span>
+        </span>
+      `);
+    }
+    
+    if (s.showSonnet) {
+      parts.push(`
+        <span class="cup-stat-item">
+          <span class="cup-stat-label">Sonnet:</span>
+          <span class="cup-stat-value" id="cup-weekly-sonnet-pct">--%</span>
+        </span>
+      `);
+    }
+    
+    if (s.showTimer) {
+      parts.push(`
+        <span class="cup-stat-item">
+          <span class="cup-stat-icon">⏱️</span>
+          <span class="cup-stat-value" id="cup-reset-timer">--</span>
+        </span>
+      `);
+    }
+    
+    // Join with dividers
+    return parts.join('<span class="cup-stat-divider">│</span>');
   }
   
   /**
@@ -283,42 +371,8 @@ class ChatUI {
         this.inputStats = document.createElement('div');
         this.inputStats.id = 'cup-input-stats';
         
-        this.inputStats.innerHTML = `
-          <span class="cup-stat-item">
-            <span class="cup-stat-icon">✏️</span>
-            <span class="cup-stat-label">Draft:</span>
-            <span class="cup-stat-value" id="cup-draft-tokens">0</span>
-            <span class="cup-stat-unit">tokens</span>
-            <span class="cup-accuracy-indicator" id="cup-accuracy" title="Estimated">~</span>
-          </span>
-          <span class="cup-stat-divider">│</span>
-          <span class="cup-stat-item">
-            <span class="cup-stat-icon">📎</span>
-            <span class="cup-stat-label">Files:</span>
-            <span class="cup-stat-value" id="cup-files-count">0</span>
-            <span class="cup-clear-files" id="cup-clear-files" title="Clear file count" style="display:none; cursor:pointer; margin-left:2px; font-size:10px; color:#888;">✕</span>
-          </span>
-          <span class="cup-stat-divider">│</span>
-          <span class="cup-stat-item">
-            <span class="cup-stat-label">Session:</span>
-            <span class="cup-stat-value" id="cup-session-pct">--%</span>
-          </span>
-          <span class="cup-stat-divider">│</span>
-          <span class="cup-stat-item">
-            <span class="cup-stat-label">Weekly:</span>
-            <span class="cup-stat-value" id="cup-weekly-all-pct">--%</span>
-          </span>
-          <span class="cup-stat-divider">│</span>
-          <span class="cup-stat-item">
-            <span class="cup-stat-label">Sonnet:</span>
-            <span class="cup-stat-value" id="cup-weekly-sonnet-pct">--%</span>
-          </span>
-          <span class="cup-stat-divider">│</span>
-          <span class="cup-stat-item">
-            <span class="cup-stat-icon">⏱️</span>
-            <span class="cup-stat-value" id="cup-reset-timer">--</span>
-          </span>
-        `;
+        // Build stats bar HTML based on settings
+        this.inputStats.innerHTML = this.buildStatsBarHTML();
         
         // Find the input box container (walk up ~4 levels to find the rounded box)
         let container = contentEditable;

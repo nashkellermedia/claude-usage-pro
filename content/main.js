@@ -211,6 +211,23 @@
       inputStats.style.display = 'none';
     }
     
+    // Rebuild stats bar if visibility settings changed
+    if (window.cupChatUI && inputStats) {
+      window.cupChatUI.loadThresholds().then(() => {
+        inputStats.innerHTML = window.cupChatUI.buildStatsBarHTML();
+        // Re-attach clear button handler
+        const clearBtn = document.getElementById('cup-clear-files');
+        if (clearBtn) {
+          clearBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            window.cupChatUI.clearManualAttachments();
+          });
+        }
+        needsDataRefresh = true;
+      });
+    }
+    
     // If we created new UI elements, fetch and display current data
     if (needsDataRefresh) {
       chrome.runtime.sendMessage({ type: 'GET_USAGE_DATA' }).then(response => {

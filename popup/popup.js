@@ -32,6 +32,12 @@ const els = {
   enableResetNotifications: document.getElementById('enableResetNotifications'),
   thresholdWarning: document.getElementById('thresholdWarning'),
   thresholdDanger: document.getElementById('thresholdDanger'),
+  statsBarShowDraft: document.getElementById('statsBarShowDraft'),
+  statsBarShowFiles: document.getElementById('statsBarShowFiles'),
+  statsBarShowSession: document.getElementById('statsBarShowSession'),
+  statsBarShowWeekly: document.getElementById('statsBarShowWeekly'),
+  statsBarShowSonnet: document.getElementById('statsBarShowSonnet'),
+  statsBarShowTimer: document.getElementById('statsBarShowTimer'),
   
   // Anthropic
   anthropicApiKey: document.getElementById('anthropicApiKey'),
@@ -356,6 +362,14 @@ async function loadSettings() {
     els.thresholdWarning.value = settings.thresholdWarning || 70;
     els.thresholdDanger.value = settings.thresholdDanger || 90;
     
+    // Stats bar visibility
+    els.statsBarShowDraft.checked = settings.statsBarShowDraft !== false;
+    els.statsBarShowFiles.checked = settings.statsBarShowFiles !== false;
+    els.statsBarShowSession.checked = settings.statsBarShowSession !== false;
+    els.statsBarShowWeekly.checked = settings.statsBarShowWeekly !== false;
+    els.statsBarShowSonnet.checked = settings.statsBarShowSonnet !== false;
+    els.statsBarShowTimer.checked = settings.statsBarShowTimer !== false;
+    
     // Anthropic API key
     if (settings.anthropicApiKey) {
       els.anthropicApiKey.value = '••••••••' + settings.anthropicApiKey.slice(-8);
@@ -403,6 +417,12 @@ async function saveSettings() {
     enableResetNotifications: els.enableResetNotifications.checked,
     thresholdWarning: parseInt(els.thresholdWarning.value) || 70,
     thresholdDanger: parseInt(els.thresholdDanger.value) || 90,
+    statsBarShowDraft: els.statsBarShowDraft.checked,
+    statsBarShowFiles: els.statsBarShowFiles.checked,
+    statsBarShowSession: els.statsBarShowSession.checked,
+    statsBarShowWeekly: els.statsBarShowWeekly.checked,
+    statsBarShowSonnet: els.statsBarShowSonnet.checked,
+    statsBarShowTimer: els.statsBarShowTimer.checked,
     firebaseDatabaseUrl: els.firebaseDatabaseUrl.value.trim().replace(/\/+$/, ''),  // Strip trailing slashes
     firebaseSyncId: els.firebaseSyncId.value.trim()
   };

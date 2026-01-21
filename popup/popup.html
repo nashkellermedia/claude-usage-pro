@@ -139,6 +139,37 @@
         </div>
         
         <div class="setting-group">
+          <label class="setting-label">Stats Bar Metrics</label>
+          <p class="setting-hint" style="margin-bottom: 8px;">Choose which stats appear in the input box</p>
+          <div class="stats-bar-toggles">
+            <div class="setting-toggle compact">
+              <input type="checkbox" id="statsBarShowDraft" checked>
+              <label for="statsBarShowDraft">✏️ Draft tokens</label>
+            </div>
+            <div class="setting-toggle compact">
+              <input type="checkbox" id="statsBarShowFiles" checked>
+              <label for="statsBarShowFiles">📎 Files</label>
+            </div>
+            <div class="setting-toggle compact">
+              <input type="checkbox" id="statsBarShowSession" checked>
+              <label for="statsBarShowSession">Session %</label>
+            </div>
+            <div class="setting-toggle compact">
+              <input type="checkbox" id="statsBarShowWeekly" checked>
+              <label for="statsBarShowWeekly">Weekly %</label>
+            </div>
+            <div class="setting-toggle compact">
+              <input type="checkbox" id="statsBarShowSonnet" checked>
+              <label for="statsBarShowSonnet">Sonnet %</label>
+            </div>
+            <div class="setting-toggle compact">
+              <input type="checkbox" id="statsBarShowTimer" checked>
+              <label for="statsBarShowTimer">⏱️ Reset timer</label>
+            </div>
+          </div>
+        </div>
+        
+        <div class="setting-group">
           <label class="setting-label">Notifications</label>
           <div class="setting-toggle">
             <input type="checkbox" id="enableResetNotifications" checked>

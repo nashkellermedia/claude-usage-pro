@@ -772,3 +772,18 @@ kbd {
   font-size: 12px;
   color: var(--text-muted);
 }
+
+/* Stats Bar Toggles */
+.stats-bar-toggles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.setting-toggle.compact {
+  font-size: 11px;
+}
+
+.setting-toggle.compact label {
+  font-size: 11px;
+}

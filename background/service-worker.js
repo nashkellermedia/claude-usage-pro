@@ -1233,7 +1233,14 @@ const DEFAULT_SETTINGS = {
   firebaseSyncId: '',
   // Custom alert thresholds (percentage)
   thresholdWarning: 70,
-  thresholdDanger: 90
+  thresholdDanger: 90,
+  // Stats bar metric visibility
+  statsBarShowDraft: true,
+  statsBarShowFiles: true,
+  statsBarShowSession: true,
+  statsBarShowWeekly: true,
+  statsBarShowSonnet: true,
+  statsBarShowTimer: true
 };
 
 // ============================================================================
