@@ -1018,6 +1018,45 @@ class UsageAnalytics {
     };
   }
   
+  getSparklineData(days = 7) {
+    // Get daily peak usage for the last N days
+    const result = [];
+    const now = new Date();
+    
+    for (let i = days - 1; i >= 0; i--) {
+      const date = new Date(now);
+      date.setDate(date.getDate() - i);
+      const dateStr = date.toISOString().split('T')[0];
+      
+      const snapshots = this.data.dailySnapshots[dateStr];
+      if (snapshots && Array.isArray(snapshots) && snapshots.length > 0) {
+        // Get peak values for the day
+        let peakSession = 0, peakWeekly = 0, peakSonnet = 0;
+        for (const snap of snapshots) {
+          if ((snap.session || 0) > peakSession) peakSession = snap.session || 0;
+          if ((snap.weeklyAll || 0) > peakWeekly) peakWeekly = snap.weeklyAll || 0;
+          if ((snap.weeklySonnet || 0) > peakSonnet) peakSonnet = snap.weeklySonnet || 0;
+        }
+        result.push({
+          date: dateStr,
+          session: peakSession,
+          weeklyAll: peakWeekly,
+          weeklySonnet: peakSonnet
+        });
+      } else {
+        // No data for this day
+        result.push({
+          date: dateStr,
+          session: null,
+          weeklyAll: null,
+          weeklySonnet: null
+        });
+      }
+    }
+    
+    return result;
+  }
+  
   getWeeklyStats() {
     const now = new Date();
     const dayOfWeek = now.getDay(); // 0 = Sunday
@@ -1607,6 +1646,11 @@ async function handleMessage(message, sender) {
       log('[CUP BG] dailySnapshots:', Object.keys(usageAnalytics?.data?.dailySnapshots || {}));
       if (!usageAnalytics) return { summary: null };
       return { summary: usageAnalytics.getSummary(message.days || 30) };
+    }
+
+    case 'GET_SPARKLINE_DATA': {
+      if (!usageAnalytics) return { sparkline: null };
+      return { sparkline: usageAnalytics.getSparklineData(message.days || 7) };
     }
 
     case 'GET_TIME_DATA': {

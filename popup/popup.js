@@ -38,6 +38,9 @@ const els = {
   statsBarShowWeekly: document.getElementById('statsBarShowWeekly'),
   statsBarShowSonnet: document.getElementById('statsBarShowSonnet'),
   statsBarShowTimer: document.getElementById('statsBarShowTimer'),
+  sessionSparkline: document.getElementById('sessionSparkline'),
+  weeklyAllSparkline: document.getElementById('weeklyAllSparkline'),
+  weeklySonnetSparkline: document.getElementById('weeklySonnetSparkline'),
   
   // Anthropic
   anthropicApiKey: document.getElementById('anthropicApiKey'),
@@ -178,8 +181,127 @@ async function loadUsageData() {
       updateUI(response.usageData);
     }
     await loadTrackingStatus();
+    await loadSparklines();
   } catch (e) {
     console.error('[CUP Popup] Load error:', e);
+  }
+}
+
+async function loadSparklines() {
+  try {
+    const response = await chrome.runtime.sendMessage({ type: 'GET_SPARKLINE_DATA', days: 7 });
+    if (response?.sparkline) {
+      drawSparkline(els.sessionSparkline, response.sparkline, 'session');
+      drawSparkline(els.weeklyAllSparkline, response.sparkline, 'weeklyAll');
+      drawSparkline(els.weeklySonnetSparkline, response.sparkline, 'weeklySonnet');
+    }
+  } catch (e) {
+    console.error('[CUP Popup] Sparkline error:', e);
+  }
+}
+
+function drawSparkline(canvas, data, key) {
+  if (!canvas || !data || data.length === 0) return;
+  
+  const ctx = canvas.getContext('2d');
+  const width = canvas.width;
+  const height = canvas.height;
+  const padding = 4;
+  
+  // Clear canvas
+  ctx.clearRect(0, 0, width, height);
+  
+  // Extract values for this metric, filtering out nulls
+  const values = data.map(d => d[key]).filter(v => v !== null);
+  if (values.length < 2) {
+    // Not enough data - show placeholder
+    ctx.fillStyle = '#666';
+    ctx.font = '9px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Not enough data', width / 2, height / 2 + 3);
+    return;
+  }
+  
+  const max = Math.max(...values, 100); // At least 100 for percentage scale
+  const min = 0;
+  const range = max - min || 1;
+  
+  // Calculate points
+  const points = [];
+  const stepX = (width - padding * 2) / (data.length - 1);
+  
+  data.forEach((d, i) => {
+    if (d[key] !== null) {
+      const x = padding + i * stepX;
+      const y = height - padding - ((d[key] - min) / range) * (height - padding * 2);
+      points.push({ x, y, value: d[key], date: d.date });
+    }
+  });
+  
+  if (points.length < 2) return;
+  
+  // Draw line
+  ctx.beginPath();
+  ctx.strokeStyle = key === 'weeklySonnet' ? '#a855f7' : '#6b8afd';
+  ctx.lineWidth = 1.5;
+  ctx.lineJoin = 'round';
+  
+  points.forEach((p, i) => {
+    if (i === 0) ctx.moveTo(p.x, p.y);
+    else ctx.lineTo(p.x, p.y);
+  });
+  ctx.stroke();
+  
+  // Draw gradient fill
+  const gradient = ctx.createLinearGradient(0, 0, 0, height);
+  const color = key === 'weeklySonnet' ? '168, 85, 247' : '107, 138, 253';
+  gradient.addColorStop(0, 'rgba(' + color + ', 0.3)');
+  gradient.addColorStop(1, 'rgba(' + color + ', 0.05)');
+  
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, height - padding);
+  points.forEach(p => ctx.lineTo(p.x, p.y));
+  ctx.lineTo(points[points.length - 1].x, height - padding);
+  ctx.closePath();
+  ctx.fillStyle = gradient;
+  ctx.fill();
+  
+  // Draw dots
+  points.forEach(p => {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
+    ctx.fillStyle = key === 'weeklySonnet' ? '#a855f7' : '#6b8afd';
+    ctx.fill();
+  });
+  
+  // Store points for tooltip
+  canvas.sparklinePoints = points;
+  
+  // Add mousemove handler for tooltip
+  if (!canvas.hasTooltipHandler) {
+    canvas.hasTooltipHandler = true;
+    canvas.addEventListener('mousemove', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      
+      // Find closest point
+      let closest = null;
+      let closestDist = Infinity;
+      for (const p of canvas.sparklinePoints || []) {
+        const dist = Math.abs(p.x - x);
+        if (dist < closestDist) {
+          closestDist = dist;
+          closest = p;
+        }
+      }
+      
+      if (closest && closestDist < 15) {
+        const dateStr = new Date(closest.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        canvas.title = dateStr + ': ' + closest.value + '%';
+      } else {
+        canvas.title = '7-day trend';
+      }
+    });
   }
 }
 

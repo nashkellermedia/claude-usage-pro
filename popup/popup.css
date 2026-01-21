@@ -787,3 +787,15 @@ kbd {
 .setting-toggle.compact label {
   font-size: 11px;
 }
+
+/* Sparkline Charts */
+.sparkline {
+  display: block;
+  margin-top: 6px;
+  opacity: 0.8;
+  cursor: crosshair;
+}
+
+.sparkline:hover {
+  opacity: 1;
+}
