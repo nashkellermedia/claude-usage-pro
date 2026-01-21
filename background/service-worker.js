@@ -20,7 +20,7 @@ self.addEventListener("unhandledrejection", (event) => {
       event.reason?.message?.includes("Extension context invalidated")) {
     event.preventDefault(); // Suppress these common errors
   } else {
-    logError("Unhandled rejection:", event.reason);
+    console.error("[CUP] Unhandled rejection:", event.reason);
   }
 });
 function log(...args) {
