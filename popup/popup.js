@@ -696,6 +696,7 @@ function displayAnalytics(summary, timeData = null) {
   let modelHtml = '';
   if (summary.modelPreference && Object.keys(summary.modelPreference).length > 0) {
     const models = Object.entries(summary.modelPreference)
+      .filter(([model, count]) => typeof count === "number") // Filter out corrupted data
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)
       .map(([model, count]) => `<div class="analytics-stat"><span class="label">${model}:</span><span class="value">${count}</span></div>`)

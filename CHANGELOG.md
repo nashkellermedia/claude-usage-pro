@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.3.1] - 2026-01-21
+
+### Fixed
+- **Model Breakdown Display** (Issue #XX)
+  - Fixed "[object Object]" appearing in analytics model breakdown
+  - Added data validation filter to skip corrupted model usage entries
+  - Added automatic cleanup of corrupted modelUsage data on initialization
+  - Model breakdown now correctly displays model names and usage counts
+
+### Technical
+- Added `typeof count === "number"` filter in popup.js analytics display
+- Added modelUsage data cleanup in UsageAnalytics.initialize()
+- Prevents future data corruption by validating entries before display
+
 ## [2.3.0] - 2026-01-21
 
 ### Added

@@ -891,6 +891,16 @@ class UsageAnalytics {
             }
           }
         }
+
+        // Clean up corrupted modelUsage entries
+        if (this.data.modelUsage) {
+          for (const [model, count] of Object.entries(this.data.modelUsage)) {
+            if (typeof count !== "number") {
+              log("[UsageAnalytics] Removing corrupted modelUsage entry for", model);
+              delete this.data.modelUsage[model];
+            }
+          }
+        }
       }
       log('[UsageAnalytics] Initialized with', Object.keys(this.data.dailySnapshots || {}).length, 'days of data');
       return true;
