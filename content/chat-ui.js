@@ -599,9 +599,7 @@ class ChatUI {
       this.injectInputStats();
     }
   }
-}
-
-
+  
   handleRateLimitUpdate(state) {
     // Add rate limit indicator to stats bar
     const statsBar = document.getElementById("cup-input-stats");
@@ -640,6 +638,7 @@ class ChatUI {
     
     indicator.innerHTML = `<span class="cup-stat-icon">⛔</span> RATE LIMITED${timeStr}`;
   }
+}
 
 window.ChatUI = ChatUI;
 window.CUP.log('ChatUI loaded');
