@@ -823,6 +823,9 @@ class UsageAnalytics {
       }
     }
     
+    // Weekly comparison and daily breakdown
+    const weeklyStats = this.getWeeklyStats();
+    
     return {
       period: `Last ${days} days`,
       days: Object.keys(this.data.dailySnapshots).filter(d => d >= cutoffDate).length,
@@ -833,8 +836,108 @@ class UsageAnalytics {
       } : { session: 0, weeklyAll: 0, weeklySonnet: 0 },
       peakUsage: this.data.peakUsage,
       thresholdHits,
-      modelPreference: this.data.modelUsage
+      modelPreference: this.data.modelUsage,
+      weeklyStats
     };
+  }
+  
+  getWeeklyStats() {
+    const now = new Date();
+    const dayOfWeek = now.getDay(); // 0 = Sunday
+    
+    // Get start of this week (Sunday)
+    const thisWeekStart = new Date(now);
+    thisWeekStart.setDate(now.getDate() - dayOfWeek);
+    thisWeekStart.setHours(0, 0, 0, 0);
+    
+    // Get start of last week
+    const lastWeekStart = new Date(thisWeekStart);
+    lastWeekStart.setDate(lastWeekStart.getDate() - 7);
+    
+    const lastWeekEnd = new Date(thisWeekStart);
+    lastWeekEnd.setMilliseconds(-1);
+    
+    // Calculate averages for each week
+    const thisWeekAvg = this.getAverageForRange(thisWeekStart, now);
+    const lastWeekAvg = this.getAverageForRange(lastWeekStart, lastWeekEnd);
+    
+    // Week-over-week change
+    let weekOverWeekChange = null;
+    if (lastWeekAvg > 0 && thisWeekAvg > 0) {
+      weekOverWeekChange = Math.round(((thisWeekAvg - lastWeekAvg) / lastWeekAvg) * 100);
+    }
+    
+    // Daily breakdown for this week
+    const dailyBreakdown = this.getDailyBreakdown(thisWeekStart, now);
+    
+    // Find busiest day
+    let busiestDay = null;
+    let busiestAvg = 0;
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    for (const [day, data] of Object.entries(dailyBreakdown)) {
+      if (data.avg > busiestAvg) {
+        busiestAvg = data.avg;
+        busiestDay = dayNames[parseInt(day)];
+      }
+    }
+    
+    return {
+      thisWeekAvg,
+      lastWeekAvg,
+      weekOverWeekChange,
+      dailyBreakdown,
+      busiestDay,
+      busiestDayAvg: busiestAvg
+    };
+  }
+  
+  getAverageForRange(startDate, endDate) {
+    let total = 0, count = 0;
+    const startStr = startDate.toISOString().split('T')[0];
+    const endStr = endDate.toISOString().split('T')[0];
+    
+    for (const [date, snapshots] of Object.entries(this.data.dailySnapshots)) {
+      if (date >= startStr && date <= endStr && Array.isArray(snapshots)) {
+        for (const snap of snapshots) {
+          total += snap.session || 0;
+          count++;
+        }
+      }
+    }
+    
+    return count > 0 ? Math.round(total / count) : 0;
+  }
+  
+  getDailyBreakdown(startDate, endDate) {
+    const breakdown = {};
+    const startStr = startDate.toISOString().split('T')[0];
+    const endStr = endDate.toISOString().split('T')[0];
+    
+    for (const [date, snapshots] of Object.entries(this.data.dailySnapshots)) {
+      if (date >= startStr && date <= endStr && Array.isArray(snapshots)) {
+        const dayOfWeek = new Date(date).getDay();
+        if (!breakdown[dayOfWeek]) {
+          breakdown[dayOfWeek] = { total: 0, count: 0, peak: 0 };
+        }
+        for (const snap of snapshots) {
+          const session = snap.session || 0;
+          breakdown[dayOfWeek].total += session;
+          breakdown[dayOfWeek].count++;
+          if (session > breakdown[dayOfWeek].peak) {
+            breakdown[dayOfWeek].peak = session;
+          }
+        }
+      }
+    }
+    
+    // Calculate averages
+    for (const day of Object.keys(breakdown)) {
+      breakdown[day].avg = breakdown[day].count > 0 
+        ? Math.round(breakdown[day].total / breakdown[day].count) 
+        : 0;
+    }
+    
+    return breakdown;
   }
 
   async export() {
@@ -857,6 +960,88 @@ const DEFAULT_USAGE = {
   weeklyAllModels: { percent: 0, resetsAt: '--' },
   weeklySonnet: { percent: 0, resetsIn: '--' }
 };
+
+// Time tracking data
+const DEFAULT_TIME_DATA = {
+  today: { date: null, ms: 0 },
+  thisWeek: { weekStart: null, ms: 0 },
+  allTime: { ms: 0 }
+};
+
+async function getTimeData() {
+  try {
+    const result = await chrome.storage.local.get('timeData');
+    const data = result.timeData || { ...DEFAULT_TIME_DATA };
+    
+    // Check if we need to reset today
+    const today = new Date().toISOString().split('T')[0];
+    if (data.today.date !== today) {
+      data.today = { date: today, ms: 0 };
+    }
+    
+    // Check if we need to reset this week (Sunday start)
+    const now = new Date();
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - now.getDay());
+    weekStart.setHours(0, 0, 0, 0);
+    const weekStartStr = weekStart.toISOString().split('T')[0];
+    
+    if (data.thisWeek.weekStart !== weekStartStr) {
+      data.thisWeek = { weekStart: weekStartStr, ms: 0 };
+    }
+    
+    return data;
+  } catch (e) {
+    return { ...DEFAULT_TIME_DATA };
+  }
+}
+
+async function updateTimeData(sessionTimeMs) {
+  try {
+    const data = await getTimeData();
+    const today = new Date().toISOString().split('T')[0];
+    
+    // Calculate increment (difference from last update)
+    const lastSession = data.lastSessionTime || 0;
+    const increment = Math.max(0, sessionTimeMs - lastSession);
+    
+    // Update today
+    if (data.today.date === today) {
+      data.today.ms += increment;
+    } else {
+      data.today = { date: today, ms: increment };
+    }
+    
+    // Update this week
+    data.thisWeek.ms += increment;
+    
+    // Update all time
+    data.allTime.ms = (data.allTime.ms || 0) + increment;
+    
+    // Store last session time to calculate increment
+    data.lastSessionTime = sessionTimeMs;
+    
+    await chrome.storage.local.set({ timeData: data });
+    return data;
+  } catch (e) {
+    logError('Time data update error:', e);
+    return null;
+  }
+}
+
+function formatTimeMs(ms) {
+  const seconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  
+  if (hours > 0) {
+    return `${hours}h ${minutes % 60}m`;
+  } else if (minutes > 0) {
+    return `${minutes}m`;
+  } else {
+    return `${seconds}s`;
+  }
+}
 
 const DEFAULT_SETTINGS = {
   badgeDisplay: 'session',
@@ -1219,6 +1404,21 @@ async function handleMessage(message, sender) {
       log('[CUP BG] dailySnapshots:', Object.keys(usageAnalytics?.data?.dailySnapshots || {}));
       if (!usageAnalytics) return { summary: null };
       return { summary: usageAnalytics.getSummary(message.days || 30) };
+    }
+
+    case 'GET_TIME_DATA': {
+      const timeData = await getTimeData();
+      return { timeData };
+    }
+
+    case 'UPDATE_TIME_DATA': {
+      const timeData = await updateTimeData(message.sessionTime);
+      return { timeData };
+    }
+
+    case 'TIME_UPDATE': {
+      // Just acknowledge - time data is saved via UPDATE_TIME_DATA
+      return { ok: true };
     }
 
     case 'RESET_ANALYTICS': {

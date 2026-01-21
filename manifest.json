@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Claude Usage Pro",
-  "version": "2.1.43",
+  "version": "2.1.44",
   "description": "Track and visualize your Claude.ai usage with real-time stats, accurate token counting, voice input, and cross-device sync",
   "permissions": [
     "storage",
@@ -33,6 +33,7 @@
         "content/sidebar-ui.js",
         "content/chat-ui.js",
         "content/voice-input.js",
+        "content/time-tracker.js",
         "content/main.js"
       ],
       "run_at": "document_idle"

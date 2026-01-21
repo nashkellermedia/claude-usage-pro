@@ -70,6 +70,12 @@
     window.cupVoice.initialize();
   }
   
+  // Initialize time tracker
+  if (window.TimeTracker) {
+    window.cupTimeTracker = new TimeTracker();
+    window.cupTimeTracker.initialize();
+  }
+  
   // Load initial data
   try {
     const response = await chrome.runtime.sendMessage({ type: 'GET_USAGE_DATA' });

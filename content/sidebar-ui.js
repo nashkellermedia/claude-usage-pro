@@ -73,7 +73,25 @@ class SidebarUI {
                 <div class="cup-usage-meta" id="cup-sidebar-sonnet-reset">Resets --</div>
               </div>
               
-
+              <div class="cup-usage-section cup-time-section">
+                <div class="cup-usage-header">
+                  <span class="cup-usage-label">⏱️ Time Tracking</span>
+                </div>
+                <div class="cup-time-stats">
+                  <div class="cup-time-row">
+                    <span class="cup-time-label">Session:</span>
+                    <span class="cup-time-value" id="cup-sidebar-time-session">0m</span>
+                  </div>
+                  <div class="cup-time-row">
+                    <span class="cup-time-label">Today:</span>
+                    <span class="cup-time-value" id="cup-sidebar-time-today">0m</span>
+                  </div>
+                  <div class="cup-time-row">
+                    <span class="cup-time-label">This week:</span>
+                    <span class="cup-time-value" id="cup-sidebar-time-week">0m</span>
+                  </div>
+                </div>
+              </div>
               
               <a href="https://claude.ai/settings/usage" class="cup-usage-link">View full usage details →</a>
             </div>
@@ -172,8 +190,46 @@ class SidebarUI {
       }
     }
     
+    // Update time tracking
+    this.updateTimeDisplay();
   }
   
+  async updateTimeDisplay() {
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'GET_TIME_DATA' });
+      if (response?.timeData) {
+        const td = response.timeData;
+        
+        // Session time from tracker
+        if (window.cupTimeTracker) {
+          const sessionMs = window.cupTimeTracker.getSessionTime();
+          this.updateElement('cup-sidebar-time-session', this.formatTime(sessionMs));
+        }
+        
+        // Today
+        this.updateElement('cup-sidebar-time-today', this.formatTime(td.today?.ms || 0));
+        
+        // This week
+        this.updateElement('cup-sidebar-time-week', this.formatTime(td.thisWeek?.ms || 0));
+      }
+    } catch (e) {
+      // Ignore errors
+    }
+  }
+  
+  formatTime(ms) {
+    const seconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    
+    if (hours > 0) {
+      return `${hours}h ${minutes % 60}m`;
+    } else if (minutes > 0) {
+      return `${minutes}m`;
+    } else {
+      return `${seconds}s`;
+    }
+  }
 
   updateElement(id, value) {
     const el = document.getElementById(id);

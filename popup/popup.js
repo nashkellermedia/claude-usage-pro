@@ -413,12 +413,16 @@ async function loadAnalytics(days = 30) {
     const usageResponse = await chrome.runtime.sendMessage({ type: 'GET_USAGE_DATA', recordSnapshot: true });
     console.log('[CUP Popup] Usage data response:', usageResponse);
     
-    const response = await chrome.runtime.sendMessage({ type: 'GET_ANALYTICS_SUMMARY', days });
+    const [response, timeResponse] = await Promise.all([
+      chrome.runtime.sendMessage({ type: 'GET_ANALYTICS_SUMMARY', days }),
+      chrome.runtime.sendMessage({ type: 'GET_TIME_DATA' })
+    ]);
+    const timeData = timeResponse?.timeData;
     console.log('[CUP Popup] Analytics response:', JSON.stringify(response, null, 2));
     
     if (response?.summary) {
       console.log('[CUP Popup] Calling displayAnalytics with:', response.summary);
-      displayAnalytics(response.summary);
+      displayAnalytics(response.summary, timeData);
     } else {
       console.log('[CUP Popup] No summary in response, showing empty state');
       els.analyticsSummary.innerHTML = '<p>No analytics data yet.</p><p class="hint">Click refresh to start tracking your usage.</p>';
@@ -429,8 +433,8 @@ async function loadAnalytics(days = 30) {
   }
 }
 
-function displayAnalytics(summary) {
-  console.log('[CUP Popup] displayAnalytics called with:', summary);
+function displayAnalytics(summary, timeData = null) {
+  console.log('[CUP Popup] displayAnalytics called with:', summary, timeData);
   if (!summary || !summary.averageUsage || summary.days === 0) {
     els.analyticsSummary.innerHTML = '<p>No historical snapshots yet.</p><p class="hint">Click refresh in the main popup to sync usage data and start tracking.</p>';
     return;
@@ -458,11 +462,82 @@ function displayAnalytics(summary) {
     modelHtml = `<div class="analytics-card"><h4>🤖 Models Used</h4>${models}</div>`;
   }
   
+  // Weekly comparison
+  let weeklyHtml = '';
+  if (summary.weeklyStats) {
+    const ws = summary.weeklyStats;
+    let trendIcon = '';
+    let trendClass = '';
+    if (ws.weekOverWeekChange !== null) {
+      if (ws.weekOverWeekChange > 0) {
+        trendIcon = `↑ ${ws.weekOverWeekChange}%`;
+        trendClass = 'warning';
+      } else if (ws.weekOverWeekChange < 0) {
+        trendIcon = `↓ ${Math.abs(ws.weekOverWeekChange)}%`;
+        trendClass = 'success';
+      } else {
+        trendIcon = '→ 0%';
+      }
+    }
+    
+    // Daily breakdown bars
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    let dailyBars = '';
+    for (let i = 0; i < 7; i++) {
+      const data = ws.dailyBreakdown[i] || { avg: 0 };
+      const barWidth = Math.min(100, data.avg);
+      const isBusiest = dayNames[i] === ws.busiestDay && data.avg > 0;
+      dailyBars += `<div class="daily-bar-row">
+        <span class="day-label">${dayNames[i]}</span>
+        <div class="daily-bar-container">
+          <div class="daily-bar${isBusiest ? ' busiest' : ''}" style="width: ${barWidth}%"></div>
+        </div>
+        <span class="day-value">${data.avg}%</span>
+      </div>`;
+    }
+    
+    weeklyHtml = `
+    <div class="analytics-card">
+      <h4>📅 This Week vs Last</h4>
+      <div class="analytics-stat"><span class="label">This week:</span><span class="value">${ws.thisWeekAvg}%</span></div>
+      <div class="analytics-stat"><span class="label">Last week:</span><span class="value">${ws.lastWeekAvg}%</span></div>
+      ${trendIcon ? `<div class="analytics-stat"><span class="label">Change:</span><span class="value ${trendClass}">${trendIcon}</span></div>` : ''}
+      ${ws.busiestDay ? `<div class="analytics-stat"><span class="label">Busiest:</span><span class="value">${ws.busiestDay} (${ws.busiestDayAvg}%)</span></div>` : ''}
+    </div>
+    <div class="analytics-card">
+      <h4>📊 Daily Breakdown</h4>
+      <div class="daily-breakdown">${dailyBars}</div>
+    </div>`;
+  }
+  
+  // Time stats
+  let timeHtml = '';
+  if (timeData) {
+    const formatTime = (ms) => {
+      const seconds = Math.floor(ms / 1000);
+      const minutes = Math.floor(seconds / 60);
+      const hours = Math.floor(minutes / 60);
+      if (hours > 0) return `${hours}h ${minutes % 60}m`;
+      if (minutes > 0) return `${minutes}m`;
+      return `${seconds}s`;
+    };
+    
+    timeHtml = `
+    <div class="analytics-card">
+      <h4>⏱️ Time Spent</h4>
+      <div class="analytics-stat"><span class="label">Today:</span><span class="value">${formatTime(timeData.today?.ms || 0)}</span></div>
+      <div class="analytics-stat"><span class="label">This week:</span><span class="value">${formatTime(timeData.thisWeek?.ms || 0)}</span></div>
+      <div class="analytics-stat"><span class="label">All time:</span><span class="value">${formatTime(timeData.allTime?.ms || 0)}</span></div>
+    </div>`;
+  }
+  
   els.analyticsSummary.innerHTML = `
     <div class="analytics-card">
       <h3>📊 ${summary.period}</h3>
       <p class="analytics-meta">${summary.days} days of data</p>
     </div>
+    ${weeklyHtml}
+    ${timeHtml}
     <div class="analytics-card">
       <h4>📈 Average Usage</h4>
       <div class="analytics-stat"><span class="label">Session:</span><span class="value">${summary.averageUsage.session}%</span></div>

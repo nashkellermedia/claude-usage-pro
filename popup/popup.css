@@ -668,3 +668,52 @@ input[type="password"].setting-input {
   color: white;
   border-color: var(--accent);
 }
+
+/* Daily breakdown bars */
+.daily-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.daily-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.day-label {
+  width: 28px;
+  font-size: 11px;
+  color: #666;
+}
+
+.daily-bar-container {
+  flex: 1;
+  height: 12px;
+  background: #e5e7eb;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.daily-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6, #60a5fa);
+  border-radius: 6px;
+  transition: width 0.3s ease;
+}
+
+.daily-bar.busiest {
+  background: linear-gradient(90deg, #f59e0b, #fbbf24);
+}
+
+.day-value {
+  width: 32px;
+  font-size: 11px;
+  color: #666;
+  text-align: right;
+}
+
+.analytics-stat .value.success {
+  color: #10b981;
+}

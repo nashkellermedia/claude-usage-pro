@@ -386,3 +386,32 @@ body.cup-context-active {
 .cup-clear-files:hover {
   opacity: 1;
 }
+
+/* Time tracking section */
+.cup-time-section {
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  padding-top: 8px;
+  margin-top: 4px;
+}
+
+.cup-time-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.cup-time-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+}
+
+.cup-time-label {
+  color: #666;
+}
+
+.cup-time-value {
+  font-weight: 500;
+  color: #333;
+}
