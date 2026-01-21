@@ -37,10 +37,12 @@ class APIInterceptorClass {
     
     this.interceptFetch();
     this.interceptXHR();
-    this.startDOMObserver();
+    // DOM observer disabled for now - too many false positives
+    // Rate limits are reliably detected via HTTP 429 responses
+    // this.startDOMObserver();
     this.isActive = true;
     
-    window.CUP.log('API interceptor started - monitoring Claude API calls and rate limits');
+    window.CUP.log('API interceptor started - monitoring Claude API calls');
   }
   
   on(event, callback) {
@@ -52,6 +54,7 @@ class APIInterceptorClass {
   
   /**
    * Start observing DOM for rate limit banners
+   * NOTE: Currently disabled due to false positives. HTTP 429 detection is more reliable.
    */
   startDOMObserver() {
     if (this.domObserver) return;
@@ -69,17 +72,12 @@ class APIInterceptorClass {
             }
           }
         }
-        // Also check for text content changes
-        if (mutation.type === 'characterData') {
-          this.checkNodeForRateLimit(mutation.target.parentElement);
-        }
       }
     });
     
     this.domObserver.observe(document.body, {
       childList: true,
-      subtree: true,
-      characterData: true
+      subtree: true
     });
     
     window.CUP.log('Rate limit DOM observer started');
@@ -87,31 +85,43 @@ class APIInterceptorClass {
   
   /**
    * Check if a DOM node contains rate limit messaging
+   * Uses strict matching to avoid false positives
    */
   checkNodeForRateLimit(node) {
     if (!node || !node.textContent) return;
     
     const text = node.textContent.toLowerCase();
     
-    // Common rate limit phrases from Claude.ai
-    const rateLimitPhrases = [
+    // Only match very specific rate limit messages from Claude
+    // These are exact phrases that appear in the Claude UI when rate limited
+    const exactPhrases = [
       "you've reached your usage limit",
       "you've reached your message limit",
-      "usage limit reached",
-      "message limit reached",
-      "rate limit",
-      "limit will reset",
-      "try again later",
-      "too many requests",
-      "please wait"
+      "you have reached your usage limit",
+      "you have reached your message limit",
+      "usage limit reached. your limit will reset",
+      "message limit reached. your limit will reset"
     ];
     
-    for (const phrase of rateLimitPhrases) {
+    for (const phrase of exactPhrases) {
       if (text.includes(phrase)) {
         // Don't trigger on our own UI elements
         if (node.closest('#cup-sidebar-widget') || 
             node.closest('#cup-input-stats') ||
             node.closest('.cup-rate-limit-banner')) {
+          return;
+        }
+        
+        // Make sure this is likely an alert/banner element, not just any text
+        const isLikelyBanner = 
+          node.closest('[role="alert"]') ||
+          node.closest('[class*="banner"]') ||
+          node.closest('[class*="alert"]') ||
+          node.closest('[class*="warning"]') ||
+          node.closest('[class*="error"]') ||
+          (node.tagName === 'DIV' && node.children.length < 10);
+        
+        if (!isLikelyBanner) {
           return;
         }
         
@@ -146,24 +156,10 @@ class APIInterceptorClass {
    * Check the current page for existing rate limit banners
    */
   checkForRateLimitBanner() {
-    // Look for common banner elements
-    const possibleBanners = document.querySelectorAll([
-      '[class*="banner"]',
-      '[class*="alert"]',
-      '[class*="warning"]',
-      '[class*="error"]',
-      '[class*="limit"]',
-      '[role="alert"]'
-    ].join(','));
-    
-    for (const banner of possibleBanners) {
-      this.checkNodeForRateLimit(banner);
-    }
-    
-    // Also check body text for rate limit messages
-    const bodyText = document.body?.innerText || '';
-    if (bodyText.includes("you've reached") || bodyText.includes("limit reached")) {
-      this.checkNodeForRateLimit(document.body);
+    // Look for alert elements specifically
+    const alerts = document.querySelectorAll('[role="alert"]');
+    for (const alert of alerts) {
+      this.checkNodeForRateLimit(alert);
     }
   }
   
