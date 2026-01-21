@@ -38,6 +38,7 @@ class APIInterceptorClass {
     
     this.interceptFetch();
     this.interceptXHR();
+    this.interceptEventSource();
     // DOM observer disabled for now - too many false positives
     // Rate limits are reliably detected via HTTP 429 responses
     // this.startDOMObserver();
@@ -423,6 +424,26 @@ class APIInterceptorClass {
     };
   }
   
+  interceptEventSource() {
+    const self = this;
+    const OriginalEventSource = window.EventSource;
+    
+    window.EventSource = function(url, config) {
+      console.log("[CUP SSE] EventSource connection:", url?.substring?.(0, 100));
+      const es = new OriginalEventSource(url, config);
+      
+      es.addEventListener("message", function(event) {
+        console.log("[CUP SSE] Message received:", event.data?.substring?.(0, 100));
+      });
+      
+      return es;
+    };
+    window.EventSource.prototype = OriginalEventSource.prototype;
+    window.EventSource.CONNECTING = OriginalEventSource.CONNECTING;
+    window.EventSource.OPEN = OriginalEventSource.OPEN;
+    window.EventSource.CLOSED = OriginalEventSource.CLOSED;
+  }
+
   isRelevantUrl(url) {
     // Match any Claude API call
     return url.includes('claude.ai/api') ||
