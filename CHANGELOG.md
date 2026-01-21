@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.3.3] - 2026-01-21
+
+### Fixed
+- **Correct Model Detection** (Issue #XX)
+  - Fixed model tracking showing old version `claude-sonnet-4-20250514` instead of current `claude-sonnet-4-5-20250929`
+  - Added `getCurrentModelFromUI()` method to detect model from UI when API doesn't provide it
+  - Now correctly tracks Claude Sonnet 4.5, Opus 4.5, and Haiku 4.5
+  - Model names now match actual Claude 4.5 model versions
+
+### Technical
+- Added getCurrentModelFromUI() to scrape model selector from DOM
+- Maps UI text ("Sonnet", "Opus", "Haiku") to correct model IDs
+- Fallback chain: data.model → UI detection → default (Sonnet 4.5)
+- Updated model references throughout api-interceptor.js
+
+# Changelog
+
 ## [2.3.2] - 2026-01-21
 
 ### Fixed

@@ -488,10 +488,13 @@ class APIInterceptorClass {
         }
       }
       
+      // Get model from request or fallback to UI detection
+      const model = data.model || this.getCurrentModelFromUI();
+      
       if (this.callbacks.onMessageSent) {
         this.callbacks.onMessageSent({
           tokens,
-          model: data.model,
+          model: model,
           hasAttachments: attachments.length > 0
         });
       }
@@ -503,11 +506,11 @@ class APIInterceptorClass {
           type: 'ADD_TOKEN_DELTA',
           inputTokens: tokens,
           outputTokens: 0,
-          model: data.model
+          model: model
         }).catch(() => {});
         
         // Store model for output token tracking
-        this.lastModel = data.model;
+        this.lastModel = model;
       } catch (e) {
         window.CUP.logError('Failed to send input tokens:', e);
       }
@@ -710,7 +713,7 @@ class APIInterceptorClass {
     try {
       const conversationId = url.match(/chat_conversations\/([a-f0-9-]+)/)?.[1];
       const messages = data.chat_messages || [];
-      const model = data.model || 'claude-sonnet-4';
+      const model = data.model || this.getCurrentModelFromUI();
       
       let totalTokens = 0;
       let projectTokens = 0;
@@ -769,6 +772,32 @@ class APIInterceptorClass {
     }
   }
   
+  /**
+   * Get current model from the UI
+   */
+  getCurrentModelFromUI() {
+    try {
+      // Try to find the model selector button
+      const modelButton = document.querySelector('[data-testid="model-selector-button"]') || 
+                         document.querySelector('button[aria-label*="model"]');
+      
+      if (modelButton) {
+        const text = modelButton.textContent || modelButton.innerText || '';
+        
+        // Map UI text to model IDs  
+        if (text.includes('Opus')) return 'claude-opus-4-5-20251101';
+        if (text.includes('Sonnet')) return 'claude-sonnet-4-5-20250929';
+        if (text.includes('Haiku')) return 'claude-haiku-4-5-20251001';
+      }
+    } catch (e) {
+      window.CUP.logError('Failed to get model from UI:', e);
+    }
+    
+    // Ultimate fallback - Sonnet is most common
+    return 'claude-sonnet-4-5-20250929';
+  }
+
+
   /**
    * Get last known usage data
    */
