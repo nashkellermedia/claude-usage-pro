@@ -469,6 +469,9 @@ class APIInterceptorClass {
         data = body;
       }
       
+      // Debug: log what model is in the request data
+      window.CUP.log('[DEBUG] Request data.model:', data.model);
+      
       const prompt = data.prompt || data.content || '';
       const attachments = data.attachments || [];
       
@@ -499,7 +502,7 @@ class APIInterceptorClass {
         });
       }
       
-      // Send token delta to background for hybrid tracking
+      window.CUP.log("Sending input tokens to background:", tokens, "model:", model);
       window.CUP.log('Sending input tokens to background:', tokens);
       try {
         chrome.runtime.sendMessage({
