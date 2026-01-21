@@ -38,7 +38,6 @@ class APIInterceptorClass {
     
     this.interceptFetch();
     this.interceptXHR();
-    this.interceptEventSource();
     // DOM observer disabled for now - too many false positives
     // Rate limits are reliably detected via HTTP 429 responses
     // this.startDOMObserver();
@@ -295,7 +294,6 @@ class APIInterceptorClass {
     const originalFetch = window.fetch;
     
     window.fetch = async function(...args) {
-      console.log("[CUP FETCH]", args[0]?.toString?.().substring(0,100) || args[0]);
       const [url, options] = args;
       const urlString = typeof url === 'string' ? url : url.toString();
       
@@ -389,7 +387,6 @@ class APIInterceptorClass {
     const originalSend = XMLHttpRequest.prototype.send;
     
     XMLHttpRequest.prototype.open = function(method, url, ...rest) {
-      console.log("[CUP XHR]", method, url?.substring?.(0,100));
       this._cupUrl = url;
       this._cupMethod = method;
       return originalOpen.apply(this, [method, url, ...rest]);
@@ -424,26 +421,6 @@ class APIInterceptorClass {
     };
   }
   
-  interceptEventSource() {
-    const self = this;
-    const OriginalEventSource = window.EventSource;
-    
-    window.EventSource = function(url, config) {
-      console.log("[CUP SSE] EventSource connection:", url?.substring?.(0, 100));
-      const es = new OriginalEventSource(url, config);
-      
-      es.addEventListener("message", function(event) {
-        console.log("[CUP SSE] Message received:", event.data?.substring?.(0, 100));
-      });
-      
-      return es;
-    };
-    window.EventSource.prototype = OriginalEventSource.prototype;
-    window.EventSource.CONNECTING = OriginalEventSource.CONNECTING;
-    window.EventSource.OPEN = OriginalEventSource.OPEN;
-    window.EventSource.CLOSED = OriginalEventSource.CLOSED;
-  }
-
   isRelevantUrl(url) {
     // Match any Claude API call
     return url.includes('claude.ai/api') ||
