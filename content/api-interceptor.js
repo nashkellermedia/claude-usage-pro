@@ -293,6 +293,7 @@ class APIInterceptorClass {
     const originalFetch = window.fetch;
     
     window.fetch = async function(...args) {
+      window.CUP.log("[FETCH DEBUG] URL:", typeof args[0] === "string" ? args[0].substring(0, 100) : args[0]?.toString?.().substring(0, 100));
       const [url, options] = args;
       const urlString = typeof url === 'string' ? url : url.toString();
       
