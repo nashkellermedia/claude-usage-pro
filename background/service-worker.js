@@ -428,6 +428,12 @@ class FirebaseSync {
     return { success: result !== null };
   }
 
+  // Get synced time data from Firebase
+  async getTimeDataFromFirebase() {
+    if (!this.syncEnabled) return null;
+    return await this.makeAuthenticatedRequest("timeData", "GET");
+  }
+
   // Sync settings (non-sensitive)
   async syncSettings(settings) {
     if (!this.syncEnabled) return { success: false };
@@ -1302,13 +1308,18 @@ async function getTimeData() {
   }
 }
 
-async function updateTimeData(sessionTimeMs) {
+async function updateTimeData(sessionTimeMs, sessionId = null) {
   try {
     const data = await getTimeData();
     const today = new Date().toISOString().split('T')[0];
     
     // Calculate increment (difference from last update)
-    const lastSession = data.lastSessionTime || 0;
+    // Reset lastSessionTime if this is a new session (page refresh, extension reload)
+    const isNewSession = sessionId && sessionId !== data.lastSessionId;
+    const lastSession = isNewSession ? 0 : (data.lastSessionTime || 0);
+    if (isNewSession) {
+      log("[CUP BG] New time tracking session detected:", sessionId);
+    }
     const increment = Math.max(0, sessionTimeMs - lastSession);
     
     // Update today
@@ -1326,6 +1337,7 @@ async function updateTimeData(sessionTimeMs) {
     
     // Store last session time to calculate increment
     data.lastSessionTime = sessionTimeMs;
+    if (sessionId) data.lastSessionId = sessionId;
     
     await chrome.storage.local.set({ timeData: data });
     return data;
@@ -1781,7 +1793,7 @@ async function handleMessage(message, sender) {
     }
 
     case 'UPDATE_TIME_DATA': {
-      const timeData = await updateTimeData(message.sessionTime);
+      const timeData = await updateTimeData(message.sessionTime, message.sessionId);
       return { timeData };
     }
 
@@ -1964,6 +1976,35 @@ async function pullFromFirebase() {
       };
       await usageAnalytics.save();
       log('[CUP BG] Analytics merged - models:', Object.keys(mergedModelUsage).length, 'days:', Object.keys(mergedDailySnapshots).length);
+    }
+
+
+    // Pull time data and merge (take higher values for same date)
+    const remoteTimeData = await firebaseSync.getTimeDataFromFirebase();
+    if (remoteTimeData) {
+      const localTimeData = await getTimeData();
+      const today = new Date().toISOString().split("T")[0];
+      
+      // Merge today - take higher value if same date
+      if (remoteTimeData.today?.date === today && localTimeData.today?.date === today) {
+        localTimeData.today.ms = Math.max(localTimeData.today.ms || 0, remoteTimeData.today.ms || 0);
+      } else if (remoteTimeData.today?.date === today) {
+        localTimeData.today = remoteTimeData.today;
+      }
+      
+      // Merge thisWeek - take higher value if same week
+      if (remoteTimeData.thisWeek?.weekStart === localTimeData.thisWeek?.weekStart) {
+        localTimeData.thisWeek.ms = Math.max(localTimeData.thisWeek.ms || 0, remoteTimeData.thisWeek.ms || 0);
+      } else if (remoteTimeData.thisWeek?.weekStart > (localTimeData.thisWeek?.weekStart || "")) {
+        localTimeData.thisWeek = remoteTimeData.thisWeek;
+      }
+      
+      // Merge allTime - take higher value
+      localTimeData.allTime = localTimeData.allTime || { ms: 0 };
+      localTimeData.allTime.ms = Math.max(localTimeData.allTime.ms || 0, remoteTimeData.allTime?.ms || 0);
+      
+      await chrome.storage.local.set({ timeData: localTimeData });
+      log("[CUP BG] Merged time data from Firebase - today:", Math.round(localTimeData.today.ms / 60000) + "min");
     }
 
     // Pull settings (including anthropicApiKey)

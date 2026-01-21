@@ -7,6 +7,7 @@
 class TimeTracker {
   constructor() {
     this.sessionStart = Date.now();
+    this.sessionId = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
     this.sessionTime = 0; // ms
     this.isActive = true;
     this.lastTick = Date.now();
@@ -126,6 +127,7 @@ class TimeTracker {
     try {
       await chrome.runtime.sendMessage({
         type: 'UPDATE_TIME_DATA',
+        sessionId: this.sessionId,
         sessionTime: this.sessionTime
       });
     } catch (e) {
