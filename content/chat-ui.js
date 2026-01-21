@@ -718,7 +718,7 @@ class ChatUI {
    */
   getCurrentModelFromUI() {
     try {
-      const modelButton = document.querySelector("[data-testid='model-selector-button']") ||
+      const modelButton = document.querySelector("[data-testid='model-selector-dropdown']") ||
                          document.querySelector("button[aria-label*='model']") ||
                          document.querySelector("[class*='model-selector']");
       
