@@ -1793,6 +1793,20 @@ async function handleMessage(message, sender) {
       return { success: true };
     }
 
+    case 'CLEAN_MODEL_USAGE': {
+      if (usageAnalytics) {
+        usageAnalytics.data.modelUsage = {};
+        await usageAnalytics.save();
+        log('[CUP BG] Model usage cleaned');
+        // Also sync to Firebase to clean remote data
+        if (firebaseSync?.syncEnabled) {
+          await firebaseSync.syncAnalytics(await usageAnalytics.export());
+          log('[CUP BG] Cleaned model usage synced to Firebase');
+        }
+      }
+      return { success: true };
+    }
+
     case 'EXPORT_ANALYTICS': {
       if (!usageAnalytics) return { data: null };
       return { data: await usageAnalytics.export() };
