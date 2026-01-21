@@ -87,6 +87,18 @@
     }
   } catch (e) {}
   
+  // Periodic refresh every 10 seconds to catch changes
+  setInterval(async () => {
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'GET_USAGE_DATA' });
+      if (response?.usageData) {
+        updateAllUI(response.usageData);
+      }
+    } catch (e) {
+      // Ignore errors (extension might be reloading)
+    }
+  }, 10000);
+  
   // Trigger a scrape if on usage page
   if (window.location.pathname.includes('/settings/usage')) {
     setTimeout(() => {
