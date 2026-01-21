@@ -470,7 +470,10 @@ class APIInterceptorClass {
       }
       
       // Debug: log what model is in the request data
-      window.CUP.log('[DEBUG] Request data.model:', data.model);
+      window.CUP.log("[DEBUG] Full request data keys:", Object.keys(data || {}));
+      window.CUP.log("[DEBUG] Request data.model:", data.model);
+      window.CUP.log("[DEBUG] Request data.rendering_model:", data.rendering_model);
+      window.CUP.log("[DEBUG] Request data.selectedModel:", data.selectedModel);
       
       const prompt = data.prompt || data.content || '';
       const attachments = data.attachments || [];
@@ -492,7 +495,8 @@ class APIInterceptorClass {
       }
       
       // Get model from request or fallback to UI detection
-      const model = data.model || this.getCurrentModelFromUI();
+      const model = data.model || data.rendering_model || data.selectedModel || this.getCurrentModelFromUI();
+      window.CUP.log("[DEBUG] Final model selected:", model);
       
       if (this.callbacks.onMessageSent) {
         this.callbacks.onMessageSent({
@@ -716,7 +720,8 @@ class APIInterceptorClass {
     try {
       const conversationId = url.match(/chat_conversations\/([a-f0-9-]+)/)?.[1];
       const messages = data.chat_messages || [];
-      const model = data.model || this.getCurrentModelFromUI();
+      const model = data.model || data.rendering_model || data.selectedModel || this.getCurrentModelFromUI();
+      window.CUP.log("[DEBUG] Final model selected:", model);
       
       let totalTokens = 0;
       let projectTokens = 0;
