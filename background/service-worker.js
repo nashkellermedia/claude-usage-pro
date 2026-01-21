@@ -1485,13 +1485,18 @@ async function handleMessage(message, sender) {
     }
 
     case 'GET_RATE_LIMIT_STATE': {
-      // Check if it should have expired
-      if (rateLimitState.isLimited && rateLimitState.resetTime) {
-        if (Date.now() > rateLimitState.resetTime) {
+      // Check if it should have expired or has no valid reset time
+      if (rateLimitState.isLimited) {
+        if (!rateLimitState.resetTime || Date.now() > rateLimitState.resetTime) {
           await handleRateLimitCleared();
         }
       }
       return { rateLimitState };
+    }
+    
+    case 'CLEAR_RATE_LIMIT_STATE': {
+      await handleRateLimitCleared();
+      return { success: true };
     }
 
     case 'GET_HYBRID_STATUS': {
@@ -2149,9 +2154,9 @@ chrome.storage.local.get('rateLimitState').then(result => {
   if (result.rateLimitState) {
     rateLimitState = result.rateLimitState;
     
-    // Check if it should have expired
-    if (rateLimitState.isLimited && rateLimitState.resetTime) {
-      if (Date.now() > rateLimitState.resetTime) {
+    // Check if it should have expired or has no valid reset time
+    if (rateLimitState.isLimited) {
+      if (!rateLimitState.resetTime || Date.now() > rateLimitState.resetTime) {
         handleRateLimitCleared();
       }
     }
