@@ -260,6 +260,14 @@ class ChatUI {
       if (contentEditable) {
         this.inputStats = document.createElement('div');
         this.inputStats.id = 'cup-input-stats';
+        
+        // Detect dark/light mode and set background
+        const isDark = document.documentElement.classList.contains('dark') ||
+                       document.body.classList.contains('dark') ||
+                       window.matchMedia('(prefers-color-scheme: dark)').matches ||
+                       getComputedStyle(document.body).backgroundColor.match(/^rgb\((\d+),/)?.[1] < 128;
+        this.inputStats.style.backgroundColor = isDark ? '#2a2a2a' : '#f5f5f5';
+        
         this.inputStats.innerHTML = `
           <span class="cup-stat-item">
             <span class="cup-stat-icon">✏️</span>

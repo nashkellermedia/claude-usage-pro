@@ -155,20 +155,16 @@
   color: inherit;
   font-family: inherit;
   margin-top: 4px;
-  background: var(--bg-100, #1a1a1a);
+  background-color: #2a2a2a !important;
   border-radius: 8px;
-  opacity: 0.9;
 }
 
-#cup-input-stats:hover {
-  opacity: 1;
-}
-
-/* Light mode background */
-@media (prefers-color-scheme: light) {
-  #cup-input-stats {
-    background: var(--bg-100, #f5f5f5);
-  }
+/* Detect light mode by checking body/html background */
+html[style*="light"] #cup-input-stats,
+body[style*="light"] #cup-input-stats,
+[data-theme="light"] #cup-input-stats,
+.light #cup-input-stats {
+  background-color: #f5f5f5 !important;
 }
 
 #cup-input-stats .cup-stat-item {
