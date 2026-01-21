@@ -718,10 +718,11 @@ class ChatUI {
    */
   getCurrentModelFromUI() {
     try {
-      const modelButton = document.querySelector("[data-testid=\x27model-selector-button\x27]") ||
-                         document.querySelector("button[aria-label*=\x27model\x27]") ||
-                         document.querySelector("[class*=\x27model-selector\x27]");
+      const modelButton = document.querySelector("[data-testid='model-selector-button']") ||
+                         document.querySelector("button[aria-label*='model']") ||
+                         document.querySelector("[class*='model-selector']");
       
+      window.CUP.log('ChatUI: Looking for model button...');
       if (modelButton) {
         const text = (modelButton.textContent || modelButton.innerText || "").toLowerCase();
         window.CUP.log("ChatUI: Model selector text:", text);
@@ -732,12 +733,14 @@ class ChatUI {
           if (text.includes("haiku")) return "claude-haiku-4-5";
         }
         if (text.includes("opus")) return "claude-opus-4";
-        if (text.includes("sonnet")) return "claude-sonnet-4";
+        if (text.includes("sonnet")) window.CUP.log('ChatUI: No model button found, using default');
+    return "claude-sonnet-4";
         if (text.includes("haiku")) return "claude-haiku-4";
       }
     } catch (e) {
       window.CUP.logError("ChatUI: Failed to get model from UI:", e);
     }
+    window.CUP.log('ChatUI: No model button found, using default');
     return "claude-sonnet-4";
   }
 }
