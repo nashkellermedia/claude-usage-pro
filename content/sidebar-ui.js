@@ -146,12 +146,15 @@ class SidebarUI {
       this.colorizePercent('cup-sidebar-session', pct);
     }
     
-    // Always update session reset time
+    // Always update session reset time (use timestamp for dynamic countdown)
     const resetEl = document.getElementById('cup-sidebar-session-reset');
     if (resetEl) {
-      const resetTime = usageData.currentSession?.resetsIn || '--';
-      if (resetTime && resetTime !== '--') {
-        resetEl.textContent = 'Resets in ' + resetTime;
+      const resetTimestamp = usageData.currentSession?.resetsAt;
+      const resetStr = usageData.currentSession?.resetsIn;
+      const displayTime = this.formatResetTime(resetTimestamp, resetStr);
+      
+      if (displayTime && displayTime !== '--') {
+        resetEl.textContent = 'Resets in ' + displayTime;
         resetEl.style.cursor = 'default';
         resetEl.style.textDecoration = 'none';
         resetEl.onclick = null;
@@ -170,8 +173,12 @@ class SidebarUI {
       this.updateBar('cup-sidebar-weekly-bar', pct);
       this.colorizePercent('cup-sidebar-weekly', pct);
       
-      if (usageData.weeklyAllModels.resetsAt) {
-        this.updateElement('cup-sidebar-weekly-reset', 'Resets ' + usageData.weeklyAllModels.resetsAt);
+      // Use timestamp for dynamic countdown
+      const weeklyResetTs = usageData.weeklyAllModels.resetsAt;
+      const weeklyResetStr = usageData.weeklyAllModels.resetsAtStr;
+      const weeklyDisplayTime = this.formatResetTime(weeklyResetTs, weeklyResetStr);
+      if (weeklyDisplayTime && weeklyDisplayTime !== '--') {
+        this.updateElement('cup-sidebar-weekly-reset', 'Resets in ' + weeklyDisplayTime);
       }
     }
     
@@ -182,11 +189,12 @@ class SidebarUI {
       this.updateBar('cup-sidebar-sonnet-bar', pct);
       this.colorizePercent('cup-sidebar-sonnet', pct);
       
-      if (usageData.weeklySonnet.resetsIn && usageData.weeklySonnet.resetsIn !== '--') {
-        const resetVal = usageData.weeklySonnet.resetsIn;
-        // Check if it's a day/time format (e.g., "Thu 1:00 AM") vs duration (e.g., "5 hr")
-        const isDayTime = /^[A-Za-z]{3,}/.test(resetVal);
-        this.updateElement('cup-sidebar-sonnet-reset', isDayTime ? 'Resets ' + resetVal : 'Resets in ' + resetVal);
+      // Use timestamp for dynamic countdown
+      const sonnetResetTs = usageData.weeklySonnet.resetsAt;
+      const sonnetResetStr = usageData.weeklySonnet.resetsIn;
+      const sonnetDisplayTime = this.formatResetTime(sonnetResetTs, sonnetResetStr);
+      if (sonnetDisplayTime && sonnetDisplayTime !== '--') {
+        this.updateElement('cup-sidebar-sonnet-reset', 'Resets in ' + sonnetDisplayTime);
       }
     }
     
@@ -228,6 +236,30 @@ class SidebarUI {
       return `${minutes}m`;
     } else {
       return `${seconds}s`;
+    }
+  }
+  
+  // Calculate remaining time from timestamp
+  formatResetTime(timestamp, fallbackStr) {
+    if (!timestamp || typeof timestamp !== 'number') {
+      return fallbackStr || '--';
+    }
+    
+    const now = Date.now();
+    const remaining = timestamp - now;
+    
+    if (remaining <= 0) return 'now';
+    
+    const minutes = Math.floor(remaining / (60 * 1000));
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    
+    if (days > 0) {
+      return `${days}d ${hours % 24}h`;
+    } else if (hours > 0) {
+      return `${hours}h ${minutes % 60}m`;
+    } else {
+      return `${minutes}m`;
     }
   }
 

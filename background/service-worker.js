@@ -390,6 +390,18 @@ class FirebaseSync {
     return { success: result !== null };
   }
 
+  // Sync time data
+  async syncTimeData(timeData) {
+    if (!this.syncEnabled) return { success: false };
+
+    const result = await this.makeAuthenticatedRequest('timeData', 'PUT', {
+      ...timeData,
+      deviceId: this.deviceId,
+      syncedAt: Date.now()
+    });
+    return { success: result !== null };
+  }
+
   // Sync settings (non-sensitive)
   async syncSettings(settings) {
     if (!this.syncEnabled) return { success: false };
@@ -462,6 +474,10 @@ class FirebaseSync {
         const analyticsData = await usageAnalytics.export();
         await this.syncAnalytics(analyticsData);
       }
+      
+      // Sync time data
+      const timeData = await getTimeData();
+      await this.syncTimeData(timeData);
     }, 30000);
     
     // Pull remote changes every 60 seconds (staggered from push)
@@ -609,17 +625,20 @@ class HybridTracker {
       currentSession: {
         percent: Math.min(100, Math.round(sessionPercent)),
         percentExact: Math.min(100, sessionPercent),
-        resetsIn: this.baseline.currentSession.resetsIn
+        resetsIn: this.baseline.currentSession.resetsIn,
+        resetsAt: this.baseline.currentSession.resetsAt // Timestamp for countdown
       },
       weeklyAllModels: {
         percent: Math.min(100, Math.round(weeklyPercent)),
         percentExact: Math.min(100, weeklyPercent),
-        resetsAt: this.baseline.weeklyAllModels.resetsAt
+        resetsAt: this.baseline.weeklyAllModels.resetsAt, // Timestamp
+        resetsAtStr: this.baseline.weeklyAllModels.resetsAtStr
       },
       weeklySonnet: {
         percent: Math.min(100, Math.round(sonnetPercent)),
         percentExact: Math.min(100, sonnetPercent),
-        resetsIn: this.baseline.weeklySonnet.resetsIn
+        resetsIn: this.baseline.weeklySonnet.resetsIn,
+        resetsAt: this.baseline.weeklySonnet.resetsAt // Timestamp for countdown
       },
       isEstimate: true,
       deltaTokens: totalDeltaTokens,
@@ -1370,6 +1389,11 @@ async function handleMessage(message, sender) {
           await firebaseSync.syncAnalytics(analyticsData);
           log('[CUP BG] Pushed analytics');
         }
+        
+        // Sync time data
+        const timeData = await getTimeData();
+        await firebaseSync.syncTimeData(timeData);
+        log('[CUP BG] Pushed time data');
         
         const settings = await getSettings();
         await firebaseSync.syncSettings(settings);

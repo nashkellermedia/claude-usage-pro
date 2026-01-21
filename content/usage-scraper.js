@@ -28,6 +28,63 @@ class UsageScraper {
     }).observe(document.body, { subtree: true, childList: true });
   }
   
+  // Parse reset time string to absolute timestamp
+  parseResetToTimestamp(resetStr) {
+    if (!resetStr || resetStr === '--') return null;
+    
+    const now = Date.now();
+    const str = resetStr.toLowerCase().trim();
+    let totalMs = 0;
+    
+    // Match patterns like "4 hours", "4h 30m", "30 minutes", "2 days"
+    const dayMatch = str.match(/(\d+)\s*(?:days?|d)/);
+    const hourMatch = str.match(/(\d+)\s*(?:hours?|hr?s?)/);
+    const minMatch = str.match(/(\d+)\s*(?:minutes?|mins?|m)(?!o)/);
+    
+    if (dayMatch) totalMs += parseInt(dayMatch[1]) * 24 * 60 * 60 * 1000;
+    if (hourMatch) totalMs += parseInt(hourMatch[1]) * 60 * 60 * 1000;
+    if (minMatch) totalMs += parseInt(minMatch[1]) * 60 * 1000;
+    
+    if (totalMs > 0) {
+      return now + totalMs;
+    }
+    
+    // Try day/time format like "Thursday 3:00 PM"
+    const dayTimeMatch = resetStr.match(/([A-Za-z]+)\s+(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+    if (dayTimeMatch) {
+      const dayName = dayTimeMatch[1];
+      let hours = parseInt(dayTimeMatch[2]);
+      const minutes = parseInt(dayTimeMatch[3]);
+      const ampm = dayTimeMatch[4]?.toUpperCase();
+      
+      if (ampm === 'PM' && hours !== 12) hours += 12;
+      if (ampm === 'AM' && hours === 12) hours = 0;
+      
+      const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+      const shortDays = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+      let targetDay = days.indexOf(dayName.toLowerCase());
+      if (targetDay === -1) targetDay = shortDays.indexOf(dayName.toLowerCase().substring(0, 3));
+      
+      if (targetDay !== -1) {
+        const date = new Date();
+        const currentDay = date.getDay();
+        let daysUntil = targetDay - currentDay;
+        if (daysUntil <= 0) daysUntil += 7;
+        
+        date.setDate(date.getDate() + daysUntil);
+        date.setHours(hours, minutes, 0, 0);
+        
+        if (date.getTime() < now) {
+          date.setDate(date.getDate() + 7);
+        }
+        
+        return date.getTime();
+      }
+    }
+    
+    return null;
+  }
+  
   async scrapeUsage() {
     window.CUP.log('UsageScraper: Starting scrape...');
     
@@ -144,9 +201,11 @@ class UsageScraper {
       if (!resetMatch) resetMatch = section.match(/in\s+(\d+\s*(?:days?|hours?|minutes?|d|h|m))/i);
       
       if (percentMatch) {
+        const resetStr = resetMatch ? resetMatch[1].trim() : '--';
         data.currentSession = {
           percent: parseInt(percentMatch[1]),
-          resetsIn: resetMatch ? resetMatch[1].trim() : '--'
+          resetsIn: resetStr,
+          resetsAt: this.parseResetToTimestamp(resetStr) // Absolute timestamp
         };
         window.CUP.log('UsageScraper: Current Session:', data.currentSession.percent + '%, resets in', data.currentSession.resetsIn);
       } else {
@@ -168,11 +227,13 @@ class UsageScraper {
       if (!resetMatch) resetMatch = section.match(/Resets?\s+in\s+(\d+\s*(?:days?|d))/i);
       
       if (percentMatch) {
+        const resetStr = resetMatch ? resetMatch[1].trim() : '--';
         data.weeklyAllModels = {
           percent: parseInt(percentMatch[1]),
-          resetsAt: resetMatch ? resetMatch[1].trim() : '--'
+          resetsAtStr: resetStr,
+          resetsAt: this.parseResetToTimestamp(resetStr) // Absolute timestamp
         };
-        window.CUP.log('UsageScraper: All Models:', data.weeklyAllModels.percent + '%, resets', data.weeklyAllModels.resetsAt);
+        window.CUP.log('UsageScraper: All Models:', data.weeklyAllModels.percent + '%, resets', resetStr);
       }
     }
     
@@ -190,11 +251,13 @@ class UsageScraper {
       if (!resetMatch) resetMatch = section.match(/(\d+\s*(?:hours?|hr?|h|minutes?|min|m))\s*(?:left|remaining)/i);
       
       if (percentMatch) {
+        const resetStr = resetMatch ? resetMatch[1].trim() : '--';
         data.weeklySonnet = {
           percent: parseInt(percentMatch[1]),
-          resetsIn: resetMatch ? resetMatch[1].trim() : '--'
+          resetsIn: resetStr,
+          resetsAt: this.parseResetToTimestamp(resetStr) // Absolute timestamp
         };
-        window.CUP.log('UsageScraper: Sonnet Only:', data.weeklySonnet.percent + '%, resets', data.weeklySonnet.resetsIn);
+        window.CUP.log('UsageScraper: Sonnet Only:', data.weeklySonnet.percent + '%, resets', resetStr);
       }
     }
     
