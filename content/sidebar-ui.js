@@ -34,7 +34,7 @@ class SidebarUI {
         this.widget.id = 'cup-sidebar-widget';
         this.widget.innerHTML = `
           <div class="cup-widget-inner">
-            <div class="cup-widget-header" id="cup-widget-toggle">
+            <div class="cup-widget-header expanded" id="cup-widget-toggle">
               <span class="cup-widget-icon">📊</span>
               <span class="cup-widget-title">Usage</span>
               <span class="cup-widget-expand">▼</span>
@@ -124,11 +124,13 @@ class SidebarUI {
   
   toggleExpand() {
     const details = document.getElementById('cup-widget-details');
+    const header = document.getElementById('cup-widget-toggle');
     const expand = this.widget?.querySelector('.cup-widget-expand');
     
     if (details) {
       this.expanded = !this.expanded;
       details.classList.toggle('expanded', this.expanded);
+      header?.classList.toggle('expanded', this.expanded);
       if (expand) {
         expand.textContent = this.expanded ? '▼' : '▶';
       }
