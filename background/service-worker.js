@@ -1279,7 +1279,10 @@ const DEFAULT_SETTINGS = {
   statsBarShowSession: true,
   statsBarShowWeekly: true,
   statsBarShowSonnet: true,
-  statsBarShowTimer: true
+  statsBarShowTimer: true,
+  // Auto-refresh baseline settings
+  autoRefreshEnabled: false,
+  autoRefreshMinutes: 30
 };
 
 // ============================================================================
@@ -1922,14 +1925,87 @@ async function showResetNotification() {
 
 // Periodic badge update
 chrome.alarms.create('updateBadge', { periodInMinutes: 1 });
+
+// Auto-refresh baseline check (runs every minute, but only refreshes if stale)
+chrome.alarms.create('autoRefreshCheck', { periodInMinutes: 1 });
+
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === 'updateBadge') {
     const usageData = await getUsageData();
     await updateBadge(usageData);
   } else if (alarm.name === 'resetNotification') {
     await showResetNotification();
+  } else if (alarm.name === 'autoRefreshCheck') {
+    await checkAndAutoRefresh();
   }
 });
+
+// Auto-refresh baseline if stale
+async function checkAndAutoRefresh() {
+  const settings = await getSettings();
+  
+  // Check if auto-refresh is enabled
+  if (!settings.autoRefreshEnabled) return;
+  
+  // Check baseline age
+  if (!hybridTracker?.baseline?.timestamp) return;
+  
+  const baselineAgeMs = Date.now() - hybridTracker.baseline.timestamp;
+  const refreshThresholdMs = (settings.autoRefreshMinutes || 30) * 60 * 1000;
+  
+  if (baselineAgeMs < refreshThresholdMs) {
+    // Baseline is fresh enough
+    return;
+  }
+  
+  log('[CUP BG] Baseline is stale (' + Math.round(baselineAgeMs / 60000) + 'm), auto-refreshing...');
+  
+  // Open usage page in background tab, scrape, then close
+  try {
+    const tab = await chrome.tabs.create({
+      url: 'https://claude.ai/settings/usage',
+      active: false // Background tab
+    });
+    
+    // Wait for page to load and scrape
+    await new Promise(resolve => setTimeout(resolve, 4000));
+    
+    // Send message to content script to scrape
+    try {
+      await chrome.tabs.sendMessage(tab.id, { type: 'SCRAPE_USAGE' });
+      log('[CUP BG] Auto-refresh scrape triggered');
+    } catch (e) {
+      log('[CUP BG] Auto-refresh scrape message failed:', e.message);
+    }
+    
+    // Wait for scrape to complete
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Close the tab
+    await chrome.tabs.remove(tab.id);
+    log('[CUP BG] Auto-refresh complete, tab closed');
+    
+    // Show notification
+    try {
+      await chrome.notifications.create('autoRefresh', {
+        type: 'basic',
+        iconUrl: 'icons/icon128.png',
+        title: 'Claude Usage Pro',
+        message: 'Usage data auto-refreshed',
+        priority: 0
+      });
+      // Auto-dismiss after 3 seconds
+      setTimeout(() => {
+        chrome.notifications.clear('autoRefresh');
+      }, 3000);
+    } catch (e) {
+      // Notifications might not be available
+    }
+    
+  } catch (e) {
+    logError('[CUP BG] Auto-refresh failed:', e.message);
+  }
+}
 
 // Global error handler for unhandled promise rejections
 self.addEventListener('unhandledrejection', (event) => {

@@ -181,6 +181,20 @@
           <p class="setting-hint">Get a notification when your session limit resets (after hitting 70%+)</p>
         </div>
         
+        <div class="setting-group">
+          <label class="setting-label">Auto-Refresh Baseline</label>
+          <div class="setting-toggle">
+            <input type="checkbox" id="autoRefreshEnabled">
+            <label for="autoRefreshEnabled">Auto-refresh when stale</label>
+          </div>
+          <div class="threshold-row" style="margin-top: 8px;">
+            <label for="autoRefreshMinutes">Refresh if older than</label>
+            <input type="number" id="autoRefreshMinutes" min="5" max="120" value="30" class="threshold-input">
+            <span>min</span>
+          </div>
+          <p class="setting-hint">Automatically opens usage page in background to refresh data</p>
+        </div>
+        
         <!-- Anthropic API Key (FREE token counting) -->
         <div class="setting-group">
           <label class="setting-label">

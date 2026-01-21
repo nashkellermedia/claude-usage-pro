@@ -41,6 +41,8 @@ const els = {
   sessionSparkline: document.getElementById('sessionSparkline'),
   weeklyAllSparkline: document.getElementById('weeklyAllSparkline'),
   weeklySonnetSparkline: document.getElementById('weeklySonnetSparkline'),
+  autoRefreshEnabled: document.getElementById('autoRefreshEnabled'),
+  autoRefreshMinutes: document.getElementById('autoRefreshMinutes'),
   
   // Anthropic
   anthropicApiKey: document.getElementById('anthropicApiKey'),
@@ -519,6 +521,10 @@ async function loadSettings() {
     els.statsBarShowSonnet.checked = settings.statsBarShowSonnet !== false;
     els.statsBarShowTimer.checked = settings.statsBarShowTimer !== false;
     
+    // Auto-refresh settings
+    els.autoRefreshEnabled.checked = settings.autoRefreshEnabled === true;
+    els.autoRefreshMinutes.value = settings.autoRefreshMinutes || 30;
+    
     // Anthropic API key
     if (settings.anthropicApiKey) {
       els.anthropicApiKey.value = '••••••••' + settings.anthropicApiKey.slice(-8);
@@ -572,6 +578,8 @@ async function saveSettings() {
     statsBarShowWeekly: els.statsBarShowWeekly.checked,
     statsBarShowSonnet: els.statsBarShowSonnet.checked,
     statsBarShowTimer: els.statsBarShowTimer.checked,
+    autoRefreshEnabled: els.autoRefreshEnabled.checked,
+    autoRefreshMinutes: parseInt(els.autoRefreshMinutes.value) || 30,
     firebaseDatabaseUrl: els.firebaseDatabaseUrl.value.trim().replace(/\/+$/, ''),  // Strip trailing slashes
     firebaseSyncId: els.firebaseSyncId.value.trim()
   };
