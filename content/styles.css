@@ -155,8 +155,15 @@
   color: inherit;
   font-family: inherit;
   margin-top: 4px;
-  background-color: transparent !important;
+  background-color: #292929;
   border-radius: 8px;
+}
+
+/* Light mode background */
+@media (prefers-color-scheme: light) {
+  #cup-input-stats {
+    background-color: #f5f4ef;
+  }
 }
 
 #cup-input-stats .cup-stat-item {
