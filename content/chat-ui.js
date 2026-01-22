@@ -693,17 +693,19 @@ class ChatUI {
    */
   onMessageSent(text) {
     const model = this.getCurrentModelFromUI();
+    const extendedThinking = this.isExtendedThinkingEnabled();
     const inputTokens = this.lastAccurateTextTokens || Math.ceil(text.length / 4);
     
-    window.CUP.log("ChatUI: Message sent detected! Model:", model, "Input tokens:", inputTokens);
+    window.CUP.log("ChatUI: Message sent! Model:", model, "ET:", extendedThinking, "Tokens:", inputTokens);
     
-    // Send to background for model tracking
+    // Send to background for model tracking with multipliers
     try {
       window.CUP.sendToBackground({
         type: "ADD_TOKEN_DELTA",
         inputTokens: inputTokens,
         outputTokens: 0,
-        model: model
+        model: model,
+        extendedThinking: extendedThinking
       }).catch(e => window.CUP.logError("Failed to send token delta:", e));
     } catch (e) {
       window.CUP.logError("ChatUI: Failed to record message send:", e);
@@ -722,7 +724,6 @@ class ChatUI {
                          document.querySelector("button[aria-label*='model']") ||
                          document.querySelector("[class*='model-selector']");
       
-      window.CUP.log('ChatUI: Looking for model button...');
       if (modelButton) {
         const text = (modelButton.textContent || modelButton.innerText || "").toLowerCase();
         window.CUP.log("ChatUI: Model selector text:", text);
@@ -733,8 +734,7 @@ class ChatUI {
           if (text.includes("haiku")) return "claude-haiku-4-5";
         }
         if (text.includes("opus")) return "claude-opus-4";
-        if (text.includes("sonnet")) window.CUP.log('ChatUI: No model button found, using default');
-    return "claude-sonnet-4";
+        if (text.includes("sonnet")) return "claude-sonnet-4";
         if (text.includes("haiku")) return "claude-haiku-4";
       }
     } catch (e) {
@@ -742,6 +742,47 @@ class ChatUI {
     }
     window.CUP.log('ChatUI: No model button found, using default');
     return "claude-sonnet-4";
+  }
+
+  /**
+   * Detect if extended thinking is currently enabled in the UI
+   */
+  isExtendedThinkingEnabled() {
+    try {
+      // Look for extended thinking toggle button or indicator
+      const thinkingToggle = document.querySelector(
+        "[data-testid='extended-thinking-toggle']," +
+        "[data-testid='thinking-toggle']," +
+        "[aria-label*='thinking' i]," +
+        "[aria-label*='extended' i]," +
+        "button[class*='thinking']"
+      );
+      
+      if (thinkingToggle) {
+        const isOn = thinkingToggle.getAttribute('data-state') === 'on' ||
+                     thinkingToggle.getAttribute('aria-pressed') === 'true' ||
+                     thinkingToggle.classList.contains('active') ||
+                     thinkingToggle.classList.contains('on');
+        window.CUP.log('ChatUI: Extended thinking toggle found, enabled:', isOn);
+        return isOn;
+      }
+      
+      // Check for thinking indicator near model selector
+      const thinkingIndicator = document.querySelector(
+        "[class*='thinking-enabled']," +
+        "[class*='extended-thinking']," +
+        ".thinking-mode"
+      );
+      if (thinkingIndicator) {
+        window.CUP.log('ChatUI: Extended thinking indicator found');
+        return true;
+      }
+      
+      return false;
+    } catch (e) {
+      window.CUP.logError('ChatUI: Error detecting extended thinking:', e);
+      return false;
+    }
   }
 }
 

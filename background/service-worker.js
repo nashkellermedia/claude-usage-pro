@@ -42,6 +42,79 @@ function logError(...args) {
 }
 
 // ============================================================================
+// Model & Extended Thinking Multipliers
+// ============================================================================
+// These multipliers approximate how different models and features consume
+// Claude.ai subscription quota relative to Sonnet (baseline = 1.0)
+
+const MODEL_MULTIPLIERS = {
+  // Haiku models - ~3x cheaper than Sonnet
+  'claude-haiku-3': 0.33,
+  'claude-haiku-3-5': 0.33,
+  'claude-haiku-4': 0.33,
+  'claude-haiku-4-5': 0.33,
+  
+  // Sonnet models - baseline
+  'claude-sonnet-3': 1.0,
+  'claude-sonnet-3-5': 1.0,
+  'claude-sonnet-4': 1.0,
+  'claude-sonnet-4-5': 1.0,
+  
+  // Opus 4.5 - ~1.67x Sonnet (based on $5/$25 vs $3/$15)
+  'claude-opus-4-5': 1.67,
+  
+  // Opus 4/4.1 - ~5x Sonnet (based on $15/$75 vs $3/$15)
+  'claude-opus-4': 5.0,
+  'claude-opus-4-1': 5.0,
+  
+  // Legacy Opus 3 
+  'claude-opus-3': 5.0,
+  
+  // Default fallback
+  'default': 1.0
+};
+
+// Extended thinking multiplier for OUTPUT tokens
+// Research shows 5-10x is typical, using 5x as conservative default
+const EXTENDED_THINKING_OUTPUT_MULTIPLIER = 5.0;
+
+function getModelMultiplier(model) {
+  if (!model) return MODEL_MULTIPLIERS['default'];
+  
+  const normalized = model.toLowerCase().replace(/\s+/g, '-').replace(/_/g, '-');
+  
+  if (MODEL_MULTIPLIERS[normalized]) return MODEL_MULTIPLIERS[normalized];
+  
+  // Partial matches
+  if (normalized.includes('haiku')) return 0.33;
+  if (normalized.includes('opus-4-5') || normalized.includes('opus-4.5')) return 1.67;
+  if (normalized.includes('opus')) return 5.0;
+  if (normalized.includes('sonnet')) return 1.0;
+  
+  return MODEL_MULTIPLIERS['default'];
+}
+
+function applyTokenMultipliers(inputTokens, outputTokens, model, extendedThinking = false) {
+  const modelMult = getModelMultiplier(model);
+  
+  let adjInput = Math.round(inputTokens * modelMult);
+  let adjOutput = Math.round(outputTokens * modelMult);
+  
+  // Extended thinking multiplier on output tokens only
+  if (extendedThinking && outputTokens > 0) {
+    adjOutput = Math.round(adjOutput * EXTENDED_THINKING_OUTPUT_MULTIPLIER);
+  }
+  
+  if (DEBUG && (modelMult !== 1.0 || extendedThinking)) {
+    log('[Multipliers] Model:', model, 'mult:', modelMult, 'ET:', extendedThinking, 
+        '| Input:', inputTokens, '->', adjInput, '| Output:', outputTokens, '->', adjOutput);
+  }
+  
+  return { inputTokens: adjInput, outputTokens: adjOutput, modelMultiplier: modelMult };
+}
+
+
+// ============================================================================
 // Firebase Auth Class - Anonymous Authentication via REST API
 // ============================================================================
 
@@ -1584,18 +1657,27 @@ async function handleMessage(message, sender) {
     }
 
     case 'ADD_TOKEN_DELTA': {
-      const { inputTokens, outputTokens, model } = message;
+      const { inputTokens, outputTokens, model, extendedThinking } = message;
       
       // Use Anthropic API for accurate counting if available
+      let finalInputTokens = inputTokens || 0;
       if (tokenCounter?.isConfigured() && message.text) {
         const accurate = await tokenCounter.countTokens(message.text);
         if (accurate) {
-          message.inputTokens = accurate;
+          finalInputTokens = accurate;
         }
       }
       
+      // Apply model and extended thinking multipliers
+      const adjusted = applyTokenMultipliers(
+        finalInputTokens,
+        outputTokens || 0,
+        model,
+        extendedThinking || false
+      );
+      
       if (hybridTracker) {
-        const estimated = await hybridTracker.addTokenDelta(inputTokens || 0, outputTokens || 0);
+        const estimated = await hybridTracker.addTokenDelta(adjusted.inputTokens, adjusted.outputTokens);
         if (estimated) {
           const current = await getUsageData();
           const merged = { ...current, ...estimated };
