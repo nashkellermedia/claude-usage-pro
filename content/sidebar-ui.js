@@ -111,20 +111,27 @@ class SidebarUI {
     const widget = document.getElementById('cup-sidebar-widget');
     if (!widget) return;
     
-    const isCollapsed = width < 150;
+    // Only consider collapsed if width is very small (< 80px) 
+    // This prevents false positives during page load or animations
+    const isCollapsed = width < 80;
     
-    if (isCollapsed) {
-      // Immediately hide widget
+    // Also check if sidebar is actually visible in viewport
+    const sidebar = document.querySelector('nav[class*="flex-col"]') ||
+                   document.querySelector('aside');
+    const sidebarVisible = sidebar && sidebar.getBoundingClientRect().width > 100;
+    
+    if (isCollapsed && !sidebarVisible) {
+      // Sidebar is truly collapsed - hide widget
       widget.style.display = 'none';
       widget.style.visibility = 'hidden';
       widget.style.opacity = '0';
       widget.style.pointerEvents = 'none';
     } else {
-      // Show widget
+      // Sidebar is visible - ensure widget is shown
       widget.style.display = '';
       widget.style.visibility = 'visible';
       widget.style.opacity = '1';
-      widget.style.pointerEvents = 'auto';
+      widget.style.pointerEvents = '';
     }
   }
   
