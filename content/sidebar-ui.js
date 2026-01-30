@@ -44,96 +44,6 @@ class SidebarUI {
     window.CUP.log('SidebarUI: Initialized, expanded:', this.expanded);
   }
   
-  // DISABLED: Was causing widget to be hidden incorrectly
-  // The polling in main.js (checkAndReinject every 5s) handles collapse detection
-  setupSidebarObserver_DISABLED() {
-    // Find the sidebar element to observe
-    const sidebar = document.querySelector('nav[class*="flex-col"]') ||
-                   document.querySelector('aside') ||
-                   document.querySelector('[data-testid="sidebar"]');
-    
-    if (!sidebar) {
-      window.CUP.log('SidebarUI: No sidebar found for observer, will retry');
-      setTimeout(() => this.setupSidebarObserver(), 1000);
-      return;
-    }
-    
-    // Use ResizeObserver for immediate width change detection
-    if (typeof ResizeObserver !== 'undefined') {
-      this.resizeObserver = new ResizeObserver((entries) => {
-        for (const entry of entries) {
-          const width = entry.contentRect.width;
-          this.handleSidebarResize(width);
-        }
-      });
-      this.resizeObserver.observe(sidebar);
-      window.CUP.log('SidebarUI: ResizeObserver attached to sidebar');
-    }
-    
-    // Also observe for class changes (Claude may use classes to toggle sidebar)
-    this.mutationObserver = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        if (mutation.type === 'attributes' && 
-            (mutation.attributeName === 'class' || mutation.attributeName === 'style')) {
-          const width = sidebar.offsetWidth;
-          this.handleSidebarResize(width);
-        }
-      }
-    });
-    this.mutationObserver.observe(sidebar, { 
-      attributes: true, 
-      attributeFilter: ['class', 'style'] 
-    });
-    
-    // Also observe parent elements that might control sidebar visibility
-    const sidebarParent = sidebar.parentElement;
-    if (sidebarParent) {
-      this.parentObserver = new MutationObserver(() => {
-        const width = sidebar.offsetWidth;
-        const rect = sidebar.getBoundingClientRect();
-        // Check if sidebar is off-screen (slide animation)
-        if (rect.right < 50 || width < 50) {
-          this.handleSidebarResize(0);
-        } else {
-          this.handleSidebarResize(width);
-        }
-      });
-      this.parentObserver.observe(sidebarParent, { 
-        attributes: true, 
-        attributeFilter: ['class', 'style'],
-        childList: true
-      });
-    }
-  }
-  
-  handleSidebarResize(width) {
-    const widget = document.getElementById('cup-sidebar-widget');
-    if (!widget) return;
-    
-    // Only consider collapsed if width is very small (< 80px) 
-    // This prevents false positives during page load or animations
-    const isCollapsed = width < 80;
-    
-    // Also check if sidebar is actually visible in viewport
-    const sidebar = document.querySelector('nav[class*="flex-col"]') ||
-                   document.querySelector('aside');
-    const sidebarVisible = sidebar && sidebar.getBoundingClientRect().width > 100;
-    
-    if (isCollapsed && !sidebarVisible) {
-      // Sidebar is truly collapsed - hide widget
-      widget.style.display = 'none';
-      widget.style.visibility = 'hidden';
-      widget.style.opacity = '0';
-      widget.style.pointerEvents = 'none';
-    } else {
-      // Sidebar is visible - ensure widget is shown
-      widget.style.display = '';
-      widget.style.visibility = 'visible';
-      widget.style.opacity = '1';
-      widget.style.pointerEvents = '';
-    }
-  }
-  
   setupRateLimitListener() {
     // Register callback with API interceptor
     if (window.APIInterceptor) {
@@ -560,35 +470,18 @@ class SidebarUI {
   
   checkAndReinject() {
     const widget = document.getElementById('cup-sidebar-widget');
+    const sidebar = document.querySelector('nav[class*="flex-col"]');
     
-    // Find sidebar using multiple selectors
-    const sidebar = document.querySelector('nav[class*="flex-col"]') ||
-                   document.querySelector('aside') ||
-                   document.querySelector('[data-testid="sidebar"]');
-    
-    // Check if sidebar is collapsed/minimized
+    // Check if sidebar is collapsed/minimized (narrow width)
     if (sidebar) {
       const sidebarWidth = sidebar.offsetWidth;
-      const sidebarRect = sidebar.getBoundingClientRect();
-      
-      // Detect collapsed state: narrow width OR off-screen (slide out animation)
-      const isCollapsed = sidebarWidth < 150 || sidebarRect.right < 50;
-      
-      if (isCollapsed) {
-        // Sidebar is collapsed - hide our widget completely
-        if (widget) {
-          widget.style.display = 'none';
-          widget.style.visibility = 'hidden';
-          widget.style.opacity = '0';
-        }
+      if (sidebarWidth < 150) {
+        // Sidebar is collapsed - hide our widget
+        if (widget) widget.style.display = 'none';
         return;
       } else {
-        // Sidebar is expanded - show our widget with smooth transition
-        if (widget) {
-          widget.style.display = '';
-          widget.style.visibility = 'visible';
-          widget.style.opacity = '1';
-        }
+        // Sidebar is expanded - show our widget
+        if (widget) widget.style.display = '';
       }
     }
     
