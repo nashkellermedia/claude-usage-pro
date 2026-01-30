@@ -204,14 +204,30 @@ class SidebarUI {
           </div>
         `;
         
-        // Insert widget
+        // Insert widget between Code and Starred sections
         if (starredSection) {
           starredSection.parentElement.insertBefore(this.widget, starredSection);
-          window.CUP.log('SidebarUI: Inserted before', starredSection.textContent?.substring(0, 30));
+          window.CUP.log('SidebarUI: Inserted before Starred section');
         } else {
-          // Fallback: insert at top of sidebar
-          sidebar.insertBefore(this.widget, sidebar.firstChild);
-          window.CUP.log('SidebarUI: Inserted at top of sidebar');
+          // Fallback: Try to find Code section and insert after it
+          const codeLink = sidebar.querySelector('a[href*="/code"]');
+          if (codeLink) {
+            const codeContainer = codeLink.closest('a')?.parentElement || codeLink.parentElement;
+            if (codeContainer && codeContainer.nextSibling) {
+              codeContainer.parentElement.insertBefore(this.widget, codeContainer.nextSibling);
+              window.CUP.log('SidebarUI: Inserted after Code section');
+            } else if (codeContainer) {
+              codeContainer.parentElement.appendChild(this.widget);
+              window.CUP.log('SidebarUI: Appended after Code container');
+            } else {
+              sidebar.appendChild(this.widget);
+              window.CUP.log('SidebarUI: Appended to sidebar');
+            }
+          } else {
+            // Last fallback: append to end of sidebar
+            sidebar.appendChild(this.widget);
+            window.CUP.log('SidebarUI: Appended to sidebar (no Code found)');
+          }
         }
         
         // Add toggle handler
