@@ -1610,32 +1610,55 @@ async function handleMessage(message, sender) {
       log('[CUP BG] GET_USAGE_DATA called, recordSnapshot:', message.recordSnapshot);
       const usageData = await getUsageData();
       
-      // Merge with estimates if available
-      // Note: spread order means later values override earlier
-      // We want stored data as base, then estimates can add delta tracking
+      // Start with stored data as base
       let merged = { ...usageData };
       
+      // Merge with HybridTracker estimates using "highest value wins" strategy
+      // Usage can only go up (until reset), so the higher value is always correct
       if (hybridTracker?.estimatedUsage && hybridTracker?.baseline) {
         const est = hybridTracker.estimatedUsage;
-        const baselineAge = Date.now() - (hybridTracker.baseline.timestamp || 0);
         
-        // Only use estimates if baseline is recent (< 10 min) and newer than stored data
-        const baselineIsRecent = baselineAge < 10 * 60 * 1000;
-        const baselineIsNewer = (hybridTracker.baseline.timestamp || 0) > (usageData.lastUpdated || 0);
+        // For session: use whichever is HIGHER
+        if (est.currentSession) {
+          const estPct = est.currentSession.percent || 0;
+          const storedPct = usageData.currentSession?.percent || 0;
+          
+          if (estPct >= storedPct) {
+            merged.currentSession = est.currentSession;
+          }
+          // Preserve reset timestamp from estimate if available
+          if (est.currentSession.resetsAt && !merged.currentSession?.resetsAt) {
+            merged.currentSession = { ...merged.currentSession, resetsAt: est.currentSession.resetsAt };
+          }
+        }
         
-        if (baselineIsRecent && baselineIsNewer) {
-          // Use estimates - they are based on fresher data
-          if (est.currentSession) merged.currentSession = est.currentSession;
-          if (est.weeklyAllModels) merged.weeklyAllModels = est.weeklyAllModels;
-          if (est.weeklySonnet) merged.weeklySonnet = est.weeklySonnet;
+        // Same for weekly all models
+        if (est.weeklyAllModels) {
+          const estPct = est.weeklyAllModels.percent || 0;
+          const storedPct = usageData.weeklyAllModels?.percent || 0;
+          if (estPct >= storedPct) {
+            merged.weeklyAllModels = est.weeklyAllModels;
+          }
+        }
+        
+        // Same for weekly sonnet
+        if (est.weeklySonnet) {
+          const estPct = est.weeklySonnet.percent || 0;
+          const storedPct = usageData.weeklySonnet?.percent || 0;
+          if (estPct >= storedPct) {
+            merged.weeklySonnet = est.weeklySonnet;
+          }
+        }
+        
+        // Include delta tracking info
+        if (est.deltaTokens > 0) {
           merged.isEstimate = true;
           merged.deltaTokens = est.deltaTokens;
-        } else if (!usageData.currentSession?.percent && est.currentSession?.percent) {
-          // Fallback: use estimates only if stored data is empty
-          merged.currentSession = est.currentSession;
-          merged.weeklyAllModels = est.weeklyAllModels;
-          merged.weeklySonnet = est.weeklySonnet;
-          merged.isEstimate = true;
+        }
+        
+        // Include predictions if available
+        if (est.predictions) {
+          merged.predictions = est.predictions;
         }
       }
       
