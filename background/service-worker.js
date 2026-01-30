@@ -978,11 +978,23 @@ class HybridTracker {
   async mergeFromFirebase(data) {
     if (data.baseline && (!this.baseline || data.baseline.timestamp > this.baseline.timestamp)) {
       this.baseline = data.baseline;
-      this.delta = data.delta || { inputTokens: 0, outputTokens: 0, lastReset: Date.now() };
+      
+      // Only use Firebase delta if it's HIGHER than local (prevents overwriting local progress)
+      const firebaseDelta = data.delta || { inputTokens: 0, outputTokens: 0 };
+      const firebaseTotal = (firebaseDelta.inputTokens || 0) + (firebaseDelta.outputTokens || 0);
+      const localTotal = (this.delta.inputTokens || 0) + (this.delta.outputTokens || 0);
+      
+      if (firebaseTotal > localTotal) {
+        this.delta = firebaseDelta;
+        log('[HybridTracker] Used Firebase delta (higher):', firebaseTotal);
+      } else {
+        log('[HybridTracker] Kept local delta (higher):', localTotal);
+      }
+      
       if (data.tokenRates) this.tokenRates = data.tokenRates;
       await this.save();
       this.updateEstimate();
-      log('[HybridTracker] Merged from Firebase');
+      log('[HybridTracker] Merged baseline from Firebase');
     }
   }
 
