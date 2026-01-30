@@ -42,6 +42,51 @@ class SidebarUI {
     this.setupRateLimitListener();
     
     window.CUP.log('SidebarUI: Initialized, expanded:', this.expanded);
+    
+    // Set up sidebar collapse observer after a delay (ensures widget is stable)
+    setTimeout(() => this.setupCollapseObserver(), 2000);
+  }
+  
+  setupCollapseObserver() {
+    const sidebar = document.querySelector('nav[class*="flex-col"]');
+    if (!sidebar) {
+      window.CUP.log('SidebarUI: No sidebar found for observer');
+      return;
+    }
+    
+    // Track if we've ever seen the sidebar expanded (prevents hiding on load)
+    this.sidebarWasExpanded = sidebar.offsetWidth >= 150;
+    
+    // Use ResizeObserver for faster collapse detection
+    if (typeof ResizeObserver !== 'undefined') {
+      this.collapseObserver = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          const width = entry.contentRect.width;
+          this.handleCollapseChange(width);
+        }
+      });
+      this.collapseObserver.observe(sidebar);
+      window.CUP.log('SidebarUI: Collapse observer attached, initial width:', sidebar.offsetWidth);
+    }
+  }
+  
+  handleCollapseChange(width) {
+    const widget = document.getElementById('cup-sidebar-widget');
+    if (!widget) return;
+    
+    const isCollapsed = width < 100;
+    
+    // Safety: only hide if we've previously seen sidebar expanded
+    // This prevents hiding on initial page load
+    if (width >= 150) {
+      this.sidebarWasExpanded = true;
+    }
+    
+    if (isCollapsed && this.sidebarWasExpanded) {
+      widget.style.display = 'none';
+    } else if (!isCollapsed) {
+      widget.style.display = '';
+    }
   }
   
   setupRateLimitListener() {
