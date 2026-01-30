@@ -575,14 +575,23 @@ class FirebaseSync {
       deviceId: this.deviceId
     };
     
+    // Also track the most recent reset timestamps (for countdown displays)
+    let newestSessionReset = null;
+    let newestWeeklyReset = null;
+    let newestSonnetReset = null;
+    
     for (const device of devices) {
       // Get usage from estimatedUsage or baseline or direct properties
       const source = device.estimatedUsage || device.baseline || device;
       
-      // Take highest session percent
+      // Take highest session percent BUT preserve reset time from any valid source
       const sessionPct = source.currentSession?.percent || 0;
       if (sessionPct > (merged.currentSession.percent || 0)) {
         merged.currentSession = { ...source.currentSession };
+      }
+      // Capture reset timestamp if available
+      if (source.currentSession?.resetsAt && (!newestSessionReset || source.syncedAt > newestSessionReset.syncedAt)) {
+        newestSessionReset = { resetsAt: source.currentSession.resetsAt, syncedAt: source.syncedAt };
       }
       
       // Take highest weekly all models percent
@@ -590,11 +599,17 @@ class FirebaseSync {
       if (weeklyAllPct > (merged.weeklyAllModels.percent || 0)) {
         merged.weeklyAllModels = { ...source.weeklyAllModels };
       }
+      if (source.weeklyAllModels?.resetsAt && (!newestWeeklyReset || source.syncedAt > newestWeeklyReset.syncedAt)) {
+        newestWeeklyReset = { resetsAt: source.weeklyAllModels.resetsAt, syncedAt: source.syncedAt };
+      }
       
       // Take highest weekly sonnet percent
       const sonnetPct = source.weeklySonnet?.percent || 0;
       if (sonnetPct > (merged.weeklySonnet.percent || 0)) {
         merged.weeklySonnet = { ...source.weeklySonnet };
+      }
+      if (source.weeklySonnet?.resetsAt && (!newestSonnetReset || source.syncedAt > newestSonnetReset.syncedAt)) {
+        newestSonnetReset = { resetsAt: source.weeklySonnet.resetsAt, syncedAt: source.syncedAt };
       }
       
       // Also merge baseline/delta if present (for hybrid tracker)
@@ -608,6 +623,17 @@ class FirebaseSync {
       if ((device.syncedAt || 0) > merged.syncedAt) {
         merged.syncedAt = device.syncedAt;
       }
+    }
+    
+    // Apply the most recent reset timestamps to merged data
+    if (newestSessionReset?.resetsAt && !merged.currentSession.resetsAt) {
+      merged.currentSession.resetsAt = newestSessionReset.resetsAt;
+    }
+    if (newestWeeklyReset?.resetsAt && !merged.weeklyAllModels.resetsAt) {
+      merged.weeklyAllModels.resetsAt = newestWeeklyReset.resetsAt;
+    }
+    if (newestSonnetReset?.resetsAt && !merged.weeklySonnet.resetsAt) {
+      merged.weeklySonnet.resetsAt = newestSonnetReset.resetsAt;
     }
     
     log('[FirebaseSync] Merged usage from', devices.length, 'devices: Session', merged.currentSession.percent + '%, Weekly', merged.weeklyAllModels.percent + '%');
@@ -1598,32 +1624,54 @@ async function handleMessage(message, sender) {
       log('[CUP BG] GET_USAGE_DATA called, recordSnapshot:', message.recordSnapshot);
       const usageData = await getUsageData();
       
-      // Merge with estimates if available
-      // Note: spread order means later values override earlier
-      // We want stored data as base, then estimates can add delta tracking
+      // Start with stored data as base
       let merged = { ...usageData };
       
+      // Merge with HybridTracker estimates if available
+      // KEY FIX: Always use highest values to prevent flickering down
       if (hybridTracker?.estimatedUsage && hybridTracker?.baseline) {
         const est = hybridTracker.estimatedUsage;
-        const baselineAge = Date.now() - (hybridTracker.baseline.timestamp || 0);
         
-        // Only use estimates if baseline is recent (< 10 min) and newer than stored data
-        const baselineIsRecent = baselineAge < 10 * 60 * 1000;
-        const baselineIsNewer = (hybridTracker.baseline.timestamp || 0) > (usageData.lastUpdated || 0);
+        // For session: use whichever is HIGHER (can only go up until reset)
+        if (est.currentSession) {
+          const estPct = est.currentSession.percent || 0;
+          const storedPct = usageData.currentSession?.percent || 0;
+          
+          if (estPct >= storedPct) {
+            merged.currentSession = est.currentSession;
+          }
+          // Always preserve reset timestamps from estimate if available
+          if (est.currentSession.resetsAt && !merged.currentSession?.resetsAt) {
+            merged.currentSession = { ...merged.currentSession, resetsAt: est.currentSession.resetsAt };
+          }
+        }
         
-        if (baselineIsRecent && baselineIsNewer) {
-          // Use estimates - they are based on fresher data
-          if (est.currentSession) merged.currentSession = est.currentSession;
-          if (est.weeklyAllModels) merged.weeklyAllModels = est.weeklyAllModels;
-          if (est.weeklySonnet) merged.weeklySonnet = est.weeklySonnet;
+        // Same logic for weekly values
+        if (est.weeklyAllModels) {
+          const estPct = est.weeklyAllModels.percent || 0;
+          const storedPct = usageData.weeklyAllModels?.percent || 0;
+          if (estPct >= storedPct) {
+            merged.weeklyAllModels = est.weeklyAllModels;
+          }
+        }
+        
+        if (est.weeklySonnet) {
+          const estPct = est.weeklySonnet.percent || 0;
+          const storedPct = usageData.weeklySonnet?.percent || 0;
+          if (estPct >= storedPct) {
+            merged.weeklySonnet = est.weeklySonnet;
+          }
+        }
+        
+        // Include delta tracking info
+        if (est.deltaTokens > 0) {
           merged.isEstimate = true;
           merged.deltaTokens = est.deltaTokens;
-        } else if (!usageData.currentSession?.percent && est.currentSession?.percent) {
-          // Fallback: use estimates only if stored data is empty
-          merged.currentSession = est.currentSession;
-          merged.weeklyAllModels = est.weeklyAllModels;
-          merged.weeklySonnet = est.weeklySonnet;
-          merged.isEstimate = true;
+        }
+        
+        // Include predictions if available
+        if (est.predictions) {
+          merged.predictions = est.predictions;
         }
       }
       

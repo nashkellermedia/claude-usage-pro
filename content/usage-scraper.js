@@ -95,15 +95,28 @@ class UsageScraper {
       const data = this.scrapeFromMainContent();
       if (data) {
         this.lastScrapedData = data;
+        this.lastScrapedAt = Date.now();
         return data;
       }
     }
     
-    // Not on usage page - return cached data
+    // Not on usage page - return cached data with staleness info
     // Note: Background HTML fetch doesn't work because Claude uses client-side rendering
     // The user needs to visit the usage page to refresh data
     if (this.lastScrapedData) {
-      window.CUP.log('UsageScraper: Returning cached data (visit /settings/usage to refresh)');
+      const ageMs = Date.now() - (this.lastScrapedAt || 0);
+      const ageMinutes = Math.floor(ageMs / 60000);
+      
+      // Mark data as stale if older than 30 minutes
+      if (ageMinutes > 30) {
+        this.lastScrapedData._isStale = true;
+        this.lastScrapedData._ageMinutes = ageMinutes;
+        window.CUP.log('UsageScraper: Cached data is', ageMinutes, 'min old (stale)');
+      } else {
+        this.lastScrapedData._isStale = false;
+        window.CUP.log('UsageScraper: Returning cached data,', ageMinutes, 'min old');
+      }
+      
       return this.lastScrapedData;
     }
     

@@ -470,18 +470,35 @@ class SidebarUI {
   
   checkAndReinject() {
     const widget = document.getElementById('cup-sidebar-widget');
-    const sidebar = document.querySelector('nav[class*="flex-col"]');
     
-    // Check if sidebar is collapsed/minimized (narrow width)
+    // Find sidebar using multiple selectors
+    const sidebar = document.querySelector('nav[class*="flex-col"]') ||
+                   document.querySelector('aside') ||
+                   document.querySelector('[data-testid="sidebar"]');
+    
+    // Check if sidebar is collapsed/minimized
     if (sidebar) {
       const sidebarWidth = sidebar.offsetWidth;
-      if (sidebarWidth < 150) {
-        // Sidebar is collapsed - hide our widget
-        if (widget) widget.style.display = 'none';
+      const sidebarRect = sidebar.getBoundingClientRect();
+      
+      // Detect collapsed state: narrow width OR off-screen (slide out animation)
+      const isCollapsed = sidebarWidth < 150 || sidebarRect.right < 50;
+      
+      if (isCollapsed) {
+        // Sidebar is collapsed - hide our widget completely
+        if (widget) {
+          widget.style.display = 'none';
+          widget.style.visibility = 'hidden';
+          widget.style.opacity = '0';
+        }
         return;
       } else {
-        // Sidebar is expanded - show our widget
-        if (widget) widget.style.display = '';
+        // Sidebar is expanded - show our widget with smooth transition
+        if (widget) {
+          widget.style.display = '';
+          widget.style.visibility = 'visible';
+          widget.style.opacity = '1';
+        }
       }
     }
     

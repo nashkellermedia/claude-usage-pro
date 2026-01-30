@@ -621,3 +621,31 @@ body.cup-context-active {
 #cup-max-continues-notice .cup-notice-close:hover {
   background: rgba(0, 0, 0, 0.2);
 }
+
+/* ========== SIDEBAR WIDGET TRANSITIONS ========== */
+#cup-sidebar-widget {
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+/* When sidebar is minimized, ensure widget collapses properly */
+#cup-sidebar-widget.cup-sidebar-collapsed {
+  display: none !important;
+  opacity: 0;
+  visibility: hidden;
+}
+
+/* Minimize whitespace when widget is collapsed (minimized by user) */
+#cup-sidebar-widget .cup-widget-inner {
+  transition: padding 0.2s ease;
+}
+
+#cup-sidebar-widget:not(.cup-expanded) .cup-widget-inner {
+  padding: 4px 8px;
+}
+
+/* Ensure widget respects container width */
+#cup-sidebar-widget .cup-widget-details {
+  max-width: 100%;
+  overflow: hidden;
+  word-wrap: break-word;
+}
