@@ -1004,11 +1004,24 @@ class HybridTracker {
   async mergeFromFirebase(data) {
     if (data.baseline && (!this.baseline || data.baseline.timestamp > this.baseline.timestamp)) {
       this.baseline = data.baseline;
-      this.delta = data.delta || { inputTokens: 0, outputTokens: 0, lastReset: Date.now() };
+      
+      // CRITICAL: Only update delta if Firebase delta is HIGHER than local
+      // This prevents overwriting local progress with stale Firebase data
+      const firebaseDelta = data.delta || { inputTokens: 0, outputTokens: 0 };
+      const firebaseTotal = (firebaseDelta.inputTokens || 0) + (firebaseDelta.outputTokens || 0);
+      const localTotal = (this.delta.inputTokens || 0) + (this.delta.outputTokens || 0);
+      
+      if (firebaseTotal > localTotal) {
+        this.delta = firebaseDelta;
+        log('[HybridTracker] Merged delta from Firebase (higher):', firebaseTotal, 'vs local:', localTotal);
+      } else {
+        log('[HybridTracker] Kept local delta (higher):', localTotal, 'vs Firebase:', firebaseTotal);
+      }
+      
       if (data.tokenRates) this.tokenRates = data.tokenRates;
       await this.save();
       this.updateEstimate();
-      log('[HybridTracker] Merged from Firebase');
+      log('[HybridTracker] Merged baseline from Firebase');
     }
   }
 
@@ -1509,8 +1522,8 @@ const DEFAULT_SETTINGS = {
   statsBarShowSonnet: true,
   statsBarShowTimer: true,
   // Auto-refresh baseline settings
-  autoRefreshEnabled: false,
-  autoRefreshMinutes: 30,
+  autoRefreshEnabled: true,
+  autoRefreshMinutes: 15,
   // Auto-continue settings
   enableAutoContinue: false,
   autoContinueDelay: 1500,
@@ -2033,8 +2046,16 @@ async function pullFromFirebase() {
       log('[CUP BG] Usage data keys:', Object.keys(syncedData));
       
       // Merge into hybrid tracker - this updates the baseline but PRESERVES local deltas
+      // ONLY merge if Firebase baseline is actually newer
       if (syncedData.baseline && hybridTracker) {
-        await hybridTracker.mergeFromFirebase(syncedData);
+        const localTimestamp = hybridTracker.baseline?.timestamp || 0;
+        const firebaseTimestamp = syncedData.baseline?.timestamp || 0;
+        
+        if (firebaseTimestamp > localTimestamp) {
+          await hybridTracker.mergeFromFirebase(syncedData);
+        } else {
+          log('[CUP BG] Skipping Firebase merge - local baseline is newer');
+        }
       }
       
       // IMPORTANT: Use HybridTracker's estimate (which includes local deltas)
