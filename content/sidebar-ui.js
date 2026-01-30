@@ -42,6 +42,90 @@ class SidebarUI {
     this.setupRateLimitListener();
     
     window.CUP.log('SidebarUI: Initialized, expanded:', this.expanded);
+    
+    // Set up observer for immediate sidebar collapse detection
+    this.setupSidebarObserver();
+  }
+  
+  setupSidebarObserver() {
+    // Find the sidebar element to observe
+    const sidebar = document.querySelector('nav[class*="flex-col"]') ||
+                   document.querySelector('aside') ||
+                   document.querySelector('[data-testid="sidebar"]');
+    
+    if (!sidebar) {
+      window.CUP.log('SidebarUI: No sidebar found for observer, will retry');
+      setTimeout(() => this.setupSidebarObserver(), 1000);
+      return;
+    }
+    
+    // Use ResizeObserver for immediate width change detection
+    if (typeof ResizeObserver !== 'undefined') {
+      this.resizeObserver = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          const width = entry.contentRect.width;
+          this.handleSidebarResize(width);
+        }
+      });
+      this.resizeObserver.observe(sidebar);
+      window.CUP.log('SidebarUI: ResizeObserver attached to sidebar');
+    }
+    
+    // Also observe for class changes (Claude may use classes to toggle sidebar)
+    this.mutationObserver = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.type === 'attributes' && 
+            (mutation.attributeName === 'class' || mutation.attributeName === 'style')) {
+          const width = sidebar.offsetWidth;
+          this.handleSidebarResize(width);
+        }
+      }
+    });
+    this.mutationObserver.observe(sidebar, { 
+      attributes: true, 
+      attributeFilter: ['class', 'style'] 
+    });
+    
+    // Also observe parent elements that might control sidebar visibility
+    const sidebarParent = sidebar.parentElement;
+    if (sidebarParent) {
+      this.parentObserver = new MutationObserver(() => {
+        const width = sidebar.offsetWidth;
+        const rect = sidebar.getBoundingClientRect();
+        // Check if sidebar is off-screen (slide animation)
+        if (rect.right < 50 || width < 50) {
+          this.handleSidebarResize(0);
+        } else {
+          this.handleSidebarResize(width);
+        }
+      });
+      this.parentObserver.observe(sidebarParent, { 
+        attributes: true, 
+        attributeFilter: ['class', 'style'],
+        childList: true
+      });
+    }
+  }
+  
+  handleSidebarResize(width) {
+    const widget = document.getElementById('cup-sidebar-widget');
+    if (!widget) return;
+    
+    const isCollapsed = width < 150;
+    
+    if (isCollapsed) {
+      // Immediately hide widget
+      widget.style.display = 'none';
+      widget.style.visibility = 'hidden';
+      widget.style.opacity = '0';
+      widget.style.pointerEvents = 'none';
+    } else {
+      // Show widget
+      widget.style.display = '';
+      widget.style.visibility = 'visible';
+      widget.style.opacity = '1';
+      widget.style.pointerEvents = 'auto';
+    }
   }
   
   setupRateLimitListener() {
