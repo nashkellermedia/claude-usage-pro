@@ -42,12 +42,11 @@ class SidebarUI {
     this.setupRateLimitListener();
     
     window.CUP.log('SidebarUI: Initialized, expanded:', this.expanded);
-    
-    // Set up observer for immediate sidebar collapse detection
-    this.setupSidebarObserver();
   }
   
-  setupSidebarObserver() {
+  // DISABLED: Was causing widget to be hidden incorrectly
+  // The polling in main.js (checkAndReinject every 5s) handles collapse detection
+  setupSidebarObserver_DISABLED() {
     // Find the sidebar element to observe
     const sidebar = document.querySelector('nav[class*="flex-col"]') ||
                    document.querySelector('aside') ||
