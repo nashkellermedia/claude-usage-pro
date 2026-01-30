@@ -48,7 +48,10 @@ class SidebarUI {
   }
   
   setupCollapseObserver() {
-    const sidebar = document.querySelector('nav[class*="flex-col"]');
+    // Find sidebar - try multiple selectors
+    const sidebar = document.querySelector('nav[class*="flex-col"]') ||
+                   document.querySelector('nav') ||
+                   document.querySelector('aside');
     if (!sidebar) {
       window.CUP.log('SidebarUI: No sidebar found for observer');
       return;
@@ -56,8 +59,9 @@ class SidebarUI {
     
     // Track if we've ever seen the sidebar expanded (prevents hiding on load)
     this.sidebarWasExpanded = sidebar.offsetWidth >= 150;
+    window.CUP.log('SidebarUI: Setting up collapse observer, initial width:', sidebar.offsetWidth);
     
-    // Use ResizeObserver for faster collapse detection
+    // Use ResizeObserver for width changes
     if (typeof ResizeObserver !== 'undefined') {
       this.collapseObserver = new ResizeObserver((entries) => {
         for (const entry of entries) {
@@ -66,8 +70,41 @@ class SidebarUI {
         }
       });
       this.collapseObserver.observe(sidebar);
-      window.CUP.log('SidebarUI: Collapse observer attached, initial width:', sidebar.offsetWidth);
     }
+    
+    // Also use MutationObserver for class/style changes (Claude may use CSS transforms)
+    this.mutationObserver = new MutationObserver((mutations) => {
+      const rect = sidebar.getBoundingClientRect();
+      // Check if sidebar is off-screen or very narrow
+      if (rect.width < 100 || rect.right < 50) {
+        this.handleCollapseChange(0);
+      } else {
+        this.handleCollapseChange(rect.width);
+      }
+    });
+    this.mutationObserver.observe(sidebar, { 
+      attributes: true, 
+      attributeFilter: ['class', 'style', 'data-state']
+    });
+    
+    // Also observe the sidebar's parent for changes
+    if (sidebar.parentElement) {
+      this.parentObserver = new MutationObserver(() => {
+        const rect = sidebar.getBoundingClientRect();
+        if (rect.width < 100 || rect.right < 50) {
+          this.handleCollapseChange(0);
+        } else {
+          this.handleCollapseChange(rect.width);
+        }
+      });
+      this.parentObserver.observe(sidebar.parentElement, {
+        attributes: true,
+        attributeFilter: ['class', 'style'],
+        childList: true
+      });
+    }
+    
+    window.CUP.log('SidebarUI: All collapse observers attached');
   }
   
   handleCollapseChange(width) {
@@ -77,7 +114,6 @@ class SidebarUI {
     const isCollapsed = width < 100;
     
     // Safety: only hide if we've previously seen sidebar expanded
-    // This prevents hiding on initial page load
     if (width >= 150) {
       this.sidebarWasExpanded = true;
     }
