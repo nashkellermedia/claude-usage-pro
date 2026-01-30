@@ -384,9 +384,23 @@ body {
 .settings-footer {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   padding: 12px 16px;
   border-top: 1px solid var(--border);
   font-size: 11px;
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+}
+
+.settings-footer .footer-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.settings-footer .btn-primary {
+  padding: 8px 16px;
+  font-size: 12px;
 }
 
 .version {
