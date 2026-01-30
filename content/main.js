@@ -92,35 +92,17 @@
     }
   } catch (e) {}
   
-  // Periodic refresh every 15 seconds to catch changes (debounced to prevent flickering)
-  let lastUpdateTime = 0;
-  let lastUsageHash = '';
-  
+  // Periodic refresh every 10 seconds to catch changes
   setInterval(async () => {
     try {
-      // Debounce: skip if updated very recently
-      const now = Date.now();
-      if (now - lastUpdateTime < 5000) return;
-      
       const response = await window.CUP.sendToBackground({ type: 'GET_USAGE_DATA' });
       if (response?.usageData) {
-        // Only update UI if data actually changed (prevents visual flickering)
-        const newHash = JSON.stringify({
-          s: response.usageData.currentSession?.percent,
-          w: response.usageData.weeklyAllModels?.percent,
-          o: response.usageData.weeklySonnet?.percent
-        });
-        
-        if (newHash !== lastUsageHash) {
-          lastUsageHash = newHash;
-          lastUpdateTime = now;
-          updateAllUI(response.usageData);
-        }
+        updateAllUI(response.usageData);
       }
     } catch (e) {
       // Ignore errors (extension might be reloading)
     }
-  }, 15000);
+  }, 10000);
   
   // Trigger a scrape if on usage page
   if (window.location.pathname.includes('/settings/usage')) {
