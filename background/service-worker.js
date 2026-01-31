@@ -2370,24 +2370,39 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 });
 
 // Auto-refresh baseline if stale
+// Track last auto-refresh attempt to prevent rapid retries
+let lastAutoRefreshAttempt = 0;
+
 async function checkAndAutoRefresh() {
   const settings = await getSettings();
   
   // Check if auto-refresh is enabled
   if (!settings.autoRefreshEnabled) return;
   
-  // Check baseline age
-  if (!hybridTracker?.baseline?.timestamp) return;
-  
-  const baselineAgeMs = Date.now() - hybridTracker.baseline.timestamp;
-  const refreshThresholdMs = (settings.autoRefreshMinutes || 30) * 60 * 1000;
-  
-  if (baselineAgeMs < refreshThresholdMs) {
-    // Baseline is fresh enough
+  // Prevent rapid retries - minimum 10 minutes between attempts
+  const now = Date.now();
+  const minRetryInterval = 10 * 60 * 1000; // 10 minutes
+  if (now - lastAutoRefreshAttempt < minRetryInterval) {
     return;
   }
   
-  log('[CUP BG] Baseline is stale (' + Math.round(baselineAgeMs / 60000) + 'm), auto-refreshing...');
+  // Check baseline age
+  const baselineTimestamp = hybridTracker?.baseline?.timestamp || 0;
+  const baselineAgeMs = now - baselineTimestamp;
+  const refreshThresholdMs = (settings.autoRefreshMinutes || 15) * 60 * 1000;
+  
+  // Also check stored usageData timestamp as fallback
+  const usageData = await getUsageData();
+  const usageTimestamp = usageData?.lastUpdated || 0;
+  const usageAgeMs = now - usageTimestamp;
+  
+  // Only refresh if BOTH baseline and usageData are stale
+  if (baselineAgeMs < refreshThresholdMs || usageAgeMs < refreshThresholdMs) {
+    return;
+  }
+  
+  log('[CUP BG] Data is stale (baseline: ' + Math.round(baselineAgeMs / 60000) + 'm, usage: ' + Math.round(usageAgeMs / 60000) + 'm), auto-refreshing...');
+  lastAutoRefreshAttempt = now;
   
   // Open usage page in background tab, scrape, then close
   try {
@@ -2396,8 +2411,8 @@ async function checkAndAutoRefresh() {
       active: false // Background tab
     });
     
-    // Wait for page to load and scrape
-    await new Promise(resolve => setTimeout(resolve, 4000));
+    // Wait for page to load
+    await new Promise(resolve => setTimeout(resolve, 5000));
     
     // Send message to content script to scrape
     try {
@@ -2407,29 +2422,16 @@ async function checkAndAutoRefresh() {
       log('[CUP BG] Auto-refresh scrape message failed:', e.message);
     }
     
-    // Wait for scrape to complete
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // Wait for scrape to complete and data to sync
+    await new Promise(resolve => setTimeout(resolve, 3000));
     
     // Close the tab
-    await chrome.tabs.remove(tab.id);
-    log('[CUP BG] Auto-refresh complete, tab closed');
-    
-    // Show notification
     try {
-      await chrome.notifications.create('autoRefresh', {
-        type: 'basic',
-        iconUrl: 'icons/icon128.png',
-        title: 'Claude Usage Pro',
-        message: 'Usage data auto-refreshed',
-        priority: 0
-      });
-      // Auto-dismiss after 3 seconds
-      setTimeout(() => {
-        chrome.notifications.clear('autoRefresh');
-      }, 3000);
+      await chrome.tabs.remove(tab.id);
     } catch (e) {
-      // Notifications might not be available
+      // Tab might already be closed
     }
+    log('[CUP BG] Auto-refresh complete, tab closed');
     
   } catch (e) {
     logError('[CUP BG] Auto-refresh failed:', e.message);
