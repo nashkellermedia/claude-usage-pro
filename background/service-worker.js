@@ -1677,10 +1677,16 @@ async function handleMessage(message, sender) {
     case 'SYNC_SCRAPED_DATA':
     case 'USAGE_SCRAPED': {
       const { usageData } = message;
+      log('[CUP BG] SYNC_SCRAPED_DATA received:', usageData ? 'has data' : 'no data');
       if (!usageData) return { success: false };
+
+      log('[CUP BG] Scraped data - Session:', usageData.currentSession?.percent, 
+          'Weekly:', usageData.weeklyAllModels?.percent,
+          'Sonnet:', usageData.weeklySonnet?.percent);
 
       if (hybridTracker) {
         await hybridTracker.setBaseline(usageData, 'scraper');
+        log('[CUP BG] Baseline updated from scraper');
       }
 
       const existing = await getUsageData();
@@ -1688,6 +1694,7 @@ async function handleMessage(message, sender) {
       await saveUsageData(merged);
       notifyAllTabs(merged);
 
+      log('[CUP BG] Data saved and tabs notified');
       return { success: true };
     }
 

@@ -275,16 +275,29 @@ class UsageScraper {
     window.CUP.log('UsageScraper: Scraping current page...');
     
     // Wait for content to load
-    await this.waitForContent();
+    const contentLoaded = await this.waitForContent();
+    window.CUP.log('UsageScraper: Content loaded:', contentLoaded);
     
     const data = this.scrapeFromMainContent();
     
     if (data) {
       this.lastScrapedData = data;
-      window.CUP.sendToBackground({ type: 'SYNC_SCRAPED_DATA', usageData: data });
-      window.CUP.log('UsageScraper: Data synced to background');
+      window.CUP.log('UsageScraper: Scraped data:', JSON.stringify({
+        session: data.currentSession?.percent,
+        weekly: data.weeklyAllModels?.percent,
+        sonnet: data.weeklySonnet?.percent
+      }));
+      
+      try {
+        const response = await window.CUP.sendToBackground({ type: 'SYNC_SCRAPED_DATA', usageData: data });
+        window.CUP.log('UsageScraper: Sync response:', response);
+      } catch (e) {
+        window.CUP.logError('UsageScraper: Sync failed:', e.message);
+      }
     } else {
       window.CUP.log('UsageScraper: Failed to scrape - content may not have loaded');
+      // Log page content for debugging
+      window.CUP.log('UsageScraper: Page text length:', document.body?.innerText?.length || 0);
     }
   }
   
